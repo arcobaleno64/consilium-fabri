@@ -1,13 +1,19 @@
-# Artifact-First Multi-Agent Workflow Template
+# Consilium Fabri
 
-A battle-tested, gate-guarded workflow harness for multi-agent software development with Claude Code (orchestrator), Gemini CLI (research), and Codex CLI (implementation).
+**[繁體中文](README.zh-TW.md)** | English
+
+> *Consilium Fabri* — Latin for "Council of Craftsmen."
+> Three cobblers with their wits combined equal Zhuge Liang the mastermind.
+
+A battle-tested, gate-guarded workflow harness for **multi-agent AI development** with Claude Code (orchestrator), Gemini CLI (research), and Codex CLI (implementation).
 
 ## Quick Start
 
-### 1. Copy template to your project
+### 1. Clone and copy to your project
 
 ```bash
-cp -r template/ /path/to/your/project/
+git clone https://github.com/arcobaleno64/consilium-fabri.git
+cp -r consilium-fabri/ /path/to/your/project/
 ```
 
 ### 2. Replace placeholders
@@ -17,29 +23,26 @@ The template uses `{{PLACEHOLDER}}` syntax. Replace the following in `CLAUDE.md`
 | Placeholder | Description | Example |
 |---|---|---|
 | `{{PROJECT_NAME}}` | Your project name | `MyApp` |
-| `{{REPO_NAME}}` | Upstream repository name (if using fork model) | `my-upstream-repo` |
+| `{{REPO_NAME}}` | Upstream repo name (if using fork model) | `my-upstream-repo` |
 | `{{UPSTREAM_ORG}}` | Upstream GitHub org/user (if using fork model) | `original-author` |
 
 ```bash
-# Example: one-liner replacement (Linux/macOS/Git Bash)
 sed -i 's/{{PROJECT_NAME}}/MyApp/g; s/{{REPO_NAME}}/my-upstream-repo/g; s/{{UPSTREAM_ORG}}/original-author/g' CLAUDE.md
 ```
 
-If your project does not use a fork model, you may remove or simplify the "Repository boundaries" section in `CLAUDE.md`.
+If your project does not use a fork model, remove the "Repository boundaries" section in `CLAUDE.md`.
 
 ### 3. Validate setup
 
 ```bash
 python artifacts/scripts/guard_status_validator.py --task-id TASK-900
+# Expected: [OK] Validation passed
 ```
-
-Expected output: `[OK] Validation passed`
 
 ### 4. Set up hooks (optional)
 
 ```bash
 cp .claude/settings.json.example .claude/settings.json
-# Edit to match your OS and formatter preferences
 ```
 
 ## File Structure
@@ -49,6 +52,7 @@ cp .claude/settings.json.example .claude/settings.json
 ├── GEMINI.md                          # Gemini CLI entry point (passed via prompt)
 ├── CODEX.md                           # Codex CLI entry point (passed via prompt)
 ├── AGENTS.md                          # Master index + phase loading matrix
+├── BOOTSTRAP_PROMPT.md                # Ready-to-use prompt for starting new projects
 ├── docs/                              # Reference documentation (loaded on demand)
 │   ├── orchestration.md               # System prompt: goals, principles, stages, gates
 │   ├── artifact_schema.md             # Schema for all 8 artifact types
@@ -69,84 +73,79 @@ cp .claude/settings.json.example .claude/settings.json
 │       └── guard_status_validator.py  # Gate validator (Python stdlib only)
 ├── .claude/
 │   └── settings.json.example         # Hook examples (notification, auto-format)
-└── README.md                          # This file
+└── README.md
 ```
 
 ## Token-Efficient Loading
 
-Each agent only loads its entry file. Reference docs are loaded on demand:
+Each agent loads only its entry file. Reference docs are loaded on demand per phase:
 
-| Agent | Entry File | Tokens | Additional docs loaded by orchestrator per phase |
+| Agent | Entry File | ~Tokens | Strategy |
 |---|---|---|---|
-| Claude Code | `CLAUDE.md` | ~800 | See `AGENTS.md` phase loading matrix |
-| Gemini CLI | `GEMINI.md` | ~1500 | None (all critical rules inlined) |
-| Codex CLI | `CODEX.md` | ~1300 | None (all critical rules inlined) |
+| Claude Code | `CLAUDE.md` | 800 | Loads `docs/` per phase via `AGENTS.md` matrix |
+| Gemini CLI | `GEMINI.md` | 1,500 | All critical rules inlined (no filesystem access) |
+| Codex CLI | `CODEX.md` | 1,300 | All critical rules inlined |
 
-Compared to loading all docs (~16K tokens), this saves 81-92% on initial load.
+**Saves 81–92%** compared to loading all docs (~16K tokens) at once.
 
-## Workflow Overview
+## Workflow
 
 Every task follows a strict gate-guarded pipeline:
 
 ```
 Intake → Research → Planning → Coding → Verification → Done
   │         │          │         │          │
-  └─ Gate A ┘   Gate B ┘  Gate C ┘   Gate D ┘
+  Gate A    Gate B     Gate C    Gate D     ✓
 ```
 
-- **Gate A (Research)**: Task artifact must exist before research begins
-- **Gate B (Planning)**: Research artifact must exist before planning begins
-- **Gate C (Coding)**: Plan must have `Ready For Coding: yes` AND pass premortem quality check before coding begins
-- **Gate D (Verification)**: Code artifact must exist; verify must include `## Build Guarantee`
+| Gate | Requirement |
+|---|---|
+| **A — Research** | Task artifact must exist |
+| **B — Planning** | Research artifact must exist |
+| **C — Coding** | Plan `Ready For Coding: yes` + premortem quality check |
+| **D — Verification** | Code artifact + `## Build Guarantee` in verify |
 
-The `guard_status_validator.py` enforces these gates programmatically.
+`guard_status_validator.py` enforces all gates programmatically.
 
 ## Agent Roles
 
-| Agent | Role | Can Write Code? |
+| Agent | Role | Writes Code? |
 |---|---|---|
-| **Claude Code** | Orchestrator — reads artifacts, dispatches tasks, writes artifacts | Yes (artifact files) |
-| **Gemini CLI** | Research-only — produces verified findings and constraints | No |
-| **Codex CLI** | Implementer — writes production code per plan | Yes (production code) |
-
-See `docs/subagent_roles.md` for detailed role definitions, quality hard constraints, and collaboration patterns.
+| **Claude Code** | Orchestrator — dispatches tasks, writes artifacts | Artifacts only |
+| **Gemini CLI** | Research — verified findings and constraints | No |
+| **Codex CLI** | Implementer — production code per plan | Yes |
 
 ## Key Concepts
 
 ### Premortem Analysis
-Before entering coding, the plan's `## Risks` section must contain structured risk entries (R1, R2, ...) each with Risk, Trigger, Detection, Mitigation, and Severity fields. The validator hard-blocks `planned → coding` if premortem quality is insufficient. See `docs/premortem_rules.md`.
+Before coding, the plan's `## Risks` must contain structured entries (R1, R2, ...) with Risk, Trigger, Detection, Mitigation, Severity. The validator hard-blocks insufficient premortems.
 
 ### Build Guarantee
-Every `verify` artifact must include a `## Build Guarantee` section proving that modified build units were actually built. This prevents false-positive verification.
+Every verify artifact must prove that modified build units were actually built. Prevents false-positive "tests pass but build broken" scenarios.
 
 ### Negative Testing
-Intentionally break something to prove the pipeline catches it. Example: remove a required marker from a verify artifact and confirm the validator rejects it.
-
-### Repo Boundary Discipline
-If using a fork model, maintain strict separation between your dirty workbench (`external/{{REPO_NAME}}/`) and upstream PR directory (`external/{{REPO_NAME}}-upstream-pr/`).
+Intentionally break something to prove the pipeline catches it — a lightweight form of mutation testing for workflow artifacts.
 
 ## Customization
 
-### Adding build tools
-Edit `docs/artifact_schema.md` section 5.6 to add your project's build/test commands to the Build Guarantee rules.
+| What | Where |
+|---|---|
+| Build tools | `docs/artifact_schema.md` §5.6 |
+| State transitions | `guard_status_validator.py` → `LEGAL_TRANSITIONS` |
+| Required markers | `guard_status_validator.py` → `MARKERS` |
+| Agent quality rules | `docs/subagent_roles.md` §4.5 |
 
-### Extending the validator
-Edit `artifacts/scripts/guard_status_validator.py`:
-- `LEGAL_TRANSITIONS` dict — add custom state transitions
-- `required_markers` dict — add required section headers per artifact type
-- `STATE_REQUIRED_ARTIFACTS` dict — adjust which artifacts are needed per state
+## Roadmap
 
-### Agent quality rules
-Edit `docs/subagent_roles.md` section 4.5 to add project-specific quality constraints for research agents.
-
-## Future Iterations
-
-- [ ] Copier integration (`copier.yml`) for lifecycle-managed template updates
+- [ ] Copier integration for lifecycle-managed updates
 - [ ] CI/CD pipeline templates (GitHub Actions / Azure DevOps)
 - [ ] MCP server integration examples
 - [ ] Interactive bootstrap wizard
-- [ ] Multi-language support
 
-## Origin
+## License
 
-Extracted from the [Antigravity/CLI](https://github.com/arcobaleno64) project's battle-tested artifact-first workflow (TASK-002 through TASK-008). Lessons learned from false-positive verification incidents, Gemini role drift, and upstream PR moot scenarios are baked into the template's constraints and quality rules.
+[MIT](LICENSE)
+
+---
+
+*Extracted from battle-tested practice (TASK-002 through TASK-008). Lessons from false-positive verification, agent role drift, and upstream PR moot scenarios are baked into every constraint.*
