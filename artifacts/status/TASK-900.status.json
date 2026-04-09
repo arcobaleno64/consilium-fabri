@@ -1,0 +1,11 @@
+{
+  "task_id": "TASK-900",
+  "state": "drafted",
+  "current_owner": "Claude",
+  "next_agent": "Claude",
+  "required_artifacts": ["task", "status"],
+  "available_artifacts": ["task", "status"],
+  "missing_artifacts": [],
+  "blocked_reason": "",
+  "last_updated": "2026-01-01T00:00:00+08:00"
+}

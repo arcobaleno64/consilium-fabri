@@ -1,0 +1,555 @@
+# ARTIFACT_SCHEMA
+
+本文件定義 artifact-first workflow 的檔案命名、欄位、狀態、驗證規則與最小品質要求。
+
+目標有三個：
+
+1. 讓不同代理可透過固定 schema 接手工作。
+2. 讓狀態可追蹤、可驗證、可重跑。
+3. 避免 artifact 退化成不可機讀、不可審計的自由散文。
+
+## 1. 通用規則
+
+### 1.1 命名規範
+
+所有 artifacts 必須使用一致命名：
+
+`TASK-<流水號>.<artifact-type>.<ext>`
+
+範例：
+
+- `TASK-001.task.md`
+- `TASK-001.research.md`
+- `TASK-001.plan.md`
+- `TASK-001.code.md`
+- `TASK-001.test.md`
+- `TASK-001.verify.md`
+- `TASK-001.decision.md`
+- `TASK-001.status.json`
+
+### 1.2 目錄規範
+
+建議目錄：
+
+```text
+/artifacts
+  /tasks
+  /research
+  /plans
+  /code
+  /test
+  /verify
+  /decisions
+  /status
+```
+
+### 1.3 任務識別碼
+
+- 任務識別碼格式：`TASK-001`、`TASK-002`。
+- 一個任務可有多個關聯 artifacts，但只能有一個主 status artifact。
+- 同一任務的 artifacts 必須使用相同 task id。
+
+### 1.4 時間格式
+
+- 所有時間使用 ISO 8601。
+- 若無時區資訊，至少保留完整日期與時間。
+- 範例：`2026-04-09T14:30:00+08:00`
+
+### 1.5 文件語言與風格
+
+- artifact 以清晰、可驗證、可接手為原則。
+- 用語必須具體，避免模糊詞如「可能沒問題」「應該可行」。
+- 若不確定，必須明確標示 `uncertain` 或對應欄位中的未確認事項。
+
+## 2. Artifact 類型總表
+
+| 類型 | 副檔名 | 主要作者 | 目的 |
+|---|---|---|---|
+| task | `.task.md` | Claude | 定義任務目標、限制、驗收條件 |
+| research | `.research.md` | Gemini | 提供規格依據、查詢結果、實作約束 |
+| plan | `.plan.md` | Claude | 定義實作範圍、影響面、風險 |
+| code | `.code.md` | Codex | 記錄修改內容、變更檔案、已做測試 |
+| test | `.test.md` | Codex subagent 或 Claude | 記錄測試結果與失敗摘要 |
+| verify | `.verify.md` | Claude 或 verifier | 對照驗收條件判定 pass/fail |
+| decision | `.decision.md` | Claude | 記錄衝突、決策理由、取捨 |
+| status | `.status.json` | Claude | 提供機讀狀態與下一步 |
+
+## 3. 必填通用欄位
+
+所有 markdown 型 artifact 必須至少包含以下通用區段：
+
+- `Task ID`
+- `Artifact Type`
+- `Owner`
+- `Status`
+- `Last Updated`
+
+建議固定寫法：
+
+```md
+## Metadata
+- Task ID: TASK-001
+- Artifact Type: task
+- Owner: Claude
+- Status: drafted
+- Last Updated: 2026-04-09T14:30:00+08:00
+```
+
+若缺少上述欄位，該 artifact 視為不合法。
+
+## 4. 狀態值規範
+
+### 4.1 通用狀態值
+
+不同 artifact 可使用以下狀態值的子集合：
+
+- `drafted`
+- `in_progress`
+- `ready`
+- `approved`
+- `blocked`
+- `pass`
+- `fail`
+- `done`
+- `superseded`
+
+### 4.2 狀態使用原則
+
+- task: `drafted`, `approved`, `blocked`, `done`
+- research: `in_progress`, `ready`, `blocked`, `superseded`
+- plan: `drafted`, `ready`, `approved`, `blocked`, `superseded`
+- code: `in_progress`, `ready`, `blocked`, `superseded`
+- test: `in_progress`, `pass`, `fail`, `blocked`, `superseded`
+- verify: `pass`, `fail`, `blocked`, `superseded`
+- decision: `done`
+
+## 5. 各 artifact schema
+
+---
+
+## 5.1 Task Artifact Schema
+
+檔名：`artifacts/tasks/TASK-001.task.md`
+
+用途：任務的單一權威定義。
+
+必填區段：
+
+```md
+# Task: TASK-001
+
+## Metadata
+- Task ID:
+- Artifact Type: task
+- Owner:
+- Status:
+- Last Updated:
+
+## Objective
+
+## Background
+
+## Inputs
+
+## Constraints
+
+## Acceptance Criteria
+
+## Dependencies
+
+## Out of Scope
+
+## Current Status Summary
+```
+
+欄位規則：
+
+- `Objective`: 一句到數句，清楚描述任務最終目標。
+- `Inputs`: 指出可用檔案、模組、文件或使用者需求。
+- `Constraints`: 必須明確列出不可違反條件。
+- `Acceptance Criteria`: 必須條列且可驗證。
+- `Out of Scope`: 避免 Codex 擴大實作範圍。
+
+最低驗收標準：
+
+- 驗收條件不可空白。
+- 至少一條 `Out of Scope` 或明確寫 `None`。
+- `Constraints` 不可省略。
+
+---
+
+## 5.2 Research Artifact Schema
+
+檔名：`artifacts/research/TASK-001.research.md`
+
+用途：將外部知識、規格、版本差異與實作約束落地。
+
+必填區段：
+
+```md
+# Research: TASK-001
+
+## Metadata
+- Task ID:
+- Artifact Type: research
+- Owner:
+- Status:
+- Last Updated:
+
+## Research Questions
+
+## Confirmed Facts
+
+## Relevant References
+
+## Uncertain Items
+
+## Constraints For Implementation
+
+## Recommendation
+```
+
+欄位規則：
+
+- `Research Questions`: 至少一條。
+- `Confirmed Facts`: 必須是可採用於規劃或實作的事實。
+- `Relevant References`: 需標明來源名稱或文件名稱。
+- `Uncertain Items`: 沒有時要寫 `None`。
+- `Constraints For Implementation`: 要可直接被 plan 使用。
+
+最低驗收標準：
+
+- 不可只有連結或文件名，必須有整理後結論。
+- 不可把推測寫進 `Confirmed Facts`。
+- 至少要有一個可供 implementation 使用的約束。
+
+---
+
+## 5.3 Plan Artifact Schema
+
+檔名：`artifacts/plans/TASK-001.plan.md`
+
+用途：將需求與研究轉成可控實作範圍。
+
+必填區段：
+
+```md
+# Plan: TASK-001
+
+## Metadata
+- Task ID:
+- Artifact Type: plan
+- Owner:
+- Status:
+- Last Updated:
+
+## Scope
+
+## Files Likely Affected
+
+## Proposed Changes
+
+## Risks
+
+## Validation Strategy
+
+## Out of Scope
+
+## Ready For Coding
+```
+
+欄位規則：
+
+- `Scope`: 明確描述此次計畫包含哪些內容。
+- `Files Likely Affected`: 至少列出模組、目錄或檔案群。
+- `Proposed Changes`: 條列具體改動。
+- `Risks`: 不可省略。必須執行 premortem 分析（見 `docs/premortem_rules.md`）。每條風險必須包含 R 編號 + Risk / Trigger / Detection / Mitigation / Severity 五欄位。Severity 只能填 `blocking` 或 `non-blocking`。一般任務至少 2 條風險；安全性 / 依賴升級 / upstream PR 至少 4 條且至少 1 條 blocking。品質規則見 `docs/premortem_rules.md` §4。`guard_status_validator.py` 在 `planned → coding` 時會自動檢查。
+- `Validation Strategy`: 必須說明如何驗證成功。
+- `Ready For Coding`: 只能填 `yes` 或 `no`。
+
+最低驗收標準：
+
+- 未列影響範圍的 plan 不可進 coding。
+- `Ready For Coding` 為 `yes` 前，必須已有對應 task artifact。
+- 若 task 需要 research，則 plan 建立前必須已有 research artifact。
+
+---
+
+## 5.4 Code Artifact Schema
+
+檔名：`artifacts/code/TASK-001.code.md`
+
+用途：記錄實作結果，避免主 thread 被 diff 與 log 淹沒。
+
+必填區段：
+
+```md
+# Code Result: TASK-001
+
+## Metadata
+- Task ID:
+- Artifact Type: code
+- Owner:
+- Status:
+- Last Updated:
+
+## Files Changed
+
+## Summary Of Changes
+
+## Mapping To Plan
+
+## Tests Added Or Updated
+
+## Known Risks
+
+## Blockers
+```
+
+欄位規則：
+
+- `Files Changed`: 至少列出實際修改檔案，沒有修改時不可建立 code artifact。
+- `Mapping To Plan`: 逐條或整體說明與 plan 對應關係。
+- `Tests Added Or Updated`: 沒有時寫 `None`。
+- `Known Risks`: 沒有時寫 `None`。
+- `Blockers`: 沒有時寫 `None`。
+
+最低驗收標準：
+
+- 不能只寫「已完成修改」。
+- 必須能看出改了哪裡、為何而改。
+- 若超出 plan，必須明確標示並阻止 closure。
+
+---
+
+## 5.5 Test Artifact Schema
+
+檔名：`artifacts/test/TASK-001.test.md`
+
+用途：承接測試與驗證輸出，不把原始 log 丟進主 thread。
+
+必填區段：
+
+```md
+# Test Report: TASK-001
+
+## Metadata
+- Task ID:
+- Artifact Type: test
+- Owner:
+- Status:
+- Last Updated:
+
+## Test Scope
+
+## Commands Executed
+
+## Result Summary
+
+## Failures
+
+## Evidence Files
+
+## Recommendation
+```
+
+欄位規則：
+
+- `Commands Executed`: 至少列出實際命令或測試類型。
+- `Result Summary`: 必須有總結，不可只貼 log。
+- `Failures`: 沒有時寫 `None`。
+- `Evidence Files`: 若完整 log 落地到其他檔案，需在此列出。
+
+最低驗收標準：
+
+- 不可只貼 raw output。
+- 必須明確指出是 pass、fail 或 blocked。
+
+---
+
+## 5.6 Verify Artifact Schema
+
+檔名：`artifacts/verify/TASK-001.verify.md`
+
+用途：對照 acceptance criteria 做最終驗收。
+
+必填區段：
+
+```md
+# Verification: TASK-001
+
+## Metadata
+- Task ID:
+- Artifact Type: verify
+- Owner:
+- Status:
+- Last Updated:
+
+## Acceptance Criteria Checklist
+
+## Evidence
+
+## Build Guarantee
+
+## Pass Fail Result
+
+## Remaining Gaps
+
+## Recommendation
+```
+
+欄位規則：
+
+- `Acceptance Criteria Checklist`: 必須逐條對照 task artifact。
+- `Evidence`: 指向 code/test/research/decision artifacts。
+- `Build Guarantee` (FUP-2)：針對本 task 修改過的**每一個** build 單元，明列 build 指令、exit code、與 output tail。
+  - .NET 任務：對每個被修改的 `.csproj` 執行 `dotnet build <csproj> -c Debug` 並貼出結尾段落（含「建置成功/錯誤」或等價 summary）。
+  - 非 .NET 任務（python / node / etc.）：列對應 build / type-check / lint 指令與結果。
+  - 若本 task 未修改任何 `.csproj` 或等價 build 單元，寫 `None (no .csproj modified)` 並簡述原因（例如純文件變更、python-only 任務）。
+  - **禁止**以「測試專案 build 成功」替代「被測專案 build 成功」—— 兩者不等價。若發生此類事故，應建立 decision artifact 記錄根因與修正。
+- `Pass Fail Result`: 只能填 `pass` 或 `fail`。
+- `Remaining Gaps`: 沒有時寫 `None`。
+
+最低驗收標準：
+
+- 未逐條對照 acceptance criteria 的 verify artifact 不合法。
+- 若有未完成條件，不可標 `pass`。
+- 缺少 `## Build Guarantee` 區段的 verify artifact 不合法；`guard_status_validator.py` 會在 `required_markers["verify"]` 擋下。
+
+---
+
+## 5.7 Decision Artifact Schema
+
+檔名：`artifacts/decisions/TASK-001.decision.md`
+
+用途：處理衝突、取捨、補查決策與流程分歧。
+
+必填區段：
+
+```md
+# Decision Log: TASK-001
+
+## Metadata
+- Task ID:
+- Artifact Type: decision
+- Owner:
+- Status: done
+- Last Updated:
+
+## Issue
+
+## Options Considered
+
+## Chosen Option
+
+## Reasoning
+
+## Implications
+
+## Follow Up
+```
+
+何時必須建立 decision artifact：
+
+- 研究結果互相衝突
+- 計畫需做取捨
+- Codex 提出超出原計畫的必要修改
+- 驗收未通過，需決定回退或補改
+- 對話內容與 artifact 衝突
+
+---
+
+## 5.8 Status Artifact Schema
+
+檔名：`artifacts/status/TASK-001.status.json`
+
+用途：提供機器可讀狀態，作為流程主控依據。
+
+JSON schema 範例：
+
+```json
+{
+  "task_id": "TASK-001",
+  "state": "planned",
+  "current_owner": "Claude",
+  "next_agent": "Codex",
+  "required_artifacts": ["task", "research", "plan"],
+  "available_artifacts": ["task", "research", "plan"],
+  "missing_artifacts": [],
+  "blocked_reason": "",
+  "last_updated": "2026-04-09T14:30:00+08:00"
+}
+```
+
+### state 合法值
+
+- `drafted`
+- `researched`
+- `planned`
+- `coding`
+- `testing`
+- `verifying`
+- `done`
+- `blocked`
+
+### 欄位規則
+
+- `task_id`: 必須對應既有 task artifact。
+- `state`: 必須符合 workflow state machine。
+- `required_artifacts`: 此狀態進入下一步所需類型。
+- `missing_artifacts`: 實際缺件清單。
+- `blocked_reason`: 若 state 為 `blocked`，不可空白。
+
+## 6. 合法性檢查規則
+
+artifact 合法需同時符合：
+
+1. 命名正確
+2. 放在正確目錄
+3. 包含必填欄位
+4. 使用合法狀態值
+5. 與上游 artifacts 的 task id 一致
+6. 內容與角色責任一致
+7. 沒有以模糊語句取代可驗證結論
+
+若不合法，應：
+
+- 視為缺件
+- 不可作為下一步輸入
+- 於 status artifact 記錄缺失
+
+## 7. 版本與覆寫規則
+
+- 同一 task 同一類型 artifact 原則上維持單一最新版本。
+- 若需保留舊版，可另存備份，但主流程只認最新合法版本。
+- 被新版本取代的 artifact，狀態應標記為 `superseded`。
+
+## 8. 最小可用原則
+
+對極小型任務可採 lightweight mode，但最少仍需：
+
+- task artifact
+- code artifact
+- status artifact
+
+若任務涉及外部知識，仍不可跳過 research artifact。
+若任務需要驗收，仍不可跳過 verify artifact。
+
+## 9. 禁止事項
+
+以下 artifact 一律視為品質不合格：
+
+- 只有標題沒有實質內容
+- 用大量原始 log 取代摘要
+- 把推測當成 confirmed fact
+- 未列出 acceptance criteria
+- 未列出 files changed
+- 未列出風險或直接省略風險欄位
+- status 與實際 artifacts 不一致
+
+## 10. 最終原則
+
+Artifact 的目的不是存檔，而是作為下一個代理的可用契約。
+
+若某份 artifact 不能讓下一位代理不靠猜測就接手，那它就還不夠好。
+
