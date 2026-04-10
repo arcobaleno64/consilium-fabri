@@ -48,7 +48,7 @@ verifying
   -> blocked
 
 blocked
-  -> 任意前一合法狀態
+  -> 任意前一合法狀態（需先建立 improvement artifact — Gate E）
 ```
 
 ## 3. 每個狀態的進入條件
@@ -104,6 +104,9 @@ blocked
 
 - 缺失 artifact 補齊
 - 或 decision log 解決衝突
+- **且**必須建立 improvement artifact（Gate E, PDCA）
+  - 記錄根因分析、矯正措施、與系統層級預防措施
+  - `guard_status_validator.py` 在 `blocked → *` 轉移時自動檢查
 
 ## 6. 強制規則
 
@@ -111,6 +114,10 @@ blocked
 2. 狀態必須與實際 artifacts 一致
 3. 不允許「口頭完成」狀態
 4. 不允許跳過中間狀態
+5. Every plan must be testable and mappable to code and verification artifacts
+6. Implementation must not introduce changes not explicitly mapped to plan
+7. verify 必須逐條對應 acceptance criteria
+8. After any failure or blocked state, a Process Improvement artifact must be created before resuming workflow (Gate E)
 
 ## 7. 設計原則
 

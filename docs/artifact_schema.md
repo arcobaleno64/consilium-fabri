@@ -40,6 +40,7 @@
   /test
   /verify
   /decisions
+  /improvement
   /status
 ```
 
@@ -73,6 +74,7 @@
 | verify | `.verify.md` | Claude 或 verifier | 對照驗收條件判定 pass/fail |
 | decision | `.decision.md` | Claude | 記錄衝突、決策理由、取捨 |
 | status | `.status.json` | Claude | 提供機讀狀態與下一步 |
+| improvement | `.improvement.md` | Claude | PDCA 改進記錄：失敗分析、矯正與預防措施 |
 
 ## 3. 必填通用欄位
 
@@ -499,6 +501,75 @@ JSON schema 範例：
 - `required_artifacts`: 此狀態進入下一步所需類型。
 - `missing_artifacts`: 實際缺件清單。
 - `blocked_reason`: 若 state 為 `blocked`，不可空白。
+
+---
+
+## 5.9 Improvement Artifact Schema (PDCA)
+
+檔名：`artifacts/improvement/TASK-001.improvement.md`
+
+用途：在任務發生 failure、blocked、或流程缺陷後，執行 PDCA Act 階段——分析根因、執行矯正、提出系統層級預防措施。
+
+命名規則：
+
+- 主要改進：`TASK-001.improvement.md`
+- 同一任務多次改進：`TASK-001-IMP-002.improvement.md`
+
+必填區段：
+
+```md
+# Process Improvement
+
+## Metadata
+- Task ID:
+- Artifact Type: improvement
+- Source Task:
+- Trigger Type: (failure / blocked / inefficiency / guard miss)
+- Owner: Claude
+- Status: draft
+- Last Updated:
+
+## 1. What Happened
+
+## 2. Why It Was Not Prevented
+
+## 3. Failure Classification
+
+## 4. Corrective Action (Immediate)
+
+## 5. Preventive Action (System Level)
+
+## 6. Validation
+
+## 7. Impact Scope
+
+## 8. Final Rule
+
+## 9. Status
+```
+
+欄位規則：
+
+- `Trigger Type`: 必須為 `failure`、`blocked`、`inefficiency` 或 `guard miss` 之一。
+- `## 1. What Happened`: 必須具體描述發生在哪個階段（Plan / Do / Check / Act）、哪個 agent、哪個 artifact。
+- `## 2. Why It Was Not Prevented`: 必須指出哪條規則缺失、哪個 guard 沒覆蓋、哪個 prompt 太寬鬆。
+- `## 3. Failure Classification`: 至少勾選一個分類（G1–G6、Premortem failure、Unknown gap）。
+- `## 5. Preventive Action (System Level)`: **最重要區段**。必須至少包含一項：Prompt 修正、Guard 規則補強、Template 修正、或 Workflow 調整。
+- `## 8. Final Rule`: 將改進轉成一句可執行規則。
+- `## 9. Status`: `draft` → `approved` → `applied`。
+
+工作流規則：
+
+- **Gate E (PDCA)**：任何任務從 `blocked` 恢復前，必須先建立 improvement artifact。`guard_status_validator.py` 在 `blocked → *` 轉移時自動檢查。
+- Improvement artifact 的 Status 不影響任務狀態轉移，但應追蹤至 `applied`。
+
+最低驗收標準：
+
+- 不可只描述問題而無預防措施。
+- Preventive Action 不可只寫「注意一下」，必須是可被 guard / prompt / template 執行的具體改動。
+- Final Rule 必須是一句可直接加入 CLAUDE.md 或 guard script 的規則。
+
+---
 
 ## 6. 合法性檢查規則
 

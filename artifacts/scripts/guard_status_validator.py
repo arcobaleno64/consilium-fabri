@@ -75,6 +75,7 @@ ARTIFACT_DIRS: Dict[str, str] = {
     "test": "test",
     "verify": "verify",
     "decision": "decisions",
+    "improvement": "improvement",
     "status": "status",
 }
 
@@ -86,6 +87,7 @@ ARTIFACT_EXTENSIONS: Dict[str, str] = {
     "test": ".test.md",
     "verify": ".verify.md",
     "decision": ".decision.md",
+    "improvement": ".improvement.md",
     "status": ".status.json",
 }
 
@@ -164,6 +166,16 @@ MARKERS: Dict[str, Sequence[str]] = {
         "## Issue",
         "## Chosen Option",
         "## Reasoning",
+    ),
+    "improvement": (
+        "# Process Improvement",
+        "## Metadata",
+        "Artifact Type: improvement",
+        "## 1. What Happened",
+        "## 2. Why It Was Not Prevented",
+        "## 3. Failure Classification",
+        "## 5. Preventive Action (System Level)",
+        "## 8. Final Rule",
     ),
 }
 
@@ -506,7 +518,12 @@ def validate_artifact_presence(
     return ValidationResult(errors, warnings)
 
 
-def validate_transition(from_state: str, to_state: str) -> ValidationResult:
+def validate_transition(
+    from_state: str,
+    to_state: str,
+    artifacts_root: Optional[Path] = None,
+    task_id: Optional[str] = None,
+) -> ValidationResult:
     errors: List[str] = []
     warnings: List[str] = []
 
@@ -520,6 +537,22 @@ def validate_transition(from_state: str, to_state: str) -> ValidationResult:
     allowed = LEGAL_TRANSITIONS.get(from_state, set())
     if to_state not in allowed:
         errors.append(f"Illegal state transition: {from_state} -> {to_state}")
+
+    # Gate E (PDCA): blocked -> any requires at least one improvement artifact.
+    if from_state == "blocked" and to_state != "blocked" and artifacts_root and task_id:
+        improvement_dir = artifacts_root / "improvement"
+        if improvement_dir.is_dir():
+            has_improvement = any(
+                f.name.startswith(task_id) and f.suffix == ".md"
+                for f in improvement_dir.iterdir()
+            )
+        else:
+            has_improvement = False
+        if not has_improvement:
+            errors.append(
+                f"Gate E (PDCA): resuming from blocked requires an improvement artifact "
+                f"for {task_id} in artifacts/improvement/"
+            )
 
     return ValidationResult(errors, warnings)
 
@@ -552,7 +585,7 @@ def write_transition(artifacts_root: Path, task_id: str, from_state: str, to_sta
     errors: List[str] = []
     warnings: List[str] = []
 
-    transition_result = validate_transition(from_state, to_state)
+    transition_result = validate_transition(from_state, to_state, artifacts_root, task_id)
     errors.extend(transition_result.errors)
     warnings.extend(transition_result.warnings)
     if errors:
@@ -652,7 +685,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
         result = validate_all(artifacts_root, args.task_id)
         if args.from_state and args.to_state:
-            transition_result = validate_transition(args.from_state, args.to_state)
+            transition_result = validate_transition(args.from_state, args.to_state, artifacts_root, args.task_id)
             result.errors.extend(transition_result.errors)
             result.warnings.extend(transition_result.warnings)
 
