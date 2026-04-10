@@ -126,6 +126,9 @@ cp .claude/settings.json.example .claude/settings.json
 ### 負面測試（Negative Testing）
 故意破壞某些東西來證明流水線能抓到它 — 一種輕量版的 workflow artifact 突變測試。
 
+### 範本同步規範（Template Sync Protocol）
+當任何 workflow 檔案被修改（入口檔、`docs/*.md`、驗證器、啟動範本），協調者必須同步變更到 `template/` 並推送至 GitHub。專案特定引用會泛化為 `{{PLACEHOLDER}}` 語法。當檔案結構、閘門、Agent 角色或功能有變動時，必須同步更新 README。詳見 `docs/orchestration.md` §9。
+
 ## 客製化
 
 | 項目 | 修改位置 |

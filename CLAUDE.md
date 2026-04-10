@@ -36,6 +36,13 @@ Completion rules:
 
 If any rule is violated, treat the task as blocked and explain why.
 
+Template sync protocol:
+
+- After modifying any workflow file (CLAUDE.md, GEMINI.md, CODEX.md, AGENTS.md, docs/*.md, guard_status_validator.py, BOOTSTRAP_PROMPT.md), sync changes to `template/` and push to GitHub.
+- Generalize project-specific references to placeholders before writing to template/.
+- If file structure, gates, agent roles, or features changed, also update `template/README.md` and `template/README.zh-TW.md`.
+- See `docs/orchestration.md` §9 for full sync rules.
+
 Documentation loading protocol:
 
 - Do NOT load all documentation files at session start. Load on demand per phase.

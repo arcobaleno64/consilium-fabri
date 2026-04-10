@@ -14,7 +14,7 @@
 
 | File | Purpose | ~Tokens | Load When |
 |---|---|---|---|
-| `docs/orchestration.md` | System prompt: goals, principles, workflow stages, gates | 1800 | Claude: session start |
+| `docs/orchestration.md` | System prompt: goals, principles, workflow stages, gates, sync protocol | 2200 | Claude: session start; before template sync |
 | `docs/artifact_schema.md` | Schema for all 8 artifact types (§5.1-§5.8) | 3300 | Before writing any artifact |
 | `docs/subagent_roles.md` | Role definitions for 7 agents (§3-§9) | 3000 | Before dispatching subagent |
 | `docs/workflow_state_machine.md` | 8 states + legal transitions | 600 | Before state transition |
@@ -32,6 +32,7 @@
 | **Coding** | `docs/subagent_roles.md` §5, `docs/subagent_task_templates.md` | -- | (CODEX.md has all needed rules) |
 | **Verification** | `docs/artifact_schema.md` §5.5-§5.6, `docs/workflow_state_machine.md` | -- | -- |
 | **Closure** | `docs/workflow_state_machine.md` | -- | -- |
+| **Template Sync** | `docs/orchestration.md` §9 | -- | -- |
 
 ## Cross-Reference Convention
 

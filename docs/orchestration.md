@@ -267,7 +267,54 @@ Codex CLI 不得：
 - 應由哪個 agent 補件
 - 補件完成前不得做的事
 
-## 9. 最終原則
+## 9. Template Sync Protocol
+
+當 workflow 架構檔案被修改時，必須同步到 `template/` 目錄並推送至 GitHub，以維持三方一致性。
+
+### 9.1 觸發條件
+
+以下任一檔案被修改時，觸發同步：
+
+- 入口檔：`CLAUDE.md`、`GEMINI.md`、`CODEX.md`、`AGENTS.md`
+- 參考文件：`docs/*.md`（本檔案含在內）
+- 驗證器：`artifacts/scripts/guard_status_validator.py`
+- 啟動範本：`BOOTSTRAP_PROMPT.md`
+
+### 9.2 同步流程
+
+1. **泛化**：將專案特定引用替換為通用描述或 placeholder。
+   - 具體 TASK ID 引用 → 通用描述（如「應建立 decision artifact 記錄根因與修正」）
+   - 專案名稱 → `{{PROJECT_NAME}}`
+   - Repo 名稱 → `{{REPO_NAME}}`
+   - 上游組織 → `{{UPSTREAM_ORG}}`
+2. **複製**：將泛化後的內容寫入 `template/` 對應路徑。
+3. **README 同步判定**：若修改涉及以下任一項，必須同步更新 `template/README.md` 和 `template/README.zh-TW.md`：
+   - 檔案結構變更（新增、刪除、改名）
+   - 工作流程階段或 Gate 變更
+   - Agent 角色變更
+   - 新增功能或概念
+4. **推送**：將 `template/` 變更 commit 並推送至 GitHub repo。
+
+### 9.3 泛化規則
+
+| 專案版本 | Template 版本 |
+|---|---|
+| 專案特定 TASK/Decision 引用 | 通用描述 |
+| 專案名稱 | `{{PROJECT_NAME}}` |
+| 上游組織/Repo | `{{UPSTREAM_ORG}}/{{REPO_NAME}}` |
+| 專案特定驗收條件 | 泛化或移除 |
+
+### 9.4 禁止事項
+
+- 禁止只改本地 docs/ 而不同步 template/。
+- 禁止推送含有專案特定引用的 template。
+- 禁止跳過 README 同步判定。
+
+### 9.5 責任歸屬
+
+Template sync 由 **Orchestrator（Claude Code）** 負責。Gemini CLI 與 Codex CLI 不直接操作 template/。
+
+## 10. 最終原則
 
 - 先看 artifact，再做判斷
 - 沒有 artifact，就沒有完成

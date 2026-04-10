@@ -126,6 +126,9 @@ Every verify artifact must prove that modified build units were actually built. 
 ### Negative Testing
 Intentionally break something to prove the pipeline catches it — a lightweight form of mutation testing for workflow artifacts.
 
+### Template Sync Protocol
+When any workflow file is modified (entry files, `docs/*.md`, validator, bootstrap prompt), the orchestrator must sync changes to `template/` and push to GitHub. Project-specific references are generalized to `{{PLACEHOLDER}}` syntax. README updates are required when file structure, gates, agent roles, or features change. See `docs/orchestration.md` §9 for full rules.
+
 ## Customization
 
 | What | Where |
