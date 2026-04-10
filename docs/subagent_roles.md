@@ -108,7 +108,7 @@ Claude Code 的成功不是「自己做完」，而是：
 
 ## 4. Gemini CLI
 
-預設模型：`gemini-3.1-flash-lite-preview`（低成本、快速）。有問題時可升級至 `gemini-2.5-flash`。
+預設模型：`gemini-3.1-flash-lite-preview`（低成本、快速）。有問題時可升級至 `gemini-3.1-flash`，若仍無法解決則動用 `gemini-3.1-pro`。
 呼叫方式：`GEMINI_API_KEY="<key>" gemini -m gemini-3.1-flash-lite-preview --approval-mode=yolo -p "<prompt>"`
 
 ### 4.1 職責
