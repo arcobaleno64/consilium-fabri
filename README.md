@@ -1,154 +1,154 @@
+<div align="center">
+
 # Consilium Fabri
+
+<p>
+  A production-minded multi-agent AI workflow for teams that want traceability, control, and engineering-grade delivery.
+</p>
+
+<p>
+  <img src="https://img.shields.io/badge/Workflow-Multi--Agent-111111?style=flat-square" alt="Multi-Agent Workflow" />
+  <img src="https://img.shields.io/badge/Architecture-Artifact--First-0A66C2?style=flat-square" alt="Artifact First" />
+  <img src="https://img.shields.io/badge/Validation-Gate--Guarded-8A2BE2?style=flat-square" alt="Gate Guarded" />
+  <img src="https://img.shields.io/badge/Agents-Claude%20Code%20%7C%20Gemini%20CLI%20%7C%20Codex%20CLI-2F855A?style=flat-square" alt="Agents" />
+  <img src="https://img.shields.io/badge/Python-Validator-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python Validator" />
+</p>
+
+<p>
+  Turn AI-assisted development from scattered chat into a durable operating system for research, planning, implementation, and verification.
+</p>
 
 **[繁體中文](README.zh-TW.md)** | English
 
-> *Consilium Fabri* — Latin for "Council of Craftsmen."
-> Three cobblers with their wits combined equal Zhuge Liang the mastermind.
-
-A battle-tested, gate-guarded workflow harness for **multi-agent AI development** with Claude Code (orchestrator), Gemini CLI (research), and Codex CLI (implementation).
-
-## Quick Start
-
-### 1. Clone and copy to your project
-
-```bash
-git clone https://github.com/arcobaleno64/consilium-fabri.git
-cp -r consilium-fabri/ /path/to/your/project/
-```
-
-### 2. Replace placeholders
-
-The template uses `{{PLACEHOLDER}}` syntax. Replace the following in `CLAUDE.md`:
-
-| Placeholder | Description | Example |
-|---|---|---|
-| `{{PROJECT_NAME}}` | Your project name | `MyApp` |
-| `{{REPO_NAME}}` | Upstream repo name (if using fork model) | `my-upstream-repo` |
-| `{{UPSTREAM_ORG}}` | Upstream GitHub org/user (if using fork model) | `original-author` |
-
-```bash
-sed -i 's/{{PROJECT_NAME}}/MyApp/g; s/{{REPO_NAME}}/my-upstream-repo/g; s/{{UPSTREAM_ORG}}/original-author/g' CLAUDE.md
-```
-
-If your project does not use a fork model, remove the "Repository boundaries" section in `CLAUDE.md`.
-
-### 3. Validate setup
-
-```bash
-python artifacts/scripts/guard_status_validator.py --task-id TASK-900
-# Expected: [OK] Validation passed
-```
-
-### 4. Set up hooks (optional)
-
-```bash
-cp .claude/settings.json.example .claude/settings.json
-```
-
-## File Structure
-
-```
-├── CLAUDE.md                          # Claude Code entry point (auto-loaded)
-├── GEMINI.md                          # Gemini CLI entry point (passed via prompt)
-├── CODEX.md                           # Codex CLI entry point (passed via prompt)
-├── AGENTS.md                          # Master index + phase loading matrix
-├── BOOTSTRAP_PROMPT.md                # Ready-to-use prompt for starting new projects
-├── docs/                              # Reference documentation (loaded on demand)
-│   ├── orchestration.md               # System prompt: goals, principles, stages, gates
-│   ├── artifact_schema.md             # Schema for all 8 artifact types
-│   ├── subagent_roles.md              # Role definitions for 7 agents
-│   ├── workflow_state_machine.md      # 8 states + legal transitions
-│   ├── premortem_rules.md             # Risk analysis format + quality guard
-│   ├── subagent_task_templates.md     # Prompt templates for subagents
-│   └── lightweight_mode_rules.md      # Simplified flow for small tasks
-├── artifacts/
-│   ├── tasks/                         # Task definitions (TASK-XXX.task.md)
-│   ├── status/                        # Machine-readable state (TASK-XXX.status.json)
-│   ├── research/                      # Research findings (TASK-XXX.research.md)
-│   ├── plans/                         # Implementation plans (TASK-XXX.plan.md)
-│   ├── code/                          # Code change records (TASK-XXX.code.md)
-│   ├── verify/                        # Verification results (TASK-XXX.verify.md)
-│   ├── decisions/                     # Decision logs (TASK-XXX-DEC-XXX.md)
-│   └── scripts/
-│       └── guard_status_validator.py  # Gate validator (Python stdlib only)
-├── .claude/
-│   └── settings.json.example         # Hook examples (notification, auto-format)
-└── README.md
-```
-
-## Token-Efficient Loading
-
-Each agent loads only its entry file. Reference docs are loaded on demand per phase:
-
-| Agent | Entry File | ~Tokens | Strategy |
-|---|---|---|---|
-| Claude Code | `CLAUDE.md` | 800 | Loads `docs/` per phase via `AGENTS.md` matrix |
-| Gemini CLI | `GEMINI.md` | 1,500 | All critical rules inlined (no filesystem access) |
-| Codex CLI | `CODEX.md` | 1,300 | All critical rules inlined |
-
-**Saves 81–92%** compared to loading all docs (~16K tokens) at once.
-
-## Workflow
-
-Every task follows a strict gate-guarded pipeline:
-
-```
-Intake → Research → Planning → Coding → Verification → Done
-  │         │          │         │          │
-  Gate A    Gate B     Gate C    Gate D     ✓
-```
-
-| Gate | Requirement |
-|---|---|
-| **A — Research** | Task artifact must exist |
-| **B — Planning** | Research artifact must exist |
-| **C — Coding** | Plan `Ready For Coding: yes` + premortem quality check |
-| **D — Verification** | Code artifact + `## Build Guarantee` in verify |
-
-`guard_status_validator.py` enforces all gates programmatically.
-
-## Agent Roles
-
-| Agent | Role | Writes Code? |
-|---|---|---|
-| **Claude Code** | Orchestrator — dispatches tasks, writes artifacts | Artifacts only |
-| **Gemini CLI** | Research — verified findings and constraints | No |
-| **Codex CLI** | Implementer — production code per plan | Yes |
-
-## Key Concepts
-
-### Premortem Analysis
-Before coding, the plan's `## Risks` must contain structured entries (R1, R2, ...) with Risk, Trigger, Detection, Mitigation, Severity. The validator hard-blocks insufficient premortems.
-
-### Build Guarantee
-Every verify artifact must prove that modified build units were actually built. Prevents false-positive "tests pass but build broken" scenarios.
-
-### Negative Testing
-Intentionally break something to prove the pipeline catches it — a lightweight form of mutation testing for workflow artifacts.
-
-### Template Sync Protocol
-When any workflow file is modified (entry files, `docs/*.md`, validator, bootstrap prompt), the orchestrator must sync changes to `template/` and push to GitHub. Project-specific references are generalized to `{{PLACEHOLDER}}` syntax. README updates are required when file structure, gates, agent roles, or features change. See `docs/orchestration.md` §9 for full rules.
-
-## Customization
-
-| What | Where |
-|---|---|
-| Build tools | `docs/artifact_schema.md` §5.6 |
-| State transitions | `guard_status_validator.py` → `LEGAL_TRANSITIONS` |
-| Required markers | `guard_status_validator.py` → `MARKERS` |
-| Agent quality rules | `docs/subagent_roles.md` §4.5 |
-
-## Roadmap
-
-- [ ] Copier integration for lifecycle-managed updates
-- [ ] CI/CD pipeline templates (GitHub Actions / Azure DevOps)
-- [ ] MCP server integration examples
-- [ ] Interactive bootstrap wizard
-
-## License
-
-[MIT](LICENSE)
+</div>
 
 ---
 
-*Extracted from battle-tested practice (TASK-002 through TASK-008). Lessons from false-positive verification, agent role drift, and upstream PR moot scenarios are baked into every constraint.*
+## Product Positioning
+
+Consilium Fabri is a multi-agent AI workflow framework designed to live inside the repository itself. It is not built around "asking a model to code faster"; it is built around creating a delivery system with explicit boundaries, reviewable checkpoints, durable artifacts, and hard verification.
+
+It is especially useful when you need to:
+
+- keep engineering discipline while collaborating with AI
+- separate research, planning, implementation, and verification into explicit stages
+- prevent key decisions from disappearing into chat history
+- reduce the risk of untraceable, unreviewable, or unreproducible AI output
+- add an AI workflow layer to an existing project without adopting an entirely new platform
+
+This project is not a prompt pack, and it is not a single-agent chat script. It is a workflow harness oriented toward engineering governance.
+
+---
+
+## Why This Project Exists
+
+Most multi-agent AI development breaks down in familiar ways:
+
+- research findings never land in a stable place
+- plans and implementation drift apart until ownership becomes unclear
+- verification stops at verbal claims instead of evidence
+- agent roles overlap and task boundaries become blurry
+- too much documentation gets stuffed into every prompt, increasing cost and instability
+
+Consilium Fabri exists to compress those failure modes into an explicit operating model with state, artifacts, and gates.
+
+---
+
+## Core Capabilities
+
+<table>
+  <tr>
+    <td width="33%" valign="top">
+      <h3>Multi-Agent Collaboration</h3>
+      <p>Claude Code, Gemini CLI, and Codex CLI each own a distinct responsibility so research, orchestration, and implementation stay focused instead of collapsing into a single blurry prompt.</p>
+    </td>
+    <td width="33%" valign="top">
+      <h3>Artifact First</h3>
+      <p>Every task is anchored in task, research, plan, code, verify, decision, and status artifacts rather than hidden chat memory, making the workflow traceable, reviewable, and restartable.</p>
+    </td>
+    <td width="33%" valign="top">
+      <h3>Gate Validation</h3>
+      <p>Workflow gates and the validator enforce legal state transitions, required artifacts, and verification expectations so work cannot move forward on confidence alone.</p>
+    </td>
+  </tr>
+</table>
+
+---
+
+## Product Highlights
+
+### 1. Role Separation For Real Development Work
+- Claude Code acts as the orchestrator and workflow driver
+- Gemini CLI handles research and evidence gathering
+- Codex CLI handles implementation and delivery
+- Clear ownership reduces collisions, duplicated effort, and role drift
+
+### 2. A Strict Gate-Guarded Workflow
+- Tasks move through Intake, Research, Planning, Coding, Verification, and Done
+- Each stage has explicit prerequisites
+- Required steps cannot be skipped arbitrarily
+- Delivery becomes easier to review, replay, and audit
+
+### 3. Artifact-First Design You Can Audit
+- research findings live in research artifacts instead of chat summaries
+- implementation requires an approved plan artifact
+- verification requires a verify artifact
+- decisions can be recorded as decision artifacts
+- status is tracked in machine-readable files that support automation
+
+### 4. Validation As A Mechanism, Not A Slogan
+- `guard_status_validator.py` is built in
+- legal state transitions can be checked automatically
+- required artifacts can be checked automatically
+- it reduces the risk of work being declared done without being genuinely verified
+
+### 5. A More Disciplined Context Loading Strategy
+- agents do not need to read the entire documentation set on every run
+- documentation is loaded by role and phase
+- token usage stays lower and more predictable
+- prompt pollution and instability are reduced across longer task chains
+
+### 6. Documentation And Timestamp Discipline
+- long-lived Markdown defaults to Traditional Chinese (Taiwan) unless a specific exception is needed
+- commands, file paths, placeholders, schema literals, and status values remain in English
+- recorded times and `Last Updated` values must use `Asia/Taipei` in ISO 8601 format with `+08:00`
+- root docs and `template/` docs must stay semantically aligned
+
+---
+
+## Use Cases
+
+This project is especially suitable for:
+
+| Use Case | Description |
+|---|---|
+| Personal AI development framework | A solo developer can still manage AI collaboration with engineering discipline |
+| Small team collaboration | Build a controlled workflow without adopting a large platform |
+| Traceable AI delivery | Preserve a full trail across research, planning, implementation, and verification |
+| Existing repository adoption | Add this as a workflow layer to an existing repo |
+| Open source showcase | Demonstrate a practical methodology for AI-assisted engineering |
+
+---
+
+## Workflow Overview
+
+```text
+Intake
+  |
+  v
+Research
+  |
+  v
+Planning
+  |
+  v
+Coding
+  |
+  v
+Verification
+  |
+  v
+Done
+```
+
+The model is simple on purpose: each stage produces the artifact that justifies the next stage. That keeps collaboration inspectable and prevents "magic progress" that only exists inside a chat transcript.

@@ -1,62 +1,62 @@
-You are operating under an artifact-first workflow with strict validation.
+你目前在一個採用嚴格驗證的 artifact-first workflow 下運作。
 
-Before executing ANY task:
+在執行任何任務前：
 
-1. Read ALL relevant artifacts (task, research, plan, status).
-2. Determine current workflow state from status.json.
-3. Verify required artifacts exist before proceeding.
-4. If any required artifact is missing or inconsistent, STOP and mark the task as blocked.
+1. 讀取所有相關 artifacts（task、research、plan、status）。
+2. 從 status.json 判定目前 workflow state。
+3. 確認繼續前所需 artifacts 都存在。
+4. 若任何必要 artifact 缺失或不一致，必須 STOP 並將任務標記為 blocked。
 
-Global rules:
+全域規則：
 
-- Do NOT rely on memory or prior conversation. Only trust artifacts.
-- Do NOT create any files outside the defined artifact paths.
-- Do NOT produce intermediate notes, scratch files, or alternative outputs.
-- Do NOT guess. If information is missing or uncertain, explicitly mark it as UNVERIFIED.
+- 不得依賴 memory 或先前對話。只能信任 artifacts。
+- 不得在定義的 artifact paths 之外建立檔案。
+- 不得產出中間筆記、scratch files 或替代輸出。
+- 不得猜測。若資訊缺失或不確定，必須明確標記為 UNVERIFIED。
 
-Artifact discipline:
+Artifact 紀律：
 
-- Every output must strictly follow the artifact schema.
-- Every concrete claim must include its supporting source (URL or artifact reference).
-- Artifact status must use standardized values only (e.g. ready, pass, fail).
-- Task state transitions must follow the workflow state machine. No skipping steps.
+- 每一份輸出都必須嚴格遵守 artifact schema。
+- 每一個具體 claim 都必須附上支撐來源（URL 或 artifact reference）。
+- Artifact status 只能使用標準化值（例如 ready、pass、fail）。
+- Task state transitions 必須遵守 workflow state machine。不得跳步。
 
-Execution control:
+執行控制：
 
-- If scope is unclear, STOP and write a decision artifact instead of guessing.
-- If environment/build/test fails due to external constraints, STOP and record results. Do not expand scope.
-- Only one agent may modify code. All others must be read-only.
-- Before entering coding phase, perform premortem analysis in the plan artifact's `## Risks` section (see `docs/premortem_rules.md`). Each risk must have Risk, Trigger, Detection, Mitigation, Severity. If premortem is missing or vague, do NOT proceed to coding.
+- 若 scope 不清楚，必須 STOP，並改寫 decision artifact，而不是猜測。
+- 若 environment/build/test 因外部限制失敗，必須 STOP 並記錄結果。不得擴張範圍。
+- 只能有一個 agent 可以修改程式碼，其他 agent 都必須保持 read-only。
+- 進入 coding phase 前，必須在 plan artifact 的 `## Risks` 區段完成 premortem 分析（see `docs/premortem_rules.md`）。每個 risk 都必須包含 Risk、Trigger、Detection、Mitigation、Severity。若 premortem 缺失或內容含糊，不得進入 coding。
 
-Completion rules:
+完成規則：
 
 - No artifact = not done.
 - No verification = not done.
 - No evidence = not valid.
 
-If any rule is violated, treat the task as blocked and explain why.
+若違反任一規則，將任務視為 blocked，並說明原因。
 
-Template sync protocol:
+Template sync protocol：
 
-- After modifying any workflow file (CLAUDE.md, GEMINI.md, CODEX.md, AGENTS.md, docs/*.md, guard_status_validator.py, BOOTSTRAP_PROMPT.md), sync changes to `template/` and push to GitHub.
-- Generalize project-specific references to placeholders before writing to template/.
-- If file structure, gates, agent roles, or features changed, also update `template/README.md` and `template/README.zh-TW.md`.
-- See `docs/orchestration.md` §9 for full sync rules.
+- 修改任何 workflow file（CLAUDE.md、GEMINI.md、CODEX.md、AGENTS.md、docs/*.md、guard_status_validator.py、BOOTSTRAP_PROMPT.md）後，必須同步變更到 `template/`，並推送到 GitHub。
+- 寫入 `template/` 前，先將專案特定引用泛化為 placeholders。
+- 若檔案結構、gates、agent roles 或 features 有變動，也必須同步更新 `template/README.md` 與 `template/README.zh-TW.md`。
+- 完整同步規則請見 `docs/orchestration.md` §9。
 
-Documentation loading protocol:
+文件載入規範：
 
-- Do NOT load all documentation files at session start. Load on demand per phase.
-- Read `AGENTS.md` for the full index and phase loading matrix.
-- Session start: read `AGENTS.md` + `docs/orchestration.md`
-- Before dispatching Gemini: read `docs/subagent_roles.md` §4, `docs/subagent_task_templates.md`
-- Before dispatching Codex: read `docs/subagent_roles.md` §5, `docs/subagent_task_templates.md`
-- Before planning: read `docs/artifact_schema.md` §5.3, `docs/premortem_rules.md`
-- Before state transition: read `docs/workflow_state_machine.md`
-- Before verification: read `docs/artifact_schema.md` §5.5-§5.6
+- Session 開始時不得一次載入所有 documentation files。請依階段按需載入。
+- 完整索引與階段載入矩陣請先讀 `AGENTS.md`。
+- Session start：讀 `AGENTS.md` + `docs/orchestration.md`
+- 派發 Gemini 前：讀 `docs/subagent_roles.md` §4、`docs/subagent_task_templates.md`
+- 派發 Codex 前：讀 `docs/subagent_roles.md` §5、`docs/subagent_task_templates.md`
+- Planning 前：讀 `docs/artifact_schema.md` §5.3、`docs/premortem_rules.md`
+- 狀態轉移前：讀 `docs/workflow_state_machine.md`
+- Verification 前：讀 `docs/artifact_schema.md` §5.5-§5.6
 
-Repository boundaries ({{PROJECT_NAME}}):
+Repository boundaries（{{PROJECT_NAME}}）：
 
-- `external/{{REPO_NAME}}/` = local dirty workbench for experiments and integration. Anything goes here EXCEPT upstream PRs.
-- `external/{{REPO_NAME}}-upstream-pr/` = EXCLUSIVELY for upstream PRs to `{{UPSTREAM_ORG}}/{{REPO_NAME}}`. Never modify this directory unless the current task is explicitly an upstream PR task. Before each PR, reset it to a clean upstream state using git remotes (fetch + reset --hard upstream/<default>), NOT by re-cloning. No local feature/refactor code may ever land here.
-- Claude and Codex MUST refuse any edit under `external/{{REPO_NAME}}-upstream-pr/` when the current task is not an upstream PR task.
-- Never mix commits from the two directories.
+- `external/{{REPO_NAME}}/` = 本地 dirty workbench，供 experiments 與 integration 使用。除了 upstream PR 之外，其餘工作都在此進行。
+- `external/{{REPO_NAME}}-upstream-pr/` = 僅供送往 `{{UPSTREAM_ORG}}/{{REPO_NAME}}` 的 upstream PR 使用。除非當前任務明確是 upstream PR task，否則不得修改這個目錄。每次 PR 前，都要透過 git remotes（fetch + reset --hard upstream/<default>）重設到乾淨的 upstream 狀態，不可重新 clone。任何本地 feature / refactor 程式碼都不得進入此處。
+- 若當前任務不是 upstream PR task，Claude 與 Codex 都必須拒絕修改 `external/{{REPO_NAME}}-upstream-pr/` 下的任何內容。
+- 不得混用這兩個目錄的 commits。

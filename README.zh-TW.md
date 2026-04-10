@@ -1,154 +1,152 @@
+<div align="center">
+
 # Consilium Fabri
+
+<p>
+  一套面向實務開發的多 Agent AI 協作工作流框架，強調 artifact-first、gate-guarded 與可驗證交付。
+</p>
+
+<p>
+  <img src="https://img.shields.io/badge/Workflow-Multi--Agent-111111?style=flat-square" alt="Multi-Agent Workflow" />
+  <img src="https://img.shields.io/badge/Architecture-Artifact--First-0A66C2?style=flat-square" alt="Artifact First" />
+  <img src="https://img.shields.io/badge/Validation-Gate--Guarded-8A2BE2?style=flat-square" alt="Gate Guarded" />
+  <img src="https://img.shields.io/badge/Agents-Claude%20Code%20%7C%20Gemini%20CLI%20%7C%20Codex%20CLI-2F855A?style=flat-square" alt="Agents" />
+  <img src="https://img.shields.io/badge/Python-Validator-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python Validator" />
+</p>
+
+<p>
+  讓 AI 開發流程從零散對話，變成可追蹤、可交接、可驗證的工程化交付機制。
+</p>
 
 繁體中文 | **[English](README.md)**
 
-> *Consilium Fabri* — 拉丁文，意為「工匠議會」。
-> 三個臭皮匠，勝過一個諸葛亮。
-
-經實戰淬鍊的 **多 Agent AI 開發工作流範本**，支援 Claude Code（協調者）、Gemini CLI（研究員）、Codex CLI（實作者）的 gate-guarded、artifact-first 協作架構。
-
-## 快速開始
-
-### 1. Clone 並複製到你的專案
-
-```bash
-git clone https://github.com/arcobaleno64/consilium-fabri.git
-cp -r consilium-fabri/ /path/to/your/project/
-```
-
-### 2. 替換 Placeholder
-
-範本使用 `{{PLACEHOLDER}}` 語法。替換 `CLAUDE.md` 中的以下變數：
-
-| Placeholder | 說明 | 範例 |
-|---|---|---|
-| `{{PROJECT_NAME}}` | 你的專案名稱 | `MyApp` |
-| `{{REPO_NAME}}` | 上游 repo 名稱（若使用 fork 模式） | `my-upstream-repo` |
-| `{{UPSTREAM_ORG}}` | 上游 GitHub org/user（若使用 fork 模式） | `original-author` |
-
-```bash
-sed -i 's/{{PROJECT_NAME}}/MyApp/g; s/{{REPO_NAME}}/my-upstream-repo/g; s/{{UPSTREAM_ORG}}/original-author/g' CLAUDE.md
-```
-
-如果你的專案不使用 fork 模式，可直接移除 `CLAUDE.md` 中的「Repository boundaries」區段。
-
-### 3. 驗證安裝
-
-```bash
-python artifacts/scripts/guard_status_validator.py --task-id TASK-900
-# 預期輸出：[OK] Validation passed
-```
-
-### 4. 設定 Hooks（選用）
-
-```bash
-cp .claude/settings.json.example .claude/settings.json
-```
-
-## 檔案結構
-
-```
-├── CLAUDE.md                          # Claude Code 入口（自動載入）
-├── GEMINI.md                          # Gemini CLI 入口（透過 prompt 傳入）
-├── CODEX.md                           # Codex CLI 入口（透過 prompt 傳入）
-├── AGENTS.md                          # 主索引 + 階段載入矩陣
-├── BOOTSTRAP_PROMPT.md                # 開新專案的提示詞範本
-├── docs/                              # 參考文件（按需載入）
-│   ├── orchestration.md               # 系統提示：目標、原則、階段、閘門
-│   ├── artifact_schema.md             # 8 種 artifact 類型的 schema 定義
-│   ├── subagent_roles.md              # 7 個 agent 角色定義
-│   ├── workflow_state_machine.md      # 8 個狀態 + 合法轉移
-│   ├── premortem_rules.md             # 風險分析格式 + 品質規則
-│   ├── subagent_task_templates.md     # 外包 prompt 範本
-│   └── lightweight_mode_rules.md      # 精簡模式規則
-├── artifacts/
-│   ├── tasks/                         # 任務定義 (TASK-XXX.task.md)
-│   ├── status/                        # 機讀狀態 (TASK-XXX.status.json)
-│   ├── research/                      # 研究發現 (TASK-XXX.research.md)
-│   ├── plans/                         # 實作計畫 (TASK-XXX.plan.md)
-│   ├── code/                          # 程式變更記錄 (TASK-XXX.code.md)
-│   ├── verify/                        # 驗證結果 (TASK-XXX.verify.md)
-│   ├── decisions/                     # 決策記錄 (TASK-XXX-DEC-XXX.md)
-│   └── scripts/
-│       └── guard_status_validator.py  # 閘門驗證器（純 Python stdlib）
-├── .claude/
-│   └── settings.json.example         # Hook 範例（通知、自動格式化）
-└── README.md
-```
-
-## Token 節省策略
-
-每個 agent 只載入自己的入口檔，參考文件按階段按需載入：
-
-| Agent | 入口檔 | ~Tokens | 策略 |
-|---|---|---|---|
-| Claude Code | `CLAUDE.md` | 800 | 依 `AGENTS.md` 矩陣按階段載入 `docs/` |
-| Gemini CLI | `GEMINI.md` | 1,500 | 關鍵規則已內嵌（無檔案系統存取） |
-| Codex CLI | `CODEX.md` | 1,300 | 關鍵規則已內嵌 |
-
-相比一次載入全部文件（~16K tokens），**節省 81–92%**。
-
-## 工作流程
-
-每個任務遵循嚴格的閘門管控流水線：
-
-```
-收件 → 研究 → 規劃 → 實作 → 驗證 → 完成
-  │      │      │      │      │
- Gate A  Gate B Gate C Gate D  ✓
-```
-
-| 閘門 | 條件 |
-|---|---|
-| **A — 研究** | 必須有 task artifact |
-| **B — 規劃** | 必須有 research artifact |
-| **C — 實作** | Plan 的 `Ready For Coding: yes` + premortem 品質檢查 |
-| **D — 驗證** | 必須有 code artifact + verify 中的 `## Build Guarantee` |
-
-`guard_status_validator.py` 以程式化方式強制所有閘門。
-
-## Agent 角色
-
-| Agent | 角色 | 可寫程式？ |
-|---|---|---|
-| **Claude Code** | 協調者 — 派發任務、撰寫 artifact | 僅 artifact 文件 |
-| **Gemini CLI** | 研究員 — 產出已驗證的發現與約束 | 否 |
-| **Codex CLI** | 實作者 — 依計畫撰寫生產程式碼 | 是 |
-
-## 核心概念
-
-### 事前驗屍（Premortem）
-進入實作前，plan 的 `## Risks` 必須包含結構化風險條目（R1, R2, ...），每條含 Risk、Trigger、Detection、Mitigation、Severity。驗證器會硬擋品質不足的 premortem。
-
-### 建置保證（Build Guarantee）
-每個 verify artifact 必須證明被修改的建置單元確實被建置過。防止「測試通過但建置壞掉」的假陽性。
-
-### 負面測試（Negative Testing）
-故意破壞某些東西來證明流水線能抓到它 — 一種輕量版的 workflow artifact 突變測試。
-
-### 範本同步規範（Template Sync Protocol）
-當任何 workflow 檔案被修改（入口檔、`docs/*.md`、驗證器、啟動範本），協調者必須同步變更到 `template/` 並推送至 GitHub。專案特定引用會泛化為 `{{PLACEHOLDER}}` 語法。當檔案結構、閘門、Agent 角色或功能有變動時，必須同步更新 README。詳見 `docs/orchestration.md` §9。
-
-## 客製化
-
-| 項目 | 修改位置 |
-|---|---|
-| 建置工具 | `docs/artifact_schema.md` §5.6 |
-| 狀態轉移 | `guard_status_validator.py` → `LEGAL_TRANSITIONS` |
-| 必要標記 | `guard_status_validator.py` → `MARKERS` |
-| Agent 品質規則 | `docs/subagent_roles.md` §4.5 |
-
-## 未來規劃
-
-- [ ] Copier 整合（支援範本生命週期管理）
-- [ ] CI/CD 流水線範本（GitHub Actions / Azure DevOps）
-- [ ] MCP server 整合範例
-- [ ] 互動式 bootstrap wizard
-
-## 授權
-
-[MIT](LICENSE)
+</div>
 
 ---
 
-*萃取自實戰經驗（TASK-002 至 TASK-008）。從假陽性驗證事件、agent 角色漂移、upstream PR 無效化等教訓中，淬鍊出每一條約束規則。*
+## 產品定位
+
+Consilium Fabri 是一套可嵌入專案儲存庫的多 Agent AI 工作流框架，設計目標不是單純「叫模型幫你寫程式」，而是建立一條有邊界、有檢查點、有產物紀錄的開發流程。
+
+它特別適合以下需求：
+
+- 希望在 AI 協作下仍保有工程紀律
+- 需要把研究、規劃、實作、驗證拆分成明確階段
+- 不希望所有關鍵決策都藏在聊天上下文裡
+- 想降低 AI 產出不可追溯、不可審核、不可重現的風險
+- 想把多 Agent 協作導入既有專案，而不是另起一套平台
+
+它不是聊天腳本集合，也不是單一代理人的 prompt 範本，而是一個偏工程治理導向的 workflow harness。
+
+---
+
+## 為什麼是這個專案
+
+多 Agent 開發常見的問題很一致：
+
+- 研究結果沒有固定落點，之後無法回查
+- 計畫與實作脫鉤，最後誰改了什麼說不清楚
+- 驗證只停留在口頭聲明，沒有足夠證據
+- Agent 角色重疊，導致任務邊界混亂
+- 每次都把整包文件塞進上下文，成本高又不穩定
+
+Consilium Fabri 的核心價值，在於把這些常見失控點收斂成一套有狀態、有產物、有 gate 的工作流。
+
+---
+
+## 核心能力
+
+<table>
+  <tr>
+    <td width="33%" valign="top">
+      <h3>多 Agent 協作</h3>
+      <p>透過 Claude Code、Gemini CLI、Codex CLI 的角色分工，讓研究、協調、實作各自聚焦，降低責任漂移與上下文混亂。</p>
+    </td>
+    <td width="33%" valign="top">
+      <h3>Artifact First</h3>
+      <p>所有任務以 task、research、plan、code、verify、decision、status 等產物為核心，不依賴隱性對話記憶，提升可追蹤性與可審核性。</p>
+    </td>
+    <td width="33%" valign="top">
+      <h3>Gate 驗證</h3>
+      <p>透過 workflow gate 與 validator 控制合法狀態轉換、必要產物與驗證要求，避免任務在未準備完成前直接跳到實作或結案。</p>
+    </td>
+  </tr>
+</table>
+
+---
+
+## 產品特色
+
+### 1. 面向實務開發的角色分工
+- Claude Code 作為主協調者與流程驅動核心
+- Gemini CLI 負責研究與資訊整理
+- Codex CLI 負責實作與交付
+- 透過明確責任切分，降低多代理人互相覆蓋的風險
+
+### 2. 嚴格的 gate-guarded workflow
+- 任務流程依序經過 Intake、Research、Planning、Coding、Verification、Done
+- 各階段都有明確前置條件
+- 不允許任意跳過必要步驟
+- 有助於建立穩定、可複查的交付節奏
+
+### 3. 可審核的 artifact-first 設計
+- 研究結果不是口頭摘要，而是可回查的 research artifact
+- 實作前需有 plan artifact
+- 驗證後需有 verify artifact
+- 決策可寫入 decision artifact
+- 狀態以 machine-readable status 管理
+
+### 4. 驗證不是口號，而是機制
+- 內建 `guard_status_validator.py`
+- 可檢查狀態轉換是否合法
+- 可檢查必要產物是否存在
+- 可降低「看起來完成，其實沒驗證」的風險
+
+### 5. 更節制的上下文載入策略
+- 不要求每個 agent 每次都讀完整套文件
+- 依任務階段與角色載入必要內容
+- 降低 token 消耗
+- 降低 prompt 汙染與不穩定行為
+
+### 6. 文件與時間戳規範
+- 長期維護的 Markdown 以繁體中文（臺灣）為主，必要例外再用英文
+- 命令、路徑、placeholder、schema literal 與狀態值保留英文
+- 紀錄時間與 `Last Updated` 一律使用 `Asia/Taipei`，採 ISO 8601 並帶 `+08:00`
+- root 文件與 `template/` 文件必須保持語義一致
+
+---
+
+## 適用情境
+
+這個專案特別適合以下使用方式：
+
+| 情境 | 說明 |
+|---|---|
+| 個人 AI 開發框架 | 單人開發者也能用工程化方式管理 AI 協作 |
+| 小型團隊協作 | 在不導入大型平台的前提下建立可控流程 |
+| 可追蹤的 AI 交付 | 保留研究、規劃、實作、驗證的完整痕跡 |
+| 既有專案導入 | 可作為現有 repo 的 workflow layer 使用 |
+| 開源專案展示 | 展示你對 AI-assisted engineering 的方法論與實作紀律 |
+
+---
+
+## 工作流總覽
+
+```text
+Intake
+  |
+  v
+Research
+  |
+  v
+Planning
+  |
+  v
+Coding
+  |
+  v
+Verification
+  |
+  v
+Done
+```

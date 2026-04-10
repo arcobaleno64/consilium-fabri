@@ -49,6 +49,7 @@ Workflow template 位於：【填入 artifact-harness repo clone 路徑，或直
 - Research 外包 Gemini CLI 時，dispatch prompt 必須包含 GEMINI.md 的品質規則
 - 進入 coding 前必須完成 premortem 分析（docs/premortem_rules.md）
 - 完成後必須有 verify artifact 含 Build Guarantee
+- 長期維護 Markdown 以繁體中文（臺灣）為主；命令、路徑、環境變數、schema literal 與 placeholder 保持英文
 
 ## 6. 第一個任務
 
