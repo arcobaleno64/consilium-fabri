@@ -22,6 +22,7 @@
 ```text
 drafted
   -> researched
+  -> planned (若任務不需要 research)
   -> blocked
 
 researched
@@ -62,6 +63,7 @@ blocked
 ### planned
 - 存在合法 plan artifact
 - 若需要 research，則 research 必須已完成
+- 若任務不需要外部知識，可從 drafted 直接轉移至 planned（略過 researched）
 
 ### coding
 - plan artifact 存在且 Ready For Coding = yes

@@ -50,7 +50,7 @@ VALID_STATES: Set[str] = set(STATE_ORDER)
 
 # Legal transitions based on the workflow state machine.
 LEGAL_TRANSITIONS: Dict[str, Set[str]] = {
-    "drafted": {"researched", "blocked"},
+    "drafted": {"researched", "planned", "blocked"},
     "researched": {"planned", "blocked"},
     "planned": {"coding", "blocked"},
     "coding": {"testing", "verifying", "blocked"},
