@@ -23,7 +23,7 @@
 
 ```
 # Code Result: TASK-XXX
-## Metadata (Task ID, Artifact Type: code, Owner, Status: coded, Last Updated)
+## Metadata (Task ID, Artifact Type: code, Owner, Status: ready, Last Updated)
 ## Files Changed
 ## Summary Of Changes
 ## Mapping To Plan

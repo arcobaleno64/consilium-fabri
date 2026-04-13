@@ -1,5 +1,5 @@
 {
-  "task_id": "TASK-900",
+  "task_id": "TASK-950",
   "state": "done",
   "current_owner": "Claude",
   "next_agent": "Claude",
@@ -12,6 +12,8 @@
   ],
   "available_artifacts": [
     "code",
+    "decision",
+    "improvement",
     "plan",
     "research",
     "status",
@@ -20,5 +22,5 @@
   ],
   "missing_artifacts": [],
   "blocked_reason": "",
-  "last_updated": "2026-04-11T10:00:00+08:00"
+  "last_updated": "2026-04-11T11:00:00+08:00"
 }

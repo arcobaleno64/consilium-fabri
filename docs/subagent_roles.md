@@ -147,7 +147,7 @@ research artifact 必須至少回答：
 以下五條為 Gemini 輸出的**不可違反規則**；違反任一條的 research artifact 將被整份退回：
 
 1. **Status 欄位**：使用 `ready`（不是 `researched`）。
-2. **UNVERIFIED 標記**：所有無法查證的 finding 必須標記 `UNVERIFIED: <具體原因>`，且**排除在 Confirmed Facts 區段之外**（放到 `### Unverified Items` 子區段）。
+2. **UNVERIFIED 標記**：所有無法查證的 finding 必須標記 `UNVERIFIED: <具體原因>`，且**排除在 Confirmed Facts 區段之外**（放到 `## Uncertain Items` 區段）。
 3. **即時引用**：每一條 claim 必須**緊跟**其 source（URL、`gh api` 指令、或 artifact 路徑）。不得把 citation 集中在文末。
 4. **禁止捏造**：若 PR 內容、版本號、release date 等無法獨立驗證，標 `UNVERIFIED`。絕對不可編造。
 5. **隔離真相源**：不得從本地 fork 推論 upstream 狀態。Upstream 事實必須來自 upstream 的直接證據（`gh api repos/<upstream>/...`、`raw.githubusercontent.com/<upstream>/...`）。

@@ -98,8 +98,10 @@ Consilium Fabri exists to compress those failure modes into an explicit operatin
 
 ### 4. Validation As A Mechanism, Not A Slogan
 - `guard_status_validator.py` is built in
+- `guard_contract_validator.py` is built in
 - legal state transitions can be checked automatically
-- required artifacts can be checked automatically
+- required artifacts, metadata, and research / PDCA contracts can be checked automatically
+- root / `template/` / Obsidian workflow drift can be checked automatically
 - it reduces the risk of work being declared done without being genuinely verified
 
 ### 5. A More Disciplined Context Loading Strategy
@@ -112,7 +114,22 @@ Consilium Fabri exists to compress those failure modes into an explicit operatin
 - long-lived Markdown defaults to Traditional Chinese (Taiwan) unless a specific exception is needed
 - commands, file paths, placeholders, schema literals, and status values remain in English
 - recorded times and `Last Updated` values must use `Asia/Taipei` in ISO 8601 format with `+08:00`
-- root docs and `template/` docs must stay semantically aligned
+- root docs, `template/` docs, and Obsidian entry docs must stay semantically aligned
+
+### 7. Clear Guard Boundaries
+- `guard_status_validator.py` validates task / artifact / state rules
+- plan/code scope drift is now a default hard failure (use `--allow-scope-drift` only for controlled exceptions)
+- `guard_contract_validator.py` validates workflow docs, bootstrap rules, template sync, and Obsidian sync
+- when `CLAUDE.md` / `GEMINI.md` / `CODEX.md` changes, prompt regression cases must be updated together
+- a workflow rule change is incomplete until README, `template/`, and Obsidian entry docs are updated together
+
+### 8. Built-In Red-Team Exercises
+- `docs/red_team_runbook.md` defines the static attacks, live drills, and replay workflow
+- `docs/red_team_scorecard.md` provides the scoring matrix
+- `docs/red_team_backlog.md` tracks follow-up hardening work
+- `python artifacts/scripts/run_red_team_suite.py --phase all` reruns the built-in red-team suite and live drill samples
+- `python artifacts/scripts/prompt_regression_validator.py --root .` runs fixed prompt regression cases for `CLAUDE.md`, `GEMINI.md`, and `CODEX.md`
+- `python artifacts/scripts/run_red_team_suite.py --phase prompt` runs prompt regression through the same report pipeline
 
 ---
 

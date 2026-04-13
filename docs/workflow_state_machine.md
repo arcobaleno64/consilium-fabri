@@ -48,7 +48,7 @@ verifying
   -> blocked
 
 blocked
-  -> 任意前一合法狀態（需先建立 improvement artifact — Gate E）
+  -> 任意前一合法狀態（需先建立 `Status: applied` 的 improvement artifact — Gate E）
 ```
 
 ## 3. 每個狀態的進入條件
@@ -106,6 +106,7 @@ blocked
 - 或 decision log 解決衝突
 - **且**必須建立 improvement artifact（Gate E, PDCA）
   - 記錄根因分析、矯正措施、與系統層級預防措施
+  - improvement artifact 必須為 `Status: applied`
   - `guard_status_validator.py` 在 `blocked → *` 轉移時自動檢查
 
 ## 6. 強制規則
@@ -117,7 +118,7 @@ blocked
 5. Every plan must be testable and mappable to code and verification artifacts
 6. Implementation must not introduce changes not explicitly mapped to plan
 7. verify 必須逐條對應 acceptance criteria
-8. After any failure or blocked state, a Process Improvement artifact must be created before resuming workflow (Gate E)
+8. After any failure or blocked state, a Process Improvement artifact with `Status: applied` must exist before resuming workflow (Gate E)
 
 ## 7. 設計原則
 
@@ -126,4 +127,3 @@ blocked
 - 任何人都能從 artifacts 重建狀態
 
 如果一個狀態不能用檔案證明存在，那它就不該存在
-

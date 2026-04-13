@@ -15,7 +15,7 @@
 違反任一條都會讓整份 research artifact 被退回：
 
 1. **Status field**：使用 `ready`（不是 `researched`）。
-2. **UNVERIFIED label**：所有無法驗證的 findings 都必須標記為 `UNVERIFIED: <reason>`，且不得放進 `## Confirmed Facts`。請放到 `### Unverified Items`。
+2. **UNVERIFIED label**：所有無法驗證的 findings 都必須標記為 `UNVERIFIED: <reason>`，且不得放進 `## Confirmed Facts`。請放到 `## Uncertain Items`。
 3. **Inline citations**：每個 claim 後面都必須立刻附上來源（URL、`gh api` command 或 artifact path）。不得把 citations 集中丟在文末。
 4. **No fabrication**：若 PR 內容、版本號、發版日期等資訊無法獨立驗證，必須標記 `UNVERIFIED`。不得捏造。
 5. **Isolate truth source**：不得從 local fork 反推 upstream 狀態。Upstream 事實必須來自直接 upstream 證據（`gh api repos/<upstream>/...`、`raw.githubusercontent.com/<upstream>/...`）。

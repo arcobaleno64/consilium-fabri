@@ -29,6 +29,9 @@ Workflow template 位於：【填入 artifact-harness repo clone 路徑，或直
 1. 替換 CLAUDE.md 中的 placeholder（{{PROJECT_NAME}}, {{REPO_NAME}}, {{UPSTREAM_ORG}}）
 2. 若無 fork 模式，移除 CLAUDE.md 的 "Repository boundaries" 區段
 3. 執行 `python artifacts/scripts/guard_status_validator.py --task-id TASK-900` 確認 [OK]
+4. 執行 `python artifacts/scripts/guard_contract_validator.py` 確認 root / template / Obsidian 未漂移
+5. 執行 `python artifacts/scripts/prompt_regression_validator.py --root .` 確認 Prompt regression 測例通過
+6. 若要做完整流程壓力測試，可再執行 `python artifacts/scripts/run_red_team_suite.py --phase all`
 
 ## 4. Agent 配置
 
@@ -49,6 +52,9 @@ Workflow template 位於：【填入 artifact-harness repo clone 路徑，或直
 - Research 外包 Gemini CLI 時，dispatch prompt 必須包含 GEMINI.md 的品質規則
 - 進入 coding 前必須完成 premortem 分析（docs/premortem_rules.md）
 - 完成後必須有 verify artifact 含 Build Guarantee
+- 任何 workflow 規則變更都必須同步更新 `OBSIDIAN.md` 與 `template/OBSIDIAN.md`
+- 紅隊演練入口固定為 `docs/red_team_runbook.md`，重跑命令固定為 `python artifacts/scripts/run_red_team_suite.py`
+- Prompt regression 固定命令為 `python artifacts/scripts/prompt_regression_validator.py --root .`
 - 長期維護 Markdown 以繁體中文（臺灣）為主；命令、路徑、環境變數、schema literal 與 placeholder 保持英文
 
 ## 6. 第一個任務
@@ -76,7 +82,7 @@ TASK-001：【任務目標】
 專案：【名稱】，位於 【路徑】，使用 【語言/框架】。
 
 範本來源：【填入 artifact-harness repo clone 路徑，或直接在專案目錄中 clone】
-請複製範本到專案、移除 CLAUDE.md 的 fork 區段、驗證 TASK-900。
+請複製範本到專案、移除 CLAUDE.md 的 fork 區段、驗證 TASK-900，並執行 contract guard。
 
 第一個任務：【描述】
 ```

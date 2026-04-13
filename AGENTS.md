@@ -19,6 +19,9 @@
 | `docs/subagent_roles.md` | 7 種 agent 角色定義（§3-§9） | 3000 | 派發 subagent 前 |
 | `docs/workflow_state_machine.md` | 8 個狀態 + 合法轉移 | 600 | 狀態轉移前 |
 | `docs/premortem_rules.md` | 風險分析格式 + 品質護欄 | 1900 | 進入 coding gate 前 |
+| `docs/red_team_runbook.md` | 紅隊演練 runbook：靜態攻擊、live drill、復盤流程 | 1500 | 紅隊演練前 |
+| `docs/red_team_scorecard.md` | 紅隊演練評分矩陣與總結判定 | 900 | 演練記錄與復盤時 |
+| `docs/red_team_backlog.md` | 紅隊演練後續補強清單 | 700 | 復盤 / 補強規劃時 |
 | `docs/subagent_task_templates.md` | 可直接使用的 prompt 範本 | 650 | 派發 subagent 時 |
 | `docs/lightweight_mode_rules.md` | 小任務精簡流程規則 | 350 | lightweight mode 任務時 |
 
@@ -28,7 +31,7 @@
 - 專有名詞、檔名、CLI 指令、環境變數、`artifact type`、狀態值、placeholder、schema literal 保留英文原字。
 - 不得更動會被 agent、validator、腳本依賴的精確字串，例如 `## Metadata`、`Task ID`、`Artifact Type`、`Owner`、`Status`、`Last Updated` 與各種狀態值。
 - 所有規範中的紀錄時間、`Last Updated` 與相關時間戳，一律使用 `Asia/Taipei`，採 ISO 8601 並帶 `+08:00`。
-- `root` 與 `template/` 文件必須保持語義一致；若 `template/` 需以 placeholder 泛化，允許字面不同，但不得規則漂移。
+- `root`、`template/` 與 Obsidian 入口文件必須保持語義一致；若 `template/` 需以 placeholder 泛化，允許字面不同，但不得規則漂移。
 - GitHub 對外入口以 `README.md` / `README.zh-TW.md` 為準；Obsidian 入口以 `OBSIDIAN.md` 為準。
 - 歷史 artifacts、實驗輸出、外部 repo 內 Markdown 不在追溯改寫範圍內。
 
@@ -42,7 +45,8 @@
 | **Coding** | `docs/subagent_roles.md` §5, `docs/subagent_task_templates.md` | -- | (CODEX.md has all needed rules) |
 | **Verification** | `docs/artifact_schema.md` §5.5-§5.6, `docs/workflow_state_machine.md` | -- | -- |
 | **Closure** | `docs/workflow_state_machine.md` | -- | -- |
-| **Template Sync** | `docs/orchestration.md` §9 | -- | -- |
+| **Red Team Exercise** | `docs/red_team_runbook.md`, `docs/red_team_scorecard.md`, `docs/red_team_backlog.md` | -- | -- |
+| **Template Sync / Obsidian Sync** | `docs/orchestration.md` §9 | -- | -- |
 
 ## 交叉引用慣例
 

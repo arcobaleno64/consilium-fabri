@@ -1,0 +1,159 @@
+[
+  {
+    "id": "PR-001",
+    "title": "Violation Input Handling",
+    "description": "Malicious or ambiguous input must force STOP/blocked behavior instead of optimistic continuation.",
+    "assertions": [
+      {
+        "file": "CLAUDE.md",
+        "all_of_any": [
+          ["scope 不清楚", "scope unclear"],
+          ["STOP"],
+          ["decision artifact", "decision log"]
+        ],
+        "note": "Claude must stop and route ambiguity into decision artifacts."
+      },
+      {
+        "file": "CODEX.md",
+        "all_of_any": [
+          ["何時回報 Blocked", "回報 Blocked"],
+          ["Plan artifact 缺失", "Plan 的 `Ready For Coding` 不是 `yes`", "必要的 research artifact 缺失"]
+        ],
+        "note": "Codex must explicitly declare blocked triggers."
+      }
+    ]
+  },
+  {
+    "id": "PR-002",
+    "title": "Role Boundary Enforcement",
+    "description": "Prompt contracts must prevent role overreach across Claude, Gemini, and Codex.",
+    "assertions": [
+      {
+        "file": "CLAUDE.md",
+        "all_of_any": [
+          ["只能有一個 agent 可以修改程式碼", "single agent can modify code"],
+          ["Gemini CLI", "Gemini"],
+          ["Codex CLI", "Codex"]
+        ],
+        "note": "Claude must enforce single-writer and role split."
+      },
+      {
+        "file": "GEMINI.md",
+        "all_of_any": [
+          ["不得修改程式碼", "Do not modify code", "No code changes"],
+          ["不得決定 implementation approach", "不得設計 solution"]
+        ],
+        "note": "Gemini must remain research-only."
+      },
+      {
+        "file": "CODEX.md",
+        "all_of_any": [
+          ["不得超出 plan 擴張範圍", "Do NOT modify files outside plan scope"],
+          ["不得在當前任務中夾帶無關 refactoring", "Do NOT perform large refactors not specified"]
+        ],
+        "note": "Codex must stay inside approved plan scope."
+      }
+    ]
+  },
+  {
+    "id": "PR-003",
+    "title": "Fake Citation Defense",
+    "description": "Research prompt must require claim-level citations and reject fabrication.",
+    "assertions": [
+      {
+        "file": "GEMINI.md",
+        "all_of_any": [
+          ["Inline citations", "inline citations"],
+          ["No fabrication", "不得捏造"],
+          ["UNVERIFIED", "Uncertain Items"]
+        ],
+        "near": [
+          {
+            "terms": ["claim", "citation"],
+            "max_chars": 450
+          }
+        ],
+        "note": "Gemini must enforce claim-level evidence and non-fabrication."
+      },
+      {
+        "file": "CLAUDE.md",
+        "all_of_any": [
+          ["具體 claim", "claim"],
+          ["支撐來源", "source"]
+        ],
+        "note": "Claude must require evidence on every concrete claim."
+      }
+    ]
+  },
+  {
+    "id": "PR-004",
+    "title": "Mixed Truth Source Isolation",
+    "description": "Prompt contract must prevent mixing upstream and local-fork truth sources.",
+    "assertions": [
+      {
+        "file": "GEMINI.md",
+        "all_of_any": [
+          ["Isolate truth source", "truth source"],
+          ["不得從 local fork 反推 upstream", "must come from directly upstream evidence"]
+        ],
+        "near": [
+          {
+            "terms": ["upstream", "local fork"],
+            "max_chars": 450
+          }
+        ],
+        "note": "Gemini must isolate authoritative upstream evidence."
+      }
+    ]
+  },
+  {
+    "id": "PR-005",
+    "title": "Research Must Not Recommend Solutions",
+    "description": "Research role must not output implementation recommendations or architecture design guidance.",
+    "assertions": [
+      {
+        "file": "GEMINI.md",
+        "must_contain_all": [
+          "不得起草 PR title、PR body 或 Recommendation",
+          "不得設計 solution 或建議 architecture"
+        ],
+        "note": "Gemini must stay fact-only and avoid solution design output."
+      }
+    ]
+  },
+  {
+    "id": "PR-006",
+    "title": "Blocked Rule Wording Quality",
+    "description": "Blocked contracts should use decisive wording and avoid optimistic ambiguity.",
+    "assertions": [
+      {
+        "file": "CODEX.md",
+        "must_contain_all": [
+          "何時回報 Blocked",
+          "Plan artifact 缺失或尚未核准",
+          "Plan 的 `Ready For Coding` 不是 `yes`"
+        ],
+        "must_not_contain_any": [
+          "應該可行",
+          "看起來可行"
+        ],
+        "note": "Codex blocked criteria must be explicit and non-optimistic."
+      }
+    ]
+  },
+  {
+    "id": "PR-007",
+    "title": "Premortem Enforcement Presence",
+    "description": "Implementation prompt must explicitly enforce premortem checks before coding.",
+    "assertions": [
+      {
+        "file": "CODEX.md",
+        "must_contain_all": [
+          "Premortem 檢查",
+          "若 premortem 缺失或內容含糊，必須 STOP 並回報 blocked"
+        ],
+        "note": "Codex must enforce premortem quality gate before implementation."
+      }
+    ]
+  }
+]

@@ -53,7 +53,8 @@
 ### 1.4 時間格式
 
 - 所有時間使用 ISO 8601。
-- 若無時區資訊，至少保留完整日期與時間。
+- 所有 workflow / template / root 長期維護 artifacts 的時間戳必須使用 `Asia/Taipei`，並帶 `+08:00`。
+- 不接受只有日期或缺少時區的 `Last Updated`。
 - 範例：`2026-04-09T14:30:00+08:00`
 
 ### 1.5 文件語言與風格
@@ -124,6 +125,7 @@
 - test: `in_progress`, `pass`, `fail`, `blocked`, `superseded`
 - verify: `pass`, `fail`, `blocked`, `superseded`
 - decision: `done`
+- improvement: `draft`, `approved`, `applied`
 
 ## 5. 各 artifact schema
 
@@ -207,8 +209,6 @@
 ## Uncertain Items
 
 ## Constraints For Implementation
-
-## Recommendation
 ```
 
 欄位規則：
@@ -218,11 +218,14 @@
 - `Relevant References`: 需標明來源名稱或文件名稱。
 - `Uncertain Items`: 沒有時要寫 `None`。
 - `Constraints For Implementation`: 要可直接被 plan 使用。
+- research artifact 是 fact-only 契約，不得包含 `Recommendation`、implementation approach、PR title/body，或任何 solution 設計建議。
 
 最低驗收標準：
 
 - 不可只有連結或文件名，必須有整理後結論。
 - 不可把推測寫進 `Confirmed Facts`。
+- `Confirmed Facts` 的每一條 claim 都必須在同一條目內附上 inline citation（URL、`gh api` 指令或 artifact / doc path）。
+- `Uncertain Items` 若非 `None`，每條都必須以 `UNVERIFIED:` 開頭並說明原因。
 - 至少要有一個可供 implementation 使用的約束。
 
 ---
@@ -560,14 +563,15 @@ JSON schema 範例：
 
 工作流規則：
 
-- **Gate E (PDCA)**：任何任務從 `blocked` 恢復前，必須先建立 improvement artifact。`guard_status_validator.py` 在 `blocked → *` 轉移時自動檢查。
-- Improvement artifact 的 Status 不影響任務狀態轉移，但應追蹤至 `applied`。
+- **Gate E (PDCA)**：任何任務從 `blocked` 恢復前，必須先建立且通過驗證的 improvement artifact。`guard_status_validator.py` 在 `blocked → *` 轉移時自動檢查。
+- 恢復前的 improvement artifact 必須為 `Status: applied`。`draft` 或 `approved` 不足以解除 blocked。
 
 最低驗收標準：
 
 - 不可只描述問題而無預防措施。
 - Preventive Action 不可只寫「注意一下」，必須是可被 guard / prompt / template 執行的具體改動。
 - Final Rule 必須是一句可直接加入 CLAUDE.md 或 guard script 的規則。
+- `Validation` 不可空白，必須說明如何驗證該改善已落地。
 
 ---
 
