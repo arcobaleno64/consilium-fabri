@@ -17,6 +17,8 @@ param (
 
     [string]$ApprovalMode = "full-auto",
     
+    [string]$ReasoningEffort = "",
+
     [int]$MaxRetriesPerTier = 2,
     [int]$BaseBackoffSeconds = 2,
     
@@ -54,8 +56,11 @@ foreach ($model in $Models) {
     for ($attempt = 0; $attempt -le $MaxRetriesPerTier; $attempt++) {
         
         # Construct args
-        $processArgs = @("-m", $model, "--approval-mode", $ApprovalMode, "-p", $Prompt)
-
+        $processArgs = @("-m", $model, "--approval-mode", $ApprovalMode)
+        if (![string]::IsNullOrWhiteSpace($ReasoningEffort)) {
+            $processArgs += "-c", "model_reasoning_effort=`"$ReasoningEffort`""
+        }
+        $processArgs += "-p", $Prompt
         Write-Host "    [*] Attempt $($attempt+1)/$($MaxRetriesPerTier+1)..." -ForegroundColor Gray
         
         $output = $null
