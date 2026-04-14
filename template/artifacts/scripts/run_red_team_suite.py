@@ -455,7 +455,7 @@ def case_rt_015() -> CaseResult:
     try:
         artifacts_root = copy_task_fixture(temp_root, "TASK-900", "TASK-971")
         repository = "octo/workflow"
-        pull_number = 123
+        pull_number = "invalid"
         pages = {
             1: [{"filename": "docs/provider-safe.md"}],
             2: [{"filename": "docs/provider-rogue.md"}],
@@ -478,7 +478,7 @@ def case_rt_015() -> CaseResult:
             return run_status_case(
                 "TASK-971",
                 artifacts_root,
-                "github-pr scope check found diff files not listed",
+                "PR Number must be a positive integer",
                 title="GitHub provider-backed PR diff reconstruction",
                 case_id="RT-015",
             )
