@@ -464,6 +464,7 @@ def case_rt_015() -> CaseResult:
         with github_pr_files_server(repository, pull_number, pages) as api_base_url:
             code_path = artifacts_root / "code" / "TASK-971.code.md"
             code_text = code_path.read_text(encoding="utf-8")
+            code_text = re.sub(r"\n## Diff Evidence\s*\n.*?(?=\n## |\Z)", "", code_text, flags=re.DOTALL)
             snapshot_files = ["docs/provider-safe.md", "docs/provider-rogue.md"]
             code_text += (
                 "\n\n## Diff Evidence\n"
