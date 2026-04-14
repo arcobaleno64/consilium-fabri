@@ -1,0 +1,37 @@
+name: Workflow Guards
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Contract Guard
+        run: python artifacts/scripts/guard_contract_validator.py --root .
+
+      - name: Prompt Regression
+        run: python artifacts/scripts/prompt_regression_validator.py --root .
+
+      - name: Status Guard TASK-900
+        run: python artifacts/scripts/guard_status_validator.py --task-id TASK-900 --strict-scope
+
+      - name: Status Guard TASK-950
+        run: python artifacts/scripts/guard_status_validator.py --task-id TASK-950 --strict-scope
+
+      - name: Status Guard TASK-951
+        run: python artifacts/scripts/guard_status_validator.py --task-id TASK-951 --strict-scope
+
+      - name: Red Team Static Phase
+        run: python artifacts/scripts/run_red_team_suite.py --phase static

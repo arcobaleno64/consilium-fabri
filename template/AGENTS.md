@@ -1,0 +1,67 @@
+# AGENTS -- 文件索引
+
+本檔案是 artifact-first multi-agent workflow 的文件索引。每個 agent 只需載入自己的入口檔 + 當前階段所需的參考文件。
+
+## Agent 入口檔
+
+| Agent | 入口檔 | 角色 | 自動載入 |
+|---|---|---|---|
+| Claude Code | `CLAUDE.md` | 協調者 | Yes (project instruction) |
+| Gemini CLI | `GEMINI.md` | 研究專用 | Yes (passed via prompt) |
+| Codex CLI | `CODEX.md` | 實作主責 | Yes (passed via prompt) |
+
+## 文件模組
+
+| File | 用途 | ~Tokens | 載入時機 |
+|---|---|---|---|
+| `docs/orchestration.md` | 系統提示：目標、原則、流程階段、gate、同步規範 | 2200 | Claude：session 開始；template 同步前 |
+| `docs/artifact_schema.md` | 8 種 artifact schema（§5.1-§5.8） | 3300 | 寫任何 artifact 前 |
+| `docs/subagent_roles.md` | 7 種 agent 角色定義（§3-§9） | 3000 | 派發 subagent 前 |
+| `docs/workflow_state_machine.md` | 8 個狀態 + 合法轉移 | 600 | 狀態轉移前 |
+| `docs/premortem_rules.md` | 風險分析格式 + 品質護欄 | 1900 | 進入 coding gate 前 |
+| `docs/red_team_runbook.md` | 紅隊演練 runbook：靜態攻擊、live drill、復盤流程 | 1500 | 紅隊演練前 |
+| `docs/red_team_scorecard.md` | 紅隊演練評分矩陣與總結判定 | 900 | 演練記錄與復盤時 |
+| `docs/red_team_backlog.md` | 紅隊演練後續補強清單 | 700 | 復盤 / 補強規劃時 |
+| `docs/subagent_task_templates.md` | 可直接使用的 prompt 範本 | 650 | 派發 subagent 時 |
+| `docs/lightweight_mode_rules.md` | 小任務精簡流程規則 | 350 | lightweight mode 任務時 |
+
+## Markdown 書寫語言規範
+
+- 長期維護的 Markdown 文件以繁體中文（臺灣）為主。
+- 專有名詞、檔名、CLI 指令、環境變數、`artifact type`、狀態值、placeholder、schema literal 保留英文原字。
+- 不得更動會被 agent、validator、腳本依賴的精確字串，例如 `## Metadata`、`Task ID`、`Artifact Type`、`Owner`、`Status`、`Last Updated` 與各種狀態值。
+- 所有規範中的紀錄時間、`Last Updated` 與相關時間戳，一律使用 `Asia/Taipei`，採 ISO 8601 並帶 `+08:00`。
+- `root`、`template/` 與 Obsidian 入口文件必須保持語義一致；若 `template/` 需以 placeholder 泛化，允許字面不同，但不得規則漂移。
+- GitHub 對外入口以 `README.md` / `README.zh-TW.md` 為準；Obsidian 入口以 `OBSIDIAN.md` 為準。
+- 歷史 artifacts、實驗輸出、外部 repo 內 Markdown 不在追溯改寫範圍內。
+
+## 階段載入矩陣
+
+| 階段 | Claude Code 載入 | Gemini 載入 | Codex 載入 |
+|---|---|---|---|
+| **Intake** | `docs/orchestration.md` | -- | -- |
+| **Research** | `docs/subagent_roles.md` §4, `docs/subagent_task_templates.md` | (GEMINI.md has all needed rules) | -- |
+| **Planning** | `docs/artifact_schema.md` §5.3, `docs/workflow_state_machine.md`, `docs/premortem_rules.md` | -- | -- |
+| **Coding** | `docs/subagent_roles.md` §5, `docs/subagent_task_templates.md` | -- | (CODEX.md has all needed rules) |
+| **Verification** | `docs/artifact_schema.md` §5.5-§5.6, `docs/workflow_state_machine.md` | -- | -- |
+| **Closure** | `docs/workflow_state_machine.md` | -- | -- |
+| **Red Team Exercise** | `docs/red_team_runbook.md`, `docs/red_team_scorecard.md`, `docs/red_team_backlog.md` | -- | -- |
+| **Template Sync / Obsidian Sync** | `docs/orchestration.md` §9 | -- | -- |
+
+## 交叉引用慣例
+
+- 使用 `see docs/X.md §N` 引用特定章節，避免重複貼內容。
+- 範例："Research artifact format: see `docs/artifact_schema.md` §5.2"
+- Agent 入口檔（CLAUDE/GEMINI/CODEX.md）內嵌了 agent 無法自行額外載入時必須遵守的關鍵規則。
+- `docs/` 內的參考文件由協調者（Claude Code）依階段按需載入。
+
+## 章節速查
+
+### docs/artifact_schema.md
+- §5.1 Task / §5.2 Research / §5.3 Plan / §5.4 Code / §5.5 Test / §5.6 Verify / §5.7 Decision / §5.8 Status
+
+### docs/subagent_roles.md
+- §3 Claude Code / §4 Gemini CLI / §5 Codex CLI / §6 Implementer / §7 Tester / §8 Verifier / §9 Reviewer
+
+### docs/premortem_rules.md
+- §1-2 When & where / §3 Required fields / §4 Quality rules (P1-P8) / §5 Violation levels / §6 Minimum counts
