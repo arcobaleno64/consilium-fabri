@@ -17,7 +17,7 @@ param (
 
     [string]$ApprovalMode = "full-auto",
     
-    [string]$ReasoningEffort = "",
+    [string]$ReasoningEffort = "high",
 
     [int]$MaxRetriesPerTier = 2,
     [int]$BaseBackoffSeconds = 2,
