@@ -172,6 +172,7 @@ research artifact 必須至少回答：
 ## 5. Codex CLI
 
 預設模型：`gpt-5.4`（旗艦，最強推理與 agentic 能力）。有問題時可降級至 `gpt-5.3-codex`（專業 coding 模型），若仍無法解決則動用 `gpt-5.4-mini`（輕量高效）。
+認證方式：授權登入不依賴 `OPENAI_API_KEY` 環境變數，由 CLI 內部 OAuth 處理（若未登入請先執行 `codex login`）。
 呼叫方式：`codex -m gpt-5.4 --approval-mode full-auto -p "<prompt>"`
 
 ### 5.1 職責

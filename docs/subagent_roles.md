@@ -163,6 +163,23 @@ research artifact 必須至少回答：
 - **不可設計解決方案或建議架構**（那是 Claude / Plan 的責任）
 
 ### 4.6 何時應回報 blocked
+
+- task 目標不清楚
+- 缺少必要查詢範圍
+- 找不到可信依據
+- 已知來源互相矛盾
+
+## 5. Codex CLI
+
+預設模型：`gpt-5.4`（旗艦，最強推理與 agentic 能力）。有問題時可降級至 `gpt-5.3-codex`（專業 coding 模型），若仍無法解決則動用 `gpt-5.4-mini`（輕量高效）。
+認證方式：授權登入不依賴 `OPENAI_API_KEY` 環境變數，由 CLI 內部 OAuth 處理（若未登入請先執行 `codex login`）。
+呼叫方式：`codex -m gpt-5.4 --approval-mode full-auto -p "<prompt>"`
+
+### 5.1 職責
+
+Codex CLI 是 implementation lead，負責：
+
+- 根據 task + research + plan 執行修改
 - 視需要 spawn subagents
 - 產出 code artifact
 - 可在修改後協調 tester / verifier / reviewer 類工作
