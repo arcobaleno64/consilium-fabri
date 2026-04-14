@@ -41,8 +41,8 @@ $RegexPattern = ($RetryPatterns | ForEach-Object { [regex]::Escape($_) }) -join 
 # Models Progression
 $Models = @(
     "gemini-3.1-flash-lite-preview",
-    "gemini-3.1-flash",
-    "gemini-3.1-pro"
+    "gemini-3-flash-preview",
+    "gemini-3.1-pro-preview"
 )
 
 # Keys Progression

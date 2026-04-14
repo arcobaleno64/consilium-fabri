@@ -37,11 +37,13 @@ Workflow template 位於：【填入 artifact-harness repo clone 路徑，或直
 
 - Orchestrator：Claude Code（你）
 - Research agent：Gemini CLI
-  - 模型：gemini-3.1-flash-lite-preview（預設），有問題時可升級至 gemini-3.1-flash，若仍無法解決則動用 gemini-3.1-pro
+  - 模型：gemini-3.1-flash-lite-preview（預設），有問題時可升級至 gemini-3-flash-preview，若仍無法解決則動用 gemini-3.1-pro-preview
   - API Key 環境變數：GEMINI_API_KEY
   - 呼叫方式：GEMINI_API_KEY="<key>" gemini -m gemini-3.1-flash-lite-preview --approval-mode=yolo -p "<prompt>"
   - 入口檔：GEMINI.md（品質硬規則已內嵌，不需額外載入）
 - Implementation agent：Codex CLI（或 Claude 自行實作，視任務規模）
+  - 模型：gpt-5.4（預設），有問題時可降級至 gpt-5.3-codex，若仍無法解決則動用 gpt-5.4-mini
+  - 呼叫方式：codex -m gpt-5.4 --approval-mode full-auto -p "<prompt>"
   - 入口檔：CODEX.md
 
 ## 5. 工作規範

@@ -108,7 +108,7 @@ Claude Code 的成功不是「自己做完」，而是：
 
 ## 4. Gemini CLI
 
-預設模型：`gemini-3.1-flash-lite-preview`（低成本、快速）。有問題時可升級至 `gemini-3.1-flash`，若仍無法解決則動用 `gemini-3.1-pro`。
+預設模型：`gemini-3.1-flash-lite-preview`（低成本、快速）。有問題時可升級至 `gemini-3-flash-preview`，若仍無法解決則動用 `gemini-3.1-pro-preview`。
 呼叫方式：`GEMINI_API_KEY="<key>" gemini -m gemini-3.1-flash-lite-preview --approval-mode=yolo -p "<prompt>"`
 
 ### 4.1 職責
@@ -163,19 +163,6 @@ research artifact 必須至少回答：
 - **不可設計解決方案或建議架構**（那是 Claude / Plan 的責任）
 
 ### 4.6 何時應回報 blocked
-
-- task 目標不清楚
-- 缺少必要查詢範圍
-- 找不到可信依據
-- 已知來源互相矛盾
-
-## 5. Codex CLI
-
-### 5.1 職責
-
-Codex CLI 是 implementation lead，負責：
-
-- 根據 task + research + plan 執行修改
 - 視需要 spawn subagents
 - 產出 code artifact
 - 可在修改後協調 tester / verifier / reviewer 類工作

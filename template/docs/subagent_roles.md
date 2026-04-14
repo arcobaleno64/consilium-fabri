@@ -108,7 +108,7 @@ Claude Code 的成功不是「自己做完」，而是：
 
 ## 4. Gemini CLI
 
-預設模型：`gemini-3.1-flash-lite-preview`（低成本、快速）。有問題時可升級至 `gemini-3.1-flash`，若仍無法解決則動用 `gemini-3.1-pro`。
+預設模型：`gemini-3.1-flash-lite-preview`（低成本、快速）。有問題時可升級至 `gemini-3-flash-preview`，若仍無法解決則動用 `gemini-3.1-pro-preview`。
 呼叫方式：`GEMINI_API_KEY="<key>" gemini -m gemini-3.1-flash-lite-preview --approval-mode=yolo -p "<prompt>"`
 
 ### 4.1 職責
@@ -170,6 +170,9 @@ research artifact 必須至少回答：
 - 已知來源互相矛盾
 
 ## 5. Codex CLI
+
+預設模型：`gpt-5.4`（旗艦，最強推理與 agentic 能力）。有問題時可降級至 `gpt-5.3-codex`（專業 coding 模型），若仍無法解決則動用 `gpt-5.4-mini`（輕量高效）。
+呼叫方式：`codex -m gpt-5.4 --approval-mode full-auto -p "<prompt>"`
 
 ### 5.1 職責
 

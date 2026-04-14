@@ -1,12 +1,12 @@
 <#
 .SYNOPSIS
-Resilient wrapper for the Gemini CLI providing multi-tier fallback for API errors.
+Resilient wrapper for the Codex CLI providing multi-tier fallback for API errors.
 
 .DESCRIPTION
-Wraps the gemini CLI to catch 429 MODEL_CAPACITY_EXHAUSTED, 400 Bad Request, and 5xx server errors.
+Wraps the codex CLI to catch 429 Too Many Requests, 400 Bad Request, and 5xx server errors.
 Executes standard Exponential Backoff.
-If failures persist, dynamically steps up through fallback models (flash -> pro).
-If models are exhausted, it switches to a Fallback API key and starts from the bottom model again.
+If failures persist, dynamically steps down through fallback models (gpt-5.4 -> gpt-5.3-codex -> gpt-5.4-mini).
+If models are exhausted, it switches to a Fallback API key and starts from the top model again.
 Returns standard output on success or throws a fatal block if all options are exhausted.
 #>
 
@@ -15,19 +15,19 @@ param (
     [Parameter(Mandatory=$true)]
     [string]$Prompt,
 
-    [string]$Profile = $null,
-    [string]$ApprovalMode = "yolo",
+    [string]$ApprovalMode = "full-auto",
     
     [int]$MaxRetriesPerTier = 2,
     [int]$BaseBackoffSeconds = 2,
     
-    [string]$Executable = "gemini.cmd"
+    [string]$Executable = "codex.cmd"
 )
 
 # Core Error Patterns to Catch
 $RetryPatterns = @(
     "429",
-    "MODEL_CAPACITY_EXHAUSTED",
+    "Too Many Requests",
+    "RateLimitError",
     "400 Bad Request",
     "500 Internal Server",
     "502 Bad Gateway",
@@ -38,23 +38,23 @@ $RetryPatterns = @(
 )
 $RegexPattern = ($RetryPatterns | ForEach-Object { [regex]::Escape($_) }) -join '|'
 
-# Models Progression
+# Models Progression (Fallback strategy)
 $Models = @(
-    "gemini-3.1-flash-lite-preview",
-    "gemini-3-flash-preview",
-    "gemini-3.1-pro-preview"
+    "gpt-5.4",
+    "gpt-5.3-codex",
+    "gpt-5.4-mini"
 )
 
 # Keys Progression
-$OriginalKey = $env:GEMINI_API_KEY
-$FallbackKey = $env:GEMINI_FALLBACK_API_KEY
+$OriginalKey = $env:OPENAI_API_KEY
+$FallbackKey = $env:OPENAI_FALLBACK_API_KEY
 
 $KeysToTry = @()
 if (![string]::IsNullOrWhiteSpace($OriginalKey)) { $KeysToTry += $OriginalKey }
 if (![string]::IsNullOrWhiteSpace($FallbackKey) -and $FallbackKey -ne $OriginalKey) { $KeysToTry += $FallbackKey }
 
 if ($KeysToTry.Count -eq 0) {
-    Write-Error "__FATAL:[Blocked] No API keys provided. Set GEMINI_API_KEY environment variable.__"
+    Write-Error "__FATAL:[Blocked] No API keys provided. Set OPENAI_API_KEY environment variable.__"
     exit 1
 }
 
@@ -63,10 +63,10 @@ $FinalOutput = ""
 
 foreach ($keyIndex in 0..($KeysToTry.Count - 1)) {
     # Swap API Key in Env
-    $env:GEMINI_API_KEY = $KeysToTry[$keyIndex]
+    $env:OPENAI_API_KEY = $KeysToTry[$keyIndex]
     
     $KeyLabel = if ($keyIndex -eq 0) { "Primary Key" } else { "Fallback Key" }
-    Write-Host "[Info] Harness engaging with $KeyLabel..." -ForegroundColor Cyan
+    Write-Host "[Info] Codex Harness engaging with $KeyLabel..." -ForegroundColor Cyan
 
     foreach ($model in $Models) {
         Write-Host "  -> Active Model Tier: $model" -ForegroundColor Cyan
@@ -74,11 +74,7 @@ foreach ($keyIndex in 0..($KeysToTry.Count - 1)) {
         for ($attempt = 0; $attempt -le $MaxRetriesPerTier; $attempt++) {
             
             # Construct args
-            $processArgs = @("-m", $model, "--approval-mode", $ApprovalMode)
-            if (![string]::IsNullOrWhiteSpace($Profile)) {
-                $processArgs += "--profile", $Profile
-            }
-            $processArgs += "-p", $Prompt
+            $processArgs = @("-m", $model, "--approval-mode", $ApprovalMode, "-p", $Prompt)
 
             Write-Host "    [*] Attempt $($attempt+1)/$($MaxRetriesPerTier+1)..." -ForegroundColor Gray
             
@@ -122,14 +118,11 @@ foreach ($keyIndex in 0..($KeysToTry.Count - 1)) {
 
             # Calculate backoff if not last attempt
             if ($attempt -lt $MaxRetriesPerTier) {
-                # Check if it was one of our specific retry patterns
                 if ($combinedText -match $RegexPattern) {
                     $sleepTime = [Math]::Pow(2, $attempt) * $BaseBackoffSeconds
                     Write-Host "    [Backoff] Target error string matched. Sleeping for $sleepTime seconds..." -ForegroundColor DarkYellow
                     Start-Sleep -Seconds $sleepTime
                 } else {
-                    # If it's some other fatal error that we don't recognize, do we still back off?
-                    # Yes, per user request, we enter the loop.
                     $sleepTime = [Math]::Pow(2, $attempt) * $BaseBackoffSeconds
                     Write-Host "    [Backoff] Generic failure. Sleeping for $sleepTime seconds..." -ForegroundColor DarkYellow
                     Start-Sleep -Seconds $sleepTime
@@ -138,7 +131,7 @@ foreach ($keyIndex in 0..($KeysToTry.Count - 1)) {
         } # End Attempt Loop
 
         if ($IsSuccess) { break }
-        Write-Host "  -> Exhausted retries for $model. Escalating tier..." -ForegroundColor Magenta
+        Write-Host "  -> Exhausted retries for $model. Escalating tier (fallback)..." -ForegroundColor Magenta
     } # End Model Loop
 
     if ($IsSuccess) { break }
@@ -148,13 +141,13 @@ foreach ($keyIndex in 0..($KeysToTry.Count - 1)) {
 } # End Key Loop
 
 # Restore original key
-$env:GEMINI_API_KEY = $OriginalKey
+$env:OPENAI_API_KEY = $OriginalKey
 
 # Wrap up
 if ($IsSuccess) {
     Write-Output $FinalOutput
     exit 0
 } else {
-    Write-Error "__FATAL:[Blocked] All fallback models and keys exhausted for Gemini CLI.__`nReview terminal logs or quota statuses."
+    Write-Error "__FATAL:[Blocked] All fallback models and keys exhausted for Codex CLI.__`nReview terminal logs or quota statuses."
     exit 1
 }
