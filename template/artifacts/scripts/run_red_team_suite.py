@@ -454,6 +454,7 @@ def case_rt_015() -> CaseResult:
     temp_root = prepare_temp_root("RT-015")
     try:
         artifacts_root = copy_task_fixture(temp_root, "TASK-900", "TASK-971")
+        initialize_git_fixture(temp_root)
         repository = "octo/workflow"
         pull_number = "invalid"
         pages = {
@@ -476,6 +477,8 @@ def case_rt_015() -> CaseResult:
                 f"- Snapshot SHA256: {compute_snapshot_sha256(snapshot_files)}\n"
             )
             code_path.write_text(code_text, encoding="utf-8")
+            ensure_command_ok(run_command(["git", "add", "."], cwd=temp_root), "git add github-pr evidence")
+            ensure_command_ok(run_command(["git", "commit", "-q", "-m", "github-pr evidence"], cwd=temp_root), "git commit github-pr evidence")
             return run_status_case(
                 "TASK-971",
                 artifacts_root,
