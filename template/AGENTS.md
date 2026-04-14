@@ -22,7 +22,9 @@
 | `docs/red_team_runbook.md` | 紅隊演練 runbook：靜態攻擊、live drill、復盤流程 | 1500 | 紅隊演練前 |
 | `docs/red_team_scorecard.md` | 紅隊演練評分矩陣與總結判定 | 900 | 演練記錄與復盤時 |
 | `docs/red_team_backlog.md` | 紅隊演練後續補強清單 | 700 | 復盤 / 補強規劃時 |
-| `docs/subagent_task_templates.md` | 可直接使用的 prompt 範本 | 650 | 派發 subagent 時 |
+| `docs/subagent_task_templates.md` | Template 索引（指向 `docs/templates/`） | 200 | 派發 subagent 時 |
+| `docs/templates/<role>/TEMPLATE.md` | 各角色 prompt 範本（含 YAML frontmatter） | 每個 ~150 | 派發對應 subagent 時 |
+| `artifacts/scripts/discover_templates.py` | Template auto-discovery CLI | 200 | 派發 subagent 前 |
 | `docs/lightweight_mode_rules.md` | 小任務精簡流程規則 | 350 | lightweight mode 任務時 |
 
 ## Markdown 書寫語言規範
@@ -40,9 +42,9 @@
 | 階段 | Claude Code 載入 | Gemini 載入 | Codex 載入 |
 |---|---|---|---|
 | **Intake** | `docs/orchestration.md` | -- | -- |
-| **Research** | `docs/subagent_roles.md` §4, `docs/subagent_task_templates.md` | (GEMINI.md has all needed rules) | -- |
+| **Research** | `docs/subagent_roles.md` §4, `docs/subagent_task_templates.md`, `docs/templates/` | (GEMINI.md has all needed rules) | -- |
 | **Planning** | `docs/artifact_schema.md` §5.3, `docs/workflow_state_machine.md`, `docs/premortem_rules.md` | -- | -- |
-| **Coding** | `docs/subagent_roles.md` §5, `docs/subagent_task_templates.md` | -- | (CODEX.md has all needed rules) |
+| **Coding** | `docs/subagent_roles.md` §5, `docs/subagent_task_templates.md`, `docs/templates/` | -- | (CODEX.md has all needed rules) |
 | **Verification** | `docs/artifact_schema.md` §5.5-§5.6, `docs/workflow_state_machine.md` | -- | -- |
 | **Closure** | `docs/workflow_state_machine.md` | -- | -- |
 | **Red Team Exercise** | `docs/red_team_runbook.md`, `docs/red_team_scorecard.md`, `docs/red_team_backlog.md` | -- | -- |

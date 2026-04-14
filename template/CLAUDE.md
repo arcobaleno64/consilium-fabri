@@ -49,8 +49,8 @@ Template sync protocol：
 - Session 開始時不得一次載入所有 documentation files。請依階段按需載入。
 - 完整索引與階段載入矩陣請先讀 `AGENTS.md`。
 - Session start：讀 `AGENTS.md` + `docs/orchestration.md`
-- 派發 Gemini 前：讀 `docs/subagent_roles.md` §4、`docs/subagent_task_templates.md`
-- 派發 Codex 前：讀 `docs/subagent_roles.md` §5、`docs/subagent_task_templates.md`
+- 派發 Gemini 前：讀 `docs/subagent_roles.md` §4、`docs/subagent_task_templates.md`（索引）、對應 `docs/templates/<role>/TEMPLATE.md`
+- 派發 Codex 前：讀 `docs/subagent_roles.md` §5、`docs/subagent_task_templates.md`（索引）、對應 `docs/templates/<role>/TEMPLATE.md`
 - Planning 前：讀 `docs/artifact_schema.md` §5.3、`docs/premortem_rules.md`
 - 狀態轉移前：讀 `docs/workflow_state_machine.md`
 - Verification 前：讀 `docs/artifact_schema.md` §5.5-§5.6

@@ -168,9 +168,10 @@ Codex CLI 不得：
 ### Stage 4. Coding
 
 1. 只有在 plan artifact 狀態為 ready 或 approved 時，才可分派 Codex CLI。
-2. Codex CLI 根據 plan artifact 實作。
-3. 產出 code artifact。
-4. 若需測試與驗證，可由 subagents 依序或平行產出 test / review / verify 相關 artifacts。
+2. 派發 subagent 前，可執行 `python artifacts/scripts/discover_templates.py --agent "Codex CLI" --stage coding` 查詢當前階段可用的 templates。
+3. Codex CLI 根據 plan artifact 實作。
+4. 產出 code artifact。
+5. 若需測試與驗證，可由 subagents 依序或平行產出 test / review / verify 相關 artifacts。
 
 ### Stage 5. Verification
 
