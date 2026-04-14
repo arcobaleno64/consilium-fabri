@@ -56,7 +56,12 @@ foreach ($model in $Models) {
     for ($attempt = 0; $attempt -le $MaxRetriesPerTier; $attempt++) {
         
         # Construct args
-        $processArgs = @("-m", $model, "--approval-mode", $ApprovalMode)
+        $processArgs = @("-m", $model)
+        if ($ApprovalMode -eq "full-auto") {
+            $processArgs += "--full-auto"
+        } else {
+            $processArgs += "-a", $ApprovalMode
+        }
         if (![string]::IsNullOrWhiteSpace($ReasoningEffort)) {
             $processArgs += "-c", "model_reasoning_effort=`"$ReasoningEffort`""
         }

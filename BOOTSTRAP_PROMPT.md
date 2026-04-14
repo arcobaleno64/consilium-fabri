@@ -44,7 +44,7 @@ Workflow template 位於：【填入 artifact-harness repo clone 路徑，或直
 - Implementation agent：Codex CLI（或 Claude 自行實作，視任務規模）
   - 模型：gpt-5.4（預設），有問題時可降級至 gpt-5.3-codex，若仍無法解決則動用 gpt-5.4-mini
   - 認證方式：由 CLI 內部 OAuth 處理（若未登入請先執行 codex login），不依賴 OPENAI_API_KEY
-  - 呼叫方式：codex -m gpt-5.4 --approval-mode full-auto -p "<prompt>"
+  - 呼叫方式：codex -m gpt-5.4 --full-auto -p "<prompt>"
   - 入口檔：CODEX.md
 
 ## 5. 工作規範
