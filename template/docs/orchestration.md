@@ -356,6 +356,25 @@ Template sync 與 Obsidian sync 由 **Orchestrator（Claude Code）** 負責。G
 - 翻譯變異允許（例句、措詞精簡化），但標題與組織必須對應
 - 若中文版有結構差異，必須記同一個 exception waiver
 
+### 10.5 Repository About/Topics Guard
+
+新專案必須在以下檔案定義 repository profile，並由 `guard_contract_validator.py` 驗證：
+
+- `/.github/repository-profile.json`
+- `/template/.github/repository-profile.json`
+
+規則：
+
+1. 必須包含 `about`（字串，80-200 字元）與 `topics`（陣列，6-12 個）
+2. `topics` 必須使用 lowercase-kebab-case，且不可重複
+3. `topics` 必須至少包含：
+   - `multi-agent`
+   - `developer-tools`
+   - `workflow-template`
+   - `artifact-first`
+   - `gate-guarded`
+   - `premortem`
+
 ## 11. 最終原則
 
 - 先看 artifact，再做判斷

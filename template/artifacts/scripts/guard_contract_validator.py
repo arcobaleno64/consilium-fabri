@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import subprocess
 from pathlib import Path
@@ -116,6 +117,22 @@ PROMPT_REGRESSION_FILES = {
     "template/artifacts/scripts/drills/prompt_regression_cases.json",
 }
 
+REPOSITORY_PROFILE_FILES = (
+    ".github/repository-profile.json",
+    "template/.github/repository-profile.json",
+)
+
+REQUIRED_TOPICS = {
+    "multi-agent",
+    "developer-tools",
+    "workflow-template",
+    "artifact-first",
+    "gate-guarded",
+    "premortem",
+}
+
+TOPIC_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+
 
 def load_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
@@ -194,6 +211,46 @@ def validate_prompt_case_sync(root: Path) -> List[str]:
     return []
 
 
+def validate_repository_profile(root: Path) -> List[str]:
+    errors: List[str] = []
+    for relative in REPOSITORY_PROFILE_FILES:
+        path = root / relative
+        if not path.exists():
+            errors.append(f"Missing required repository profile: {relative}")
+            continue
+        try:
+            profile = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            errors.append(f"{relative} is not valid JSON: {exc}")
+            continue
+
+        about = profile.get("about")
+        topics = profile.get("topics")
+
+        if not isinstance(about, str) or not about.strip():
+            errors.append(f"{relative} must define non-empty string field 'about'")
+        else:
+            about_len = len(about.strip())
+            if about_len < 80 or about_len > 200:
+                errors.append(f"{relative} field 'about' must be 80-200 chars, got {about_len}")
+
+        if not isinstance(topics, list):
+            errors.append(f"{relative} must define list field 'topics'")
+            continue
+        normalized_topics = [str(topic).strip() for topic in topics]
+        if len(normalized_topics) < 6 or len(normalized_topics) > 12:
+            errors.append(f"{relative} field 'topics' must contain 6-12 items, got {len(normalized_topics)}")
+        if len(set(normalized_topics)) != len(normalized_topics):
+            errors.append(f"{relative} field 'topics' must not contain duplicates")
+        invalid_topics = [topic for topic in normalized_topics if not TOPIC_PATTERN.match(topic)]
+        if invalid_topics:
+            errors.append(f"{relative} has invalid topics (must be lowercase-kebab-case): {invalid_topics}")
+        missing_required_topics = sorted(REQUIRED_TOPICS - set(normalized_topics))
+        if missing_required_topics:
+            errors.append(f"{relative} missing required topics: {missing_required_topics}")
+    return errors
+
+
 def extract_h2_headers(text: str) -> list[str]:
     """Extract all H2 headers (lines starting with ##) from markdown text."""
     headers = []
@@ -252,6 +309,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     errors = validate_exact_sync(root)
     errors.extend(validate_required_phrases(root))
     errors.extend(validate_prompt_case_sync(root))
+    errors.extend(validate_repository_profile(root))
     
     if args.check_readme:
         errors.extend(validate_readme_structure(root))
