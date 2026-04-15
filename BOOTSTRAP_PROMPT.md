@@ -28,12 +28,15 @@ Workflow template 位於：【填入 artifact-harness repo clone 路徑，或直
 請從該目錄複製完整架構到專案根目錄，然後：
 1. 替換 CLAUDE.md 中的 placeholder（{{PROJECT_NAME}}, {{REPO_NAME}}, {{UPSTREAM_ORG}}）
 2. 若無 fork 模式，移除 CLAUDE.md 的 "Repository boundaries" 區段
-3. **新增**：確認 README.md 與 README.zh-TW.md 版本都存在且結構遵循 template/README.md
-   - 執行 `python artifacts/scripts/guard_contract_validator.py --check-readme` 確認 README 結構合規
-4. 執行 `python artifacts/scripts/guard_status_validator.py --task-id TASK-900` 確認 [OK]
-5. 執行 `python artifacts/scripts/guard_contract_validator.py` 確認 root / template / Obsidian 未漂移
-6. 執行 `python artifacts/scripts/prompt_regression_validator.py --root .` 確認 Prompt regression 測例通過
-7. 若要做完整流程壓力測試，可再執行 `python artifacts/scripts/run_red_team_suite.py --phase all`
+3. 更新 repository About/topics profile：
+  - 執行 `python artifacts/scripts/update_repository_profile.py --project-name "【專案名稱】" --project-summary "【專案簡述】"`
+  - 若需要客製 topics，可加 `--topics "multi-agent,developer-tools,workflow-template,..."`
+4. **新增**：確認 README.md 與 README.zh-TW.md 版本都存在且結構遵循 template/README.md
+  - 執行 `python artifacts/scripts/guard_contract_validator.py --check-readme` 確認 README 結構合規
+5. 執行 `python artifacts/scripts/guard_status_validator.py --task-id TASK-900` 確認 [OK]
+6. 執行 `python artifacts/scripts/guard_contract_validator.py` 確認 root / template / Obsidian / repository profile 未漂移
+7. 執行 `python artifacts/scripts/prompt_regression_validator.py --root .` 確認 Prompt regression 測例通過
+8. 若要做完整流程壓力測試，可再執行 `python artifacts/scripts/run_red_team_suite.py --phase all`
 
 ## 4. Agent 配置
 

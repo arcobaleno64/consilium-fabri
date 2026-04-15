@@ -35,11 +35,13 @@ REQUIRED_PHRASES: Dict[str, Sequence[str]] = {
         "guard_contract_validator.py",
         "template/OBSIDIAN.md",
         "prompt_regression_validator.py",
+        "update_repository_profile.py",
     ),
     "template/BOOTSTRAP_PROMPT.md": (
         "guard_contract_validator.py",
         "template/OBSIDIAN.md",
         "prompt_regression_validator.py",
+        "update_repository_profile.py",
     ),
     "CLAUDE.md": (
         "guard_contract_validator.py",
