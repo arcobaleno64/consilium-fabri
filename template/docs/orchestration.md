@@ -319,7 +319,44 @@ Codex CLI 不得：
 
 Template sync 與 Obsidian sync 由 **Orchestrator（Claude Code）** 負責。Gemini CLI 與 Codex CLI 不直接操作 template/。
 
-## 10. 最終原則
+## 10. Template Enforcement: README Structure Lock
+
+### 10.1 新專案啟動規則
+
+當新專案透過 template/ 範本初始化時，必須：
+
+1. 按 template/README.md 的結構複製 README 內容
+2. 語言原則：
+   - README.md 保持英文（或按 template 指定語言）
+   - 必須同時產生 README.zh-TW.md（繁體中文版本）
+3. 內容調整限制：
+   - 僅允許調整「章節內容」，不得改變「章節標題或順序」
+   - 例外：若原結構不適用當前專案，必須記錄在 decision artifact，並由 Guard 檢查例外合法性
+4. 檔案清單同步：
+   - 若產品代碼改變，README 中的「Files Likely Affected」類似段落必須同步更新
+
+### 10.2 審核機制
+
+`guard_contract_validator.py` 新增 `--check-readme` 模式。檢查項目：
+
+1. README.md 與 template/README.md 的 H2 標題順序一致
+2. README.zh-TW.md 存在且完整
+3. 雙語版本的「邊界內容」對應性
+4. 若有偏差，`--allow-readme-drift` 需配 decision artifact
+
+### 10.3 邊界內容定義
+
+- 「邊界內容」= 所有 H2 標題及其直屬段落（H3 以下）
+- 可調整部分：文字用語、代碼範例、連結、專案特定細節
+- 不可調整部分：H2 標題名稱、表格結構、必填欄位名稱
+
+### 10.4 中英文版本的對應規則
+
+- README.zh-TW.md 與 README.md 必須保持結構一致
+- 翻譯變異允許（例句、措詞精簡化），但標題與組織必須對應
+- 若中文版有結構差異，必須記同一個 exception waiver
+
+## 11. 最終原則
 
 - 先看 artifact，再做判斷
 - 沒有 artifact，就沒有完成

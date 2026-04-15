@@ -44,8 +44,11 @@ python artifacts/scripts/run_red_team_suite.py --phase static
 | `RT-002` | `Confirmed Facts` 缺 citation | `guard_status_validator.py` | research guard 直接 fail |
 | `RT-003` | `Uncertain Items` 未用 `UNVERIFIED:` | `guard_status_validator.py` | research guard 直接 fail |
 | `RT-004` | high-risk premortem 無 blocking risk | `guard_status_validator.py` | planning / coding gate fail |
-| `RT-005` | `blocked -> planned` 無 improvement artifact | Gate E | 無法 resume |
-| `RT-006` | `blocked -> planned` improvement 非 `applied` | Gate E | 無法 resume |
+| `RT-004B` | high-risk premortem 恰好 1 blocking risk（邊界）| `guard_status_validator.py` | validation pass（應接受）|
+| `RT-005` | blocked → planned 無 improvement artifact | Gate E | 無法 resume |
+| `RT-005B` | improvement artifact 存在但 Status ≠ applied（邊界）| Gate E | 無法 resume（應 fail）|
+| `RT-006` | blocked → planned improvement 非 `applied` | Gate E | 無法 resume |
+| `RT-006B` | improvement 為 applied 但屬其他 task（邊界）| Gate E | 無法 resume（應 fail）|
 | `RT-007` | root / `template/` drift | `guard_contract_validator.py` | contract guard fail |
 | `RT-008` | Obsidian drift | `guard_contract_validator.py` | contract guard fail |
 | `RT-009` | bootstrap 少掉 contract guard | `guard_contract_validator.py` | contract guard fail |

@@ -549,6 +549,28 @@ JSON schema 範例：
 - `required_artifacts`: 此狀態進入下一步所需類型。
 - `missing_artifacts`: 實際缺件清單。
 - `blocked_reason`: 若 state 為 `blocked`，不可空白。
+- `Gate_E_passed` (新增)：Gate E 驗證是否通過。只有 state 為 `done` 且曾經歷 blocked 時才填寫。值為 `true` 或 `false`。
+- `Gate_E_evidence` (新增)：proof of Gate E；當 `Gate_E_passed: true` 時必填。格式為 array of paths / artifact IDs（例如 `["artifacts/decisions/TASK-001.decision.md", "artifacts/improvement/TASK-001.improvement.md"]`）。
+- `Gate_E_timestamp` (新增)：Gate E 驗證通過時間戳，採 ISO 8601+08:00 格式。當 `Gate_E_passed: true` 時必填。
+
+### 完整範例（包含 Gate E）
+
+```json
+{
+  "task_id": "TASK-001",
+  "state": "done",
+  "current_owner": "Claude",
+  "next_agent": "Claude",
+  "required_artifacts": ["code", "research", "status", "task", "verify"],
+  "available_artifacts": ["code", "decision", "improvement", "plan", "research", "status", "task", "verify"],
+  "missing_artifacts": [],
+  "blocked_reason": "",
+  "last_updated": "2026-04-11T11:10:00+08:00",
+  "Gate_E_passed": true,
+  "Gate_E_evidence": ["artifacts/decisions/TASK-001.decision.md", "artifacts/improvement/TASK-001.improvement.md"],
+  "Gate_E_timestamp": "2026-04-11T11:10:00+08:00"
+}
+```
 
 ---
 
@@ -577,6 +599,11 @@ JSON schema 範例：
 - Status: draft
 - Last Updated:
 
+## Risk Analysis (新增)
+- Predicted Risks: [R1, R2, ...]  # 來自 plan artifact 的 premortem 預測
+- Realized Risks: [R1]             # 此次 blocked/failure 中實際發生的
+- Missed Risks: []                 # plan 未預測但實際發生的（若無填 None）
+
 ## 1. What Happened
 
 ## 2. Why It Was Not Prevented
@@ -599,7 +626,11 @@ JSON schema 範例：
 欄位規則：
 
 - `Trigger Type`: 必須為 `failure`、`blocked`、`inefficiency` 或 `guard miss` 之一。
-- `## 1. What Happened`: 必須具體描述發生在哪個階段（Plan / Do / Check / Act）、哪個 agent、哪個 artifact。
+- `## Risk Analysis` (新增)：追蹤 premortem 預測與實際風險的映射。
+  - `Predicted Risks`: 從 plan artifact 中的 `## Risks` 區段複製所有 R 編號（例如 `[R1, R2, R3]`）。
+  - `Realized Risks`: 此次故障中實際觸發的風險編號。必須是 Predicted Risks 的子集或超集。若為超集，說明是 missed risk。
+  - `Missed Risks`: 若有未在 plan 預測但實際發生的風險，在此列舉；若無填 `None`。此欄用於評估 premortem 品質。
+- `## 1. What Happened`: 必須具體描述發生在哪個階段（Plan / Do / Check / Act）、哪個 agent、哪個 artifact，並用編號指出是哪條 Realized Risk。
 - `## 2. Why It Was Not Prevented`: 必須指出哪條規則缺失、哪個 guard 沒覆蓋、哪個 prompt 太寬鬆。
 - `## 3. Failure Classification`: 至少勾選一個分類（G1–G6、Premortem failure、Unknown gap）。
 - `## 5. Preventive Action (System Level)`: **最重要區段**。必須至少包含一項：Prompt 修正、Guard 規則補強、Template 修正、或 Workflow 調整。

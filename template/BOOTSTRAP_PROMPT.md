@@ -28,23 +28,22 @@ Workflow template 位於：【填入 artifact-harness repo clone 路徑，或直
 請從該目錄複製完整架構到專案根目錄，然後：
 1. 替換 CLAUDE.md 中的 placeholder（{{PROJECT_NAME}}, {{REPO_NAME}}, {{UPSTREAM_ORG}}）
 2. 若無 fork 模式，移除 CLAUDE.md 的 "Repository boundaries" 區段
-3. 執行 `python artifacts/scripts/guard_status_validator.py --task-id TASK-900` 確認 [OK]
-4. 執行 `python artifacts/scripts/guard_contract_validator.py` 確認 root / template / Obsidian 未漂移
-5. 執行 `python artifacts/scripts/prompt_regression_validator.py --root .` 確認 Prompt regression 測例通過
-6. 若要做完整流程壓力測試，可再執行 `python artifacts/scripts/run_red_team_suite.py --phase all`
+3. **新增**：確認 README.md 與 README.zh-TW.md 版本都存在且結構遵循 template/README.md
+   - 執行 `python artifacts/scripts/guard_contract_validator.py --check-readme` 確認 README 結構合規
+4. 執行 `python artifacts/scripts/guard_status_validator.py --task-id TASK-900` 確認 [OK]
+5. 執行 `python artifacts/scripts/guard_contract_validator.py` 確認 root / template / Obsidian 未漂移
+6. 執行 `python artifacts/scripts/prompt_regression_validator.py --root .` 確認 Prompt regression 測例通過
+7. 若要做完整流程壓力測試，可再執行 `python artifacts/scripts/run_red_team_suite.py --phase all`
 
 ## 4. Agent 配置
 
 - Orchestrator：Claude Code（你）
 - Research agent：Gemini CLI
-  - 模型：gemini-3.1-flash-lite-preview（預設），有問題時可升級至 gemini-3-flash-preview，若仍無法解決則動用 gemini-3.1-pro-preview
-  - 認證方式：由 CLI 內部 OAuth 處理，不依賴 GEMINI_API_KEY
-  - 呼叫方式：gemini -m gemini-3.1-flash-lite-preview --approval-mode=yolo -p "<prompt>"
+  - 模型：gemini-3.1-flash-lite-preview（預設），有問題時可升級至 gemini-3.1-flash，若仍無法解決則動用 gemini-3.1-pro
+  - API Key 環境變數：GEMINI_API_KEY
+  - 呼叫方式：GEMINI_API_KEY="<key>" gemini -m gemini-3.1-flash-lite-preview --approval-mode=yolo -p "<prompt>"
   - 入口檔：GEMINI.md（品質硬規則已內嵌，不需額外載入）
 - Implementation agent：Codex CLI（或 Claude 自行實作，視任務規模）
-  - 模型：gpt-5.4（預設），有問題時可降級至 gpt-5.3-codex，若仍無法解決則動用 gpt-5.4-mini
-  - 認證方式：由 CLI 內部 OAuth 處理（若未登入請先執行 codex login），不依賴 OPENAI_API_KEY
-  - 呼叫方式：codex -m gpt-5.4 --full-auto -p "<prompt>"
   - 入口檔：CODEX.md
 
 ## 5. 工作規範

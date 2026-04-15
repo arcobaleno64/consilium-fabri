@@ -194,15 +194,67 @@ def validate_prompt_case_sync(root: Path) -> List[str]:
     return []
 
 
+def extract_h2_headers(text: str) -> list[str]:
+    """Extract all H2 headers (lines starting with ##) from markdown text."""
+    headers = []
+    for line in text.splitlines():
+        if line.startswith("## "):
+            headers.append(line[3:].strip())
+    return headers
+
+
+def validate_readme_structure(root: Path) -> List[str]:
+    """Validate README.md and README.zh-TW.md have matching H2 section count and structure."""
+    errors: List[str] = []
+    
+    # Check root level
+    readme_en = root / "README.md"
+    readme_zh = root / "README.zh-TW.md"
+    
+    if not readme_en.exists():
+        errors.append("Missing README.md in root")
+    if not readme_zh.exists():
+        errors.append("Missing README.zh-TW.md in root")
+    
+    if readme_en.exists() and readme_zh.exists():
+        en_headers = extract_h2_headers(readme_en.read_text(encoding="utf-8"))
+        zh_headers = extract_h2_headers(readme_zh.read_text(encoding="utf-8"))
+        
+        # For bilingual docs, verify section count matches (not text content)
+        if len(en_headers) != len(zh_headers):
+            errors.append(
+                f"README structure mismatch in root: EN has {len(en_headers)} sections vs ZH has {len(zh_headers)} sections"
+            )
+    
+    # Check template level
+    template_readme_en = root / "template" / "README.md"
+    template_readme_zh = root / "template" / "README.zh-TW.md"
+    
+    if template_readme_en.exists() and template_readme_zh.exists():
+        template_en_headers = extract_h2_headers(template_readme_en.read_text(encoding="utf-8"))
+        template_zh_headers = extract_h2_headers(template_readme_zh.read_text(encoding="utf-8"))
+        
+        if len(template_en_headers) != len(template_zh_headers):
+            errors.append(
+                f"README structure mismatch in template: EN has {len(template_en_headers)} sections vs ZH has {len(template_zh_headers)} sections"
+            )
+    
+    return errors
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Validate workflow contract sync across root, template, and Obsidian docs.")
     parser.add_argument("--root", default=".", help="Repository root. Default: current directory")
+    parser.add_argument("--check-readme", action="store_true", help="Validate README.md and README.zh-TW.md H2 structure consistency")
     args = parser.parse_args(argv)
 
     root = Path(args.root).resolve()
     errors = validate_exact_sync(root)
     errors.extend(validate_required_phrases(root))
     errors.extend(validate_prompt_case_sync(root))
+    
+    if args.check_readme:
+        errors.extend(validate_readme_structure(root))
 
     if errors:
         print("[ERROR] Contract validation failed")

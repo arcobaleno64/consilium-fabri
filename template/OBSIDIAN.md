@@ -27,11 +27,12 @@
 ## Workflow 摘要
 
 - Research artifact 是 fact-only 契約，不得包含 `Recommendation` 或 solution 設計。
-- `blocked` 任務恢復前，必須先有 `Status: applied` 的 improvement artifact。
+- `blocked` 任務恢復前，必須先有 `Status: applied` 的 improvement artifact；status.json 新增 `Gate_E_passed`, `Gate_E_evidence`, `Gate_E_timestamp` 欄位追蹤 Gate E 驗證狀態。
+- README 結構規則（見 `docs/orchestration.md` §10）：新專案必須同時產生 README.md 與 README.zh-TW.md，結構須遵循 template 並只調整內容；`guard_contract_validator.py` 提供 `--check-readme` 檢查合規性。
 - plan/code scope drift 預設由 status guard 視為 fail；若 task 專屬檔案位於 dirty worktree，guard 會直接比對實際 git changed files；若 task 已 clean，則可用帶有 pinned commits、Changed Files Snapshot 與 Snapshot SHA256 的 `commit-range` diff evidence 重放 historical diff、在 git objects 遺失時改走 archive fallback，或用 `github-pr` evidence 透過 GitHub PR files API 重建 changed files。private / rate-limited GitHub 存取可使用 `GITHUB_TOKEN` / `GH_TOKEN`；只有附顯式 decision waiver 時才可使用 `--allow-scope-drift`，且僅能降級真正的 drift。
 - `CLAUDE.md` / `GEMINI.md` / `CODEX.md` 有變更時，必須同步更新 `artifacts/scripts/drills/prompt_regression_cases.json`。
 - workflow 規則變更後，必須同步更新 root、`template/` 與 Obsidian 入口，並通過 contract guard。
-- 紅隊演練入口是 `docs/red_team_runbook.md`，重跑命令是 `python artifacts/scripts/run_red_team_suite.py`。
+- 紅隊演練入口是 `docs/red_team_runbook.md`，重跑命令是 `python artifacts/scripts/run_red_team_suite.py`；靜態案例現新增邊界版本測試（如 RT-004B）確保防治邏輯合理。
 - Prompt regression 固定入口是 `python artifacts/scripts/prompt_regression_validator.py --root .`，固定測例在 `artifacts/scripts/drills/prompt_regression_cases.json`。
 - 固定 Prompt regression 測例目前涵蓋 artifact-only truth/completion、workflow sync completeness、research blocked preconditions、implementation summary discipline、conflict-to-decision routing、decision schema integrity、external failure STOP、decision-gated scope waiver、historical diff evidence contract、pinned diff evidence integrity、GitHub provider-backed diff evidence 與 archive retention fallback。
 

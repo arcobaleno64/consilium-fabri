@@ -1018,6 +1018,27 @@ def write_transition(artifacts_root: Path, task_id: str, from_state: str, to_sta
     status["missing_artifacts"] = sorted(required - existing)
     if to_state != "blocked":
         status["blocked_reason"] = ""
+    # Auto-populate Gate_E when transitioning to "done" with improvement artifact
+    if to_state == "done" and "improvement" in existing:
+        improvement_paths = find_artifact_paths(artifacts_root, task_id, "improvement")
+        for imp_path in improvement_paths:
+            imp_text = load_text(imp_path)
+            if "Status: applied" in imp_text or "Status:applied" in imp_text:
+                from datetime import datetime, timezone
+                now = datetime.now(timezone.utc).astimezone()  # Convert to local then explicit +08:00
+                gate_e_timestamp = now.strftime("%Y-%m-%dT%H:%M:%S+08:00")
+                status["Gate_E_passed"] = True
+                status["Gate_E_evidence"] = [
+                    f"artifacts/improvement/{imp_path.name}",
+                    *[f"artifacts/decisions/{d.name}" for d in find_artifact_paths(artifacts_root, task_id, "decision")]
+                ]
+                status["Gate_E_timestamp"] = gate_e_timestamp
+                break
+        else:
+            # No applied improvement found, mark Gate_E as not passed if it was blocked
+            if from_state == "blocked":
+                status["Gate_E_passed"] = False
+                status["Gate_E_evidence"] = []
     status_path.write_text(json.dumps(status, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return ValidationResult([], transition_result.warnings + full_result.warnings + target_presence.warnings)
 

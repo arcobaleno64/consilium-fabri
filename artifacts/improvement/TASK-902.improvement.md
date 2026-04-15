@@ -9,6 +9,11 @@
 - Status: applied
 - Last Updated: 2026-04-11T10:15:00+08:00
 
+## Risk Analysis
+- Predicted Risks: [R1, R2]   # TASK-902.plan.md premortem 
+- Realized Risks: [R1]         # R1: Status: applied 缺失
+- Missed Risks: []
+
 ## 1. What Happened
 在 blocked / resume drill 中，若只記錄 blocked_reason 而沒有系統層級改善，下一次相同錯誤仍可能繞過流程。
 

@@ -334,7 +334,8 @@ def case_rt_007() -> CaseResult:
 def case_rt_008() -> CaseResult:
     def mutation(temp_root: Path) -> None:
         path = temp_root / "OBSIDIAN.md"
-        text = path.read_text(encoding="utf-8").replace("- `blocked` 任務恢復前，必須先有 `Status: applied` 的 improvement artifact。\n", "")
+        # Replace "Status: applied" with a neutral string so the required phrase is absent
+        text = path.read_text(encoding="utf-8").replace("Status: applied", "Status: draft")
         path.write_text(text, encoding="utf-8")
     return run_contract_case("OBSIDIAN.md missing required phrase: Status: applied", mutation, "Obsidian drift", "RT-008", "Obsidian missing Gate E phrase")
 
@@ -342,7 +343,9 @@ def case_rt_008() -> CaseResult:
 def case_rt_009() -> CaseResult:
     def mutation(temp_root: Path) -> None:
         path = temp_root / "BOOTSTRAP_PROMPT.md"
-        text = path.read_text(encoding="utf-8").replace("4. 執行 `python artifacts/scripts/guard_contract_validator.py` 確認 root / template / Obsidian 未漂移\n", "")
+        # Remove all lines containing guard_contract_validator.py so the required phrase is absent
+        lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+        text = "".join(line for line in lines if "guard_contract_validator.py" not in line)
         path.write_text(text, encoding="utf-8")
     return run_contract_case("BOOTSTRAP_PROMPT.md missing required phrase: guard_contract_validator.py", mutation, "Bootstrap missing contract guard", "RT-009", "bootstrap lost contract-guard step")
 
