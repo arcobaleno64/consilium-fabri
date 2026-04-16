@@ -11,11 +11,13 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 
-__version__ = "0.7.0"
+__version__ = "0.8.0"
+TAIPEI_TZ = timezone(timedelta(hours=8))
 
 STATE_ORDER = ["drafted", "researched", "planned", "coding", "testing", "verifying", "done", "blocked"]
 VALID_STATES: Set[str] = set(STATE_ORDER)
@@ -82,18 +84,17 @@ ARTIFACT_ALLOWED_STATUSES = {
     "improvement": {"draft", "approved", "applied"},
 }
 
-TASK_ID_PATTERN = re.compile(r"^TASK-\d{3,}$")
+TASK_ID_PATTERN = re.compile(r"^TASK(?:-LITE)?-\d{3,}$")
 TAIPEI_TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?\+08:00$")
 CITATION_PATTERN = re.compile(r"(https?://\S+|`gh api [^`]+`|`[^`\n]+\.(?:md|json|txt|py|ps1|csproj)[^`\n]*`)", re.IGNORECASE)
 LIST_ITEM_PATTERN = re.compile(r"^(?:- |\d+\. )")
+TASK_INLINE_FLAG_PATTERN = re.compile(r"^\s*(?:-\s*)?([A-Za-z_][A-Za-z0-9_\- ]*)\s*:\s*(.+?)\s*$")
 GITHUB_REPO_REF_PATTERNS = (
     re.compile(r"https?://github\.com/([^/\s]+)/([^/\s`#?]+)/?", re.IGNORECASE),
     re.compile(r"https?://raw\.githubusercontent\.com/([^/\s]+)/([^/\s`#?]+)/", re.IGNORECASE),
 )
 FILE_PATH_TOKEN_PATTERN = re.compile(r"\b(?:[A-Za-z]:[\\/])?[A-Za-z0-9_.\-\\/]+\.[A-Za-z0-9]{1,10}\b")
 COMMIT_SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$", re.IGNORECASE)
-PREMORTEM_MIN_RISKS_DEFAULT = 2
-PREMORTEM_MIN_RISKS_HIGH = 4
 PREMORTEM_REQUIRED_FIELDS = ("Risk:", "Trigger:", "Detection:", "Mitigation:", "Severity:")
 PREMORTEM_BANNED_PHRASES = ("風險低", "應該沒問題", "可能有風險", "視情況而定", "再觀察", "注意一下", "需評估", "有待確認")
 HIGH_RISK_KEYWORDS = ("security", "安全", "dependency", "依賴", "upstream pr", "upstream", "cross-repo", "cross repo", "跨 repo")
@@ -102,12 +103,66 @@ DIFF_EVIDENCE_SUPPORTED_TYPES = {"commit-range", "github-pr"}
 SCOPE_WAIVER_EXCEPTION_TYPE = "allow-scope-drift"
 GITHUB_API_VERSION = "2022-11-28"
 MAX_GITHUB_PR_FILES_PAGES = 30
+LEGACY_STATE_ALIASES = {
+    "research_ready": "researched",
+    "plan_ready": "planned",
+    "code_ready": "coding",
+    "verify_ready": "verifying",
+}
+RESEARCH_SOURCES_ENTRY_PATTERN = re.compile(r"^\[(\d+)\]\s+.+\..+https?://\S+\s+\(\d{4}-\d{2}-\d{2}\s+retrieved\)$")
+RESEARCH_SOURCES_URL_PATTERN = re.compile(r"https?://\S+")
+RESEARCH_SOURCES_PARTIAL_DATE_PATTERN = re.compile(r"\((\d{4}(?:-\d{2})?(?:-\d{2})?)\s+retrieved\)$")
+MAPPING_TO_PLAN_ENTRY_PATTERN = re.compile(
+    r'^- plan_item:\s*\d+\.\d+,\s*status:\s*(done|partial|skipped),\s*evidence:\s*"[^"\n]+"\s*$'
+)
+STRUCTURED_CHECKLIST_FIELDS = ("criterion", "method", "evidence", "result", "reviewer", "timestamp")
+PREMORTEM_MISSING_PATTERNS = (
+    "## risks section not found",
+    "section is empty or trivially dismissed",
+)
+RECONCILE_PROTECTED_FIELDS = {"Gate_E_passed", "Gate_E_evidence", "Gate_E_timestamp"}
+OVERRIDE_STATUS_FLAG = "override_log_required"
+DEFAULT_STATUS_OWNER = "Claude"
+DEFAULT_STATUS_NEXT_AGENT = "Claude"
+BLOCKED_STATUS_NEXT_AGENT = "User"
+LIGHTWEIGHT_REQUIRED_ARTIFACTS = {"task", "research", "code", "status"}
+DECISION_WAIVER_GATES = {
+    "Gate_A": "A",
+    "Gate_B": "B",
+    "Gate_C": "C",
+    "Gate_D": "D",
+    "Gate_E": "E",
+}
+AUTO_CLASSIFY_FULL = "full"
+AUTO_CLASSIFY_LIGHTWEIGHT = "lightweight"
+
+
+@dataclass(frozen=True)
+class PremortemPolicy:
+    task_type: str
+    keyword_regex: str
+    min_risks: int
+    min_critical: int
+
+
+PREMORTEM_POLICIES: Tuple[PremortemPolicy, ...] = (
+    PremortemPolicy("hotfix", r"\bhotfix\b|\bpatch\b", 1, 0),
+    PremortemPolicy("research", r"\bresearch\b|\banalysis\b", 2, 1),
+    PremortemPolicy("planning", r"\bplan\b|\bdesign\b", 3, 1),
+    PremortemPolicy("code", "(default)", 3, 1),
+)
+PREMORTEM_POLICY_PATTERNS = {
+    policy.task_type: re.compile(policy.keyword_regex, re.IGNORECASE)
+    for policy in PREMORTEM_POLICIES
+    if policy.keyword_regex != "(default)"
+}
 
 
 @dataclass
 class ValidationResult:
     errors: List[str]
     warnings: List[str]
+    active_waivers: List[str] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -120,6 +175,18 @@ class ScopeCheckResult:
     waiver_candidate_errors: List[str]
     warnings: List[str]
     drift_files: Set[str]
+
+
+@dataclass
+class ValidationError:
+    severity: str
+    message: str
+
+
+@dataclass
+class AutoClassificationResult:
+    validation_mode: str
+    warnings: List[str]
 
 
 class GuardError(Exception):
@@ -153,6 +220,43 @@ def load_text(path: Path) -> str:
         return path.read_text(encoding="utf-8")
     except FileNotFoundError as exc:
         raise GuardError(f"Missing text file: {path}") from exc
+
+
+def current_taipei_timestamp() -> str:
+    return datetime.now(TAIPEI_TZ).isoformat(timespec="seconds")
+
+
+def write_json(path: Path, payload: object) -> None:
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def parse_taipei_datetime(value: str) -> Optional[datetime]:
+    if not TAIPEI_TIMESTAMP_PATTERN.match(str(value).strip()):
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).strip())
+    except ValueError:
+        return None
+    return parsed.astimezone(TAIPEI_TZ)
+
+
+def override_log_path(artifacts_root: Path, task_id: str) -> Path:
+    return artifacts_root / ARTIFACT_DIRS["status"] / f"{task_id}.override_log.json"
+
+
+def load_override_log(path: Path) -> List[dict]:
+    if not path.exists():
+        return []
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise GuardError(f"Invalid JSON in {path}: {exc}") from exc
+    if not isinstance(payload, list):
+        raise GuardError(f"Invalid override log in {path}: expected a JSON array")
+    for index, entry in enumerate(payload, start=1):
+        if not isinstance(entry, dict):
+            raise GuardError(f"Invalid override log in {path}: entry #{index} must be an object")
+    return payload
 
 
 def extract_section(text: str, heading: str) -> str:
@@ -232,6 +336,31 @@ def parse_csv_file_tokens(value: str) -> Set[str]:
 def compute_snapshot_sha256(paths: Set[str]) -> str:
     payload = "\n".join(sorted(paths))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def extract_task_inline_flags(task_text: str) -> Dict[str, str]:
+    values: Dict[str, str] = {}
+    for raw_line in task_text.splitlines():
+        match = TASK_INLINE_FLAG_PATTERN.match(raw_line)
+        if not match:
+            continue
+        key = match.group(1).strip().lower().replace(" ", "_")
+        values[key] = match.group(2).strip()
+    return values
+
+
+def task_requests_lightweight(task_text: str) -> bool:
+    value = extract_task_inline_flags(task_text).get("lightweight", "")
+    return value.strip().lower() == "true"
+
+
+def task_declares_premortem(task_text: str) -> bool:
+    return "premortem" in extract_task_inline_flags(task_text)
+
+
+def plan_has_non_empty_risks(plan_text: str) -> bool:
+    risks_text = extract_section(plan_text, "Risks")
+    return bool(risks_text and risks_text.strip().lower() not in {"", "none", "n/a"})
 
 
 def resolve_workspace_relative_path(repo_root: Path, raw_path: str) -> Tuple[Optional[str], Optional[Path], Optional[str]]:
@@ -700,35 +829,218 @@ def validate_taipei_timestamp(value: str, label: str) -> List[str]:
     return [] if TAIPEI_TIMESTAMP_PATTERN.match(str(value).strip()) else [f"{label} must be Asia/Taipei ISO 8601 with +08:00, got '{value}'"]
 
 
+def resolve_status_state(status: dict) -> Optional[str]:
+    raw_state = str(status.get("state", "")).strip()
+    if raw_state:
+        return raw_state
+    raw_legacy_state = str(status.get("current_state", "")).strip()
+    if not raw_legacy_state:
+        return None
+    return LEGACY_STATE_ALIASES.get(raw_legacy_state, raw_legacy_state)
+
+
+def status_uses_legacy_schema(status: dict) -> bool:
+    return "state" not in status and "current_state" in status
+
+
+def append_auto_upgrade_log(status_path: Path, status: dict, reason: str) -> None:
+    timestamp = current_taipei_timestamp()
+    log_entries = status.setdefault("auto_upgrade_log", [])
+    if not isinstance(log_entries, list):
+        log_entries = []
+        status["auto_upgrade_log"] = log_entries
+    log_entries.append(
+        {
+            "timestamp": timestamp,
+            "reason": reason,
+            "from_mode": AUTO_CLASSIFY_LIGHTWEIGHT,
+            "to_mode": AUTO_CLASSIFY_FULL,
+        }
+    )
+    status["last_updated"] = timestamp
+    write_json(status_path, status)
+
+
+def resolve_validation_mode(artifacts_root: Path, task_id: str, auto_classify: bool) -> AutoClassificationResult:
+    if not auto_classify or not TASK_ID_PATTERN.match(task_id):
+        return AutoClassificationResult(AUTO_CLASSIFY_FULL, [])
+
+    status_path = artifact_path(artifacts_root, task_id, "status")
+    status = load_json(status_path)
+    task_path = artifact_path(artifacts_root, task_id, "task")
+    task_text = load_text(task_path)
+    plan_path = artifact_path(artifacts_root, task_id, "plan")
+    plan_exists = plan_path.exists()
+    state = resolve_status_state(status)
+    warnings: List[str] = []
+    validation_mode = AUTO_CLASSIFY_FULL
+
+    if task_requests_lightweight(task_text):
+        validation_mode = AUTO_CLASSIFY_LIGHTWEIGHT
+    elif not plan_exists and state in {"drafted", "researched"}:
+        validation_mode = AUTO_CLASSIFY_LIGHTWEIGHT
+        warnings.append(f"lightweight candidate: no plan artifact and state is {state}")
+
+    upgrade_reasons: List[str] = []
+    if validation_mode == AUTO_CLASSIFY_LIGHTWEIGHT:
+        if task_declares_premortem(task_text):
+            upgrade_reasons.append("task artifact declares premortem")
+        if plan_exists and plan_has_non_empty_risks(load_text(plan_path)):
+            upgrade_reasons.append("plan artifact contains non-empty ## Risks")
+    if upgrade_reasons:
+        reason = "; ".join(upgrade_reasons)
+        append_auto_upgrade_log(status_path, status, reason)
+        warnings.append(f"[AUTO-UPGRADE] lightweight classification escalated to full: {reason}")
+        validation_mode = AUTO_CLASSIFY_FULL
+
+    return AutoClassificationResult(validation_mode, warnings)
+
+
+def research_citations_are_blocking(status: dict) -> bool:
+    return True
+
+
+def validate_research_citations(task_id: str, artifact_path: Path) -> List[ValidationError]:
+    findings: List[ValidationError] = []
+    section = extract_section(load_text(artifact_path), "Sources")
+    if not section:
+        return [ValidationError("CRITICAL", "missing required ## Sources section")]
+    source_lines = [line.strip() for line in section.splitlines() if line.strip()]
+    if not source_lines or source_lines == ["None"]:
+        return [ValidationError("CRITICAL", "## Sources must contain at least 2 entries")]
+    if len(source_lines) < 2:
+        findings.append(ValidationError("MAJOR", "## Sources must contain at least 2 entries"))
+    for line in source_lines:
+        if RESEARCH_SOURCES_ENTRY_PATTERN.match(line):
+            continue
+        if RESEARCH_SOURCES_URL_PATTERN.search(line):
+            if RESEARCH_SOURCES_PARTIAL_DATE_PATTERN.search(line) or "retrieved" in line:
+                findings.append(
+                    ValidationError(
+                        "MINOR",
+                        f"source entry must end with '(YYYY-MM-DD retrieved)': {line}",
+                    )
+                )
+            else:
+                findings.append(
+                    ValidationError(
+                        "MAJOR",
+                        f"source entry must match '[N] Author/Org. \"Title.\" URL (YYYY-MM-DD retrieved)': {line}",
+                    )
+                )
+            continue
+        findings.append(
+            ValidationError(
+                "MAJOR",
+                f"source entry must match '[N] Author/Org. \"Title.\" URL (YYYY-MM-DD retrieved)': {line}",
+            )
+        )
+    return findings
+
+
 def validate_status_schema(status: dict, expected_task_id: str) -> ValidationResult:
     errors: List[str] = []
     warnings: List[str] = []
-    required_keys = {"task_id", "state", "current_owner", "next_agent", "required_artifacts", "available_artifacts", "missing_artifacts", "blocked_reason", "last_updated"}
-    missing = required_keys - set(status.keys())
-    if missing:
-        errors.append(f"status.json missing required keys: {sorted(missing)}")
     if status.get("task_id") != expected_task_id:
         errors.append(f"status.json task_id mismatch. Expected {expected_task_id}, got {status.get('task_id')}")
-    state = status.get("state")
+    state = resolve_status_state(status)
     if state not in VALID_STATES:
         errors.append(f"Invalid state: {state!r}")
-    for key in ("required_artifacts", "available_artifacts", "missing_artifacts"):
-        value = status.get(key)
-        if not isinstance(value, list):
-            errors.append(f"status.json field '{key}' must be a list")
-            continue
-        unknown = sorted(set(value) - set(ARTIFACT_DIRS.keys()))
-        if unknown:
-            errors.append(f"status.json field '{key}' contains unknown artifacts: {unknown}")
-    if state == "blocked" and not str(status.get("blocked_reason", "")).strip():
-        errors.append("blocked state requires non-empty blocked_reason")
-    if state != "blocked" and str(status.get("blocked_reason", "")).strip():
-        warnings.append("blocked_reason is non-empty while state is not blocked")
+    if status_uses_legacy_schema(status):
+        required_keys = {"task_id", "current_state", "owner", "last_updated"}
+        missing = required_keys - set(status.keys())
+        if missing:
+            errors.append(f"status.json missing required keys: {sorted(missing)}")
+        if not str(status.get("owner", "")).strip():
+            errors.append("status.json field 'owner' must be non-empty")
+        artifacts_value = status.get("artifacts")
+        if artifacts_value is not None and not isinstance(artifacts_value, dict):
+            errors.append("status.json field 'artifacts' must be an object when present")
+        blockers = status.get("blockers", [])
+        if state == "blocked":
+            if not isinstance(blockers, list) or not any(str(item).strip() for item in blockers):
+                errors.append("legacy blocked state requires non-empty blockers")
+        elif isinstance(blockers, list) and any(str(item).strip() for item in blockers):
+            warnings.append("blockers is non-empty while current_state is not blocked")
+    else:
+        required_keys = {"task_id", "state", "current_owner", "next_agent", "required_artifacts", "available_artifacts", "missing_artifacts", "blocked_reason", "last_updated"}
+        missing = required_keys - set(status.keys())
+        if missing:
+            errors.append(f"status.json missing required keys: {sorted(missing)}")
+        for key in ("required_artifacts", "available_artifacts", "missing_artifacts"):
+            value = status.get(key)
+            if not isinstance(value, list):
+                errors.append(f"status.json field '{key}' must be a list")
+                continue
+            unknown = sorted(set(value) - set(ARTIFACT_DIRS.keys()))
+            if unknown:
+                errors.append(f"status.json field '{key}' contains unknown artifacts: {unknown}")
+        if state == "blocked" and not str(status.get("blocked_reason", "")).strip():
+            errors.append("blocked state requires non-empty blocked_reason")
+        if state != "blocked" and str(status.get("blocked_reason", "")).strip():
+            warnings.append("blocked_reason is non-empty while state is not blocked")
+        decision_waivers = status.get("decision_waivers")
+        if decision_waivers is not None:
+            if not isinstance(decision_waivers, list):
+                errors.append("status.json field 'decision_waivers' must be a list")
+            else:
+                now = datetime.now(TAIPEI_TZ)
+                required_waiver_fields = ("gate", "reason", "approver", "expires")
+                for index, entry in enumerate(decision_waivers, start=1):
+                    if not isinstance(entry, dict):
+                        errors.append(f"status.json decision_waivers[{index}] must be an object")
+                        continue
+                    missing_fields = [
+                        field_name
+                        for field_name in required_waiver_fields
+                        if not str(entry.get(field_name, "")).strip()
+                    ]
+                    if missing_fields:
+                        errors.append(
+                            f"status.json decision_waivers[{index}] missing required fields: {missing_fields}"
+                        )
+                        continue
+                    gate = str(entry.get("gate", "")).strip()
+                    if gate not in DECISION_WAIVER_GATES:
+                        errors.append(
+                            f"status.json decision_waivers[{index}] gate must be one of {sorted(DECISION_WAIVER_GATES)}, got '{gate}'"
+                        )
+                    expires = str(entry.get("expires", "")).strip()
+                    errors.extend(
+                        validate_taipei_timestamp(expires, f"status.json decision_waivers[{index}] expires")
+                    )
+                    expires_dt = parse_taipei_datetime(expires)
+                    if expires_dt is not None and expires_dt <= now:
+                        errors.append(
+                            f"status.json decision_waivers[{index}] waiver expired for {gate} at {expires}"
+                        )
+        auto_upgrade_log = status.get("auto_upgrade_log")
+        if auto_upgrade_log is not None:
+            if not isinstance(auto_upgrade_log, list):
+                errors.append("status.json field 'auto_upgrade_log' must be a list")
+            else:
+                for index, entry in enumerate(auto_upgrade_log, start=1):
+                    if not isinstance(entry, dict):
+                        errors.append(f"status.json auto_upgrade_log[{index}] must be an object")
+                        continue
+                    for field_name in ("timestamp", "reason", "from_mode", "to_mode"):
+                        if not str(entry.get(field_name, "")).strip():
+                            errors.append(
+                                f"status.json auto_upgrade_log[{index}] missing required field '{field_name}'"
+                            )
+                    timestamp = str(entry.get("timestamp", "")).strip()
+                    if timestamp:
+                        errors.extend(
+                            validate_taipei_timestamp(
+                                timestamp,
+                                f"status.json auto_upgrade_log[{index}] timestamp",
+                            )
+                        )
     errors.extend(validate_taipei_timestamp(status.get("last_updated", ""), "status.json last_updated"))
     return ValidationResult(errors, warnings)
 
 
-def validate_research_artifact(text: str, path: Path) -> ValidationResult:
+def validate_research_artifact(task_id: str, text: str, path: Path) -> ValidationResult:
     errors: List[str] = []
     warnings: List[str] = []
     if "## Recommendation" in text:
@@ -747,6 +1059,12 @@ def validate_research_artifact(text: str, path: Path) -> ValidationResult:
     constraints = extract_section(text, "Constraints For Implementation")
     if not constraints or constraints.lower() == "none":
         errors.append(f"{path.name}: ## Constraints For Implementation must not be empty")
+    status_path = artifact_path(path.parents[1], task_id, "status")
+    status_payload = load_json(status_path)
+    citation_findings = validate_research_citations(task_id, path)
+    target = errors if research_citations_are_blocking(status_payload) else warnings
+    for finding in citation_findings:
+        target.append(f"{path.name}: [{finding.severity}] {finding.message}")
     for mixed_entry in detect_mixed_github_sources(text):
         warnings.append(
             f"{path.name}: possible mixed truth source detected for repo '{mixed_entry}' (upstream/fork may be mixed)"
@@ -769,6 +1087,64 @@ def validate_improvement_artifact(text: str, path: Path, task_id: str) -> Valida
         if not value or value.lower() == "none":
             errors.append(f"{path.name}: ## {heading} must not be empty")
     return ValidationResult(errors, [])
+
+
+def validate_code_mapping_to_plan(text: str, path: Path) -> ValidationResult:
+    section = extract_section(text, "Mapping To Plan")
+    if not section:
+        return ValidationResult([], [])
+    bullet_lines = [line.strip() for line in section.splitlines() if line.strip().startswith("- ")]
+    if not any(line.startswith("- plan_item:") for line in bullet_lines):
+        return ValidationResult([], [])
+    warnings: List[str] = []
+    for line in bullet_lines:
+        if MAPPING_TO_PLAN_ENTRY_PATTERN.match(line):
+            continue
+        warnings.append(
+            f"{path.name}: Mapping To Plan entry must match "
+            "\"- plan_item: {N.N}, status: done|partial|skipped, evidence: \\\"...\\\"\": "
+            f"{line}"
+        )
+    return ValidationResult([], warnings)
+
+
+def parse_structured_checklist_fields(block_text: str) -> Dict[str, str]:
+    fields: Dict[str, str] = {}
+    for raw_line in block_text.splitlines():
+        line = raw_line.strip()
+        match = re.match(r"^- \*\*([^*]+)\*\*:\s*(.+)$", line)
+        if not match:
+            match = re.match(r"^- ([^:]+):\s*(.+)$", line)
+        if match:
+            fields[match.group(1).strip().lower()] = match.group(2).strip()
+    return fields
+
+
+def validate_verify_checklist_schema(text: str, path: Path) -> ValidationResult:
+    section = extract_section(text, "Acceptance Criteria Checklist")
+    if not section:
+        return ValidationResult([], [])
+    warnings: List[str] = []
+    blocks = [block.strip() for block in re.split(r"\n\s*\n", section) if block.strip()]
+    for block in blocks:
+        fields = parse_structured_checklist_fields(block)
+        if not fields:
+            continue
+        if not set(fields).intersection({"criterion", "method", "reviewer", "timestamp"}):
+            continue
+        item_label = fields.get("criterion") or block.splitlines()[0].strip()
+        for field in STRUCTURED_CHECKLIST_FIELDS:
+            if not fields.get(field):
+                warnings.append(
+                    f"{path.name}: Acceptance Criteria Checklist structured item '{item_label}' missing {field} field"
+                )
+        timestamp_value = fields.get("timestamp")
+        if timestamp_value:
+            for error in validate_taipei_timestamp(timestamp_value, f"{path.name} checklist timestamp"):
+                warnings.append(
+                    f"{path.name}: Acceptance Criteria Checklist structured item '{item_label}' has invalid timestamp: {error}"
+                )
+    return ValidationResult([], warnings)
 
 
 def validate_markdown_artifact(path: Path, artifact_type: str, task_id: str) -> ValidationResult:
@@ -800,8 +1176,14 @@ def validate_markdown_artifact(path: Path, artifact_type: str, task_id: str) -> 
     if artifact_type == "verify" and not re.search(r"## Pass Fail Result\s+\n?\s*(pass|fail)\b", text, re.IGNORECASE):
         errors.append(f"{path.name} does not clearly declare Pass Fail Result as pass/fail")
     if artifact_type == "research":
-        result = validate_research_artifact(text, path)
+        result = validate_research_artifact(task_id, text, path)
         errors.extend(result.errors)
+        warnings.extend(result.warnings)
+    if artifact_type == "code":
+        result = validate_code_mapping_to_plan(text, path)
+        warnings.extend(result.warnings)
+    if artifact_type == "verify":
+        result = validate_verify_checklist_schema(text, path)
         warnings.extend(result.warnings)
     if artifact_type == "improvement":
         result = validate_improvement_artifact(text, path, task_id)
@@ -817,6 +1199,25 @@ def verify_result_is_pass(verify_path: Path) -> bool:
 def plan_ready_for_coding(plan_path: Path) -> bool:
     match = re.search(r"## Ready For Coding\s+\n?\s*(yes|no)\b", load_text(plan_path), re.IGNORECASE)
     return bool(match and match.group(1).lower() == "yes")
+
+
+def extract_task_title(task_path: Optional[Path]) -> str:
+    if not task_path or not task_path.exists():
+        return ""
+    first_line = load_text(task_path).splitlines()[0].strip()
+    match = re.match(r"^#\s*Task:\s*(.+)$", first_line)
+    return match.group(1).strip() if match else ""
+
+
+def classify_premortem_policy(task_path: Optional[Path]) -> PremortemPolicy:
+    task_title = extract_task_title(task_path)
+    for policy in PREMORTEM_POLICIES:
+        if policy.keyword_regex == "(default)":
+            continue
+        pattern = PREMORTEM_POLICY_PATTERNS[policy.task_type]
+        if pattern.search(task_title):
+            return policy
+    return PREMORTEM_POLICIES[-1]
 
 
 def task_is_high_risk(task_path: Optional[Path], plan_text: str) -> bool:
@@ -836,10 +1237,13 @@ def validate_premortem(plan_path: Path, task_path: Optional[Path]) -> Validation
     if risks_text.lower() in ("none", "n/a", "low risk", ""):
         errors.append(f"{plan_path.name}: premortem check failed — ## Risks section is empty or trivially dismissed")
         return ValidationResult(errors, warnings)
+    policy = classify_premortem_policy(task_path)
     risk_count = len(set(re.findall(r"\bR(\d+)\b", risks_text)))
-    min_risks = PREMORTEM_MIN_RISKS_HIGH if task_is_high_risk(task_path, text) else PREMORTEM_MIN_RISKS_DEFAULT
-    if risk_count < min_risks:
-        errors.append(f"{plan_path.name}: premortem requires at least {min_risks} numbered risks (R1, R2, ...), found {risk_count}")
+    if risk_count < policy.min_risks:
+        errors.append(
+            f"{plan_path.name}: premortem task_type='{policy.task_type}' requires at least "
+            f"{policy.min_risks} numbered risks (R1, R2, ...), found {risk_count}"
+        )
     for field in PREMORTEM_REQUIRED_FIELDS:
         if field not in risks_text:
             errors.append(f"{plan_path.name}: premortem missing required field '{field}'")
@@ -847,12 +1251,14 @@ def validate_premortem(plan_path: Path, task_path: Optional[Path]) -> Validation
     for severity in severity_values:
         if severity.strip().lower() not in ("blocking", "non-blocking"):
             errors.append(f"{plan_path.name}: premortem Severity must be 'blocking' or 'non-blocking', got '{severity.strip()}'")
-    has_blocking = any(value.strip().lower() == "blocking" for value in severity_values)
-    if task_is_high_risk(task_path, text):
-        if not has_blocking:
-            errors.append(f"{plan_path.name}: high-risk premortem must include at least one blocking risk")
-    elif not has_blocking and risk_count > 0:
-        warnings.append(f"{plan_path.name}: premortem has no blocking risk — review whether this is appropriate")
+    blocking_count = sum(1 for value in severity_values if value.strip().lower() == "blocking")
+    if blocking_count < policy.min_critical:
+        errors.append(
+            f"{plan_path.name}: premortem task_type='{policy.task_type}' requires at least "
+            f"{policy.min_critical} blocking risks, found {blocking_count}"
+        )
+    elif policy.min_critical == 0 and blocking_count == 0 and task_is_high_risk(task_path, text):
+        warnings.append(f"{plan_path.name}: high-risk signals detected but task_type='{policy.task_type}' does not require blocking risk")
     for phrase in PREMORTEM_BANNED_PHRASES:
         if phrase in risks_text:
             warnings.append(f"{plan_path.name}: premortem contains potentially vague phrase '{phrase}' — ensure it has concrete trigger/detection/mitigation")
@@ -863,7 +1269,9 @@ def compute_existing_artifacts(artifacts_root: Path, task_id: str) -> Set[str]:
     return {artifact_type for artifact_type in ARTIFACT_DIRS if find_artifact_paths(artifacts_root, task_id, artifact_type)}
 
 
-def state_required_artifacts(state: str, existing: Set[str]) -> Set[str]:
+def state_required_artifacts(state: str, existing: Set[str], validation_mode: str = AUTO_CLASSIFY_FULL) -> Set[str]:
+    if validation_mode == AUTO_CLASSIFY_LIGHTWEIGHT:
+        return set(LIGHTWEIGHT_REQUIRED_ARTIFACTS)
     required = set(STATE_REQUIRED_ARTIFACTS[state])
     if state in {"planned", "coding", "testing", "verifying", "done"} and "research" in existing:
         required.add("research")
@@ -872,29 +1280,119 @@ def state_required_artifacts(state: str, existing: Set[str]) -> Set[str]:
     return required
 
 
-def validate_artifact_presence(artifacts_root: Path, task_id: str, state: str, status: dict, strict_scope: bool = False) -> ValidationResult:
+def infer_state_from_artifacts(existing: Set[str]) -> str:
+    for candidate in reversed(STATE_ORDER):
+        if candidate == "blocked":
+            continue
+        if state_required_artifacts(candidate, existing).issubset(existing):
+            return candidate
+    return "drafted"
+
+
+def default_next_agent_for_state(state: str) -> str:
+    return BLOCKED_STATUS_NEXT_AGENT if state == "blocked" else DEFAULT_STATUS_NEXT_AGENT
+
+
+def build_reconcile_defaults(artifacts_root: Path, task_id: str, status: dict) -> Tuple[Dict[str, object], List[str]]:
+    existing = compute_existing_artifacts(artifacts_root, task_id)
+    inferred_state = infer_state_from_artifacts(existing)
+    warnings: List[str] = []
+    defaults: Dict[str, object] = {
+        "task_id": task_id,
+        "available_artifacts": sorted(existing),
+        "last_updated": current_taipei_timestamp(),
+    }
+    current_state = resolve_status_state(status)
+    effective_state = inferred_state
+    if current_state:
+        if current_state not in VALID_STATES:
+            warnings.append(
+                f"reconcile: status.json field 'state' has invalid value '{current_state}' while artifacts imply '{inferred_state}'"
+            )
+            effective_state = inferred_state
+        elif current_state != inferred_state:
+            warnings.append(
+                f"reconcile: state conflict detected. status.json='{current_state}' but artifacts imply '{inferred_state}'"
+            )
+            effective_state = None
+        else:
+            effective_state = current_state
+    defaults["state"] = inferred_state
+    if effective_state:
+        required = sorted(state_required_artifacts(effective_state, existing))
+        defaults["required_artifacts"] = required
+        defaults["missing_artifacts"] = sorted(set(required) - existing)
+        defaults["blocked_reason"] = "" if effective_state != "blocked" else "blocked_reason required"
+        defaults["current_owner"] = DEFAULT_STATUS_OWNER
+        defaults["next_agent"] = default_next_agent_for_state(effective_state)
+    return defaults, warnings
+
+
+def reconcile_status(artifacts_root: Path, task_id: str) -> ValidationResult:
+    status_path = artifact_path(artifacts_root, task_id, "status")
+    status = load_json(status_path)
+    defaults, warnings = build_reconcile_defaults(artifacts_root, task_id, status)
+    before = dict(status)
+    changes: List[Tuple[str, object, object]] = []
+    for key, value in defaults.items():
+        if key in RECONCILE_PROTECTED_FIELDS:
+            continue
+        if key not in status:
+            status[key] = value
+            changes.append((key, None, value))
+    if changes:
+        status_path.write_text(json.dumps(status, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    if changes:
+        print("[RECONCILE] Applied missing status fields")
+        for key, old_value, new_value in changes:
+            print(
+                f"[DIFF] {key}: before={json.dumps(old_value, ensure_ascii=False)} "
+                f"after={json.dumps(new_value, ensure_ascii=False)}"
+            )
+    else:
+        print("[RECONCILE] No missing fields to add")
+    if before.keys() != status.keys():
+        print(f"[RECONCILE] before_fields={sorted(before.keys())}")
+        print(f"[RECONCILE] after_fields={sorted(status.keys())}")
+    validation = validate_all(artifacts_root, task_id)
+    validation.warnings = warnings + validation.warnings
+    return validation
+
+
+def validate_artifact_presence(
+    artifacts_root: Path,
+    task_id: str,
+    state: str,
+    status: dict,
+    strict_scope: bool = False,
+    validation_mode: str = AUTO_CLASSIFY_FULL,
+) -> ValidationResult:
     errors: List[str] = []
     warnings: List[str] = []
     existing = compute_existing_artifacts(artifacts_root, task_id)
-    required = state_required_artifacts(state, existing)
+    required = state_required_artifacts(state, existing, validation_mode=validation_mode)
     missing_required = sorted(required - existing)
     if missing_required:
         errors.append(f"Missing required artifacts for state '{state}': {missing_required}")
-    status_available = set(status.get("available_artifacts", []))
-    status_missing = set(status.get("missing_artifacts", []))
-    status_required = set(status.get("required_artifacts", []))
-    if status_available != existing:
-        warnings.append(f"available_artifacts mismatch. status.json={sorted(status_available)} actual={sorted(existing)}")
-    if status_required != required:
-        warnings.append(f"required_artifacts mismatch. status.json={sorted(status_required)} computed={sorted(required)}")
-    computed_missing = required - existing
-    if status_missing != computed_missing:
-        warnings.append(f"missing_artifacts mismatch. status.json={sorted(status_missing)} computed={sorted(computed_missing)}")
-    for artifact_type in sorted(existing - {'status'}):
+    if not status_uses_legacy_schema(status):
+        status_available = set(status.get("available_artifacts", []))
+        status_missing = set(status.get("missing_artifacts", []))
+        status_required = set(status.get("required_artifacts", []))
+        if status_available != existing:
+            warnings.append(f"available_artifacts mismatch. status.json={sorted(status_available)} actual={sorted(existing)}")
+        if status_required != required:
+            warnings.append(f"required_artifacts mismatch. status.json={sorted(status_required)} computed={sorted(required)}")
+        computed_missing = required - existing
+        if status_missing != computed_missing:
+            warnings.append(f"missing_artifacts mismatch. status.json={sorted(status_missing)} computed={sorted(computed_missing)}")
+    artifact_types_to_validate = {"task", "research", "code"} if validation_mode == AUTO_CLASSIFY_LIGHTWEIGHT else (existing - {"status"})
+    for artifact_type in sorted(set(artifact_types_to_validate) & existing):
         for path in find_artifact_paths(artifacts_root, task_id, artifact_type):
             result = validate_markdown_artifact(path, artifact_type, task_id)
             errors.extend(result.errors)
             warnings.extend(result.warnings)
+    if validation_mode == AUTO_CLASSIFY_LIGHTWEIGHT:
+        return ValidationResult(errors, warnings)
     if state in {"coding", "testing", "verifying", "done"}:
         plan_path = artifact_path(artifacts_root, task_id, "plan")
         task_path = artifact_path(artifacts_root, task_id, "task")
@@ -923,7 +1421,7 @@ def validate_artifact_presence(artifacts_root: Path, task_id: str, state: str, s
                     warnings.append(scope_message)
             repo_root, actual_changed, task_artifacts, git_context_warnings = load_git_scope_context(artifacts_root, task_id)
             warnings.extend(git_context_warnings)
-            if task_artifacts.intersection(actual_changed):
+            if state != "done" and task_artifacts.intersection(actual_changed):
                 git_scope_result = detect_git_backed_scope_drift(plan_path, code_path, actual_changed, task_artifacts)
                 scope_drift_files.update(git_scope_result.drift_files)
                 errors.extend(git_scope_result.errors)
@@ -979,7 +1477,12 @@ def validate_transition(from_state: str, to_state: str, artifacts_root: Optional
     return ValidationResult(errors, warnings)
 
 
-def validate_all(artifacts_root: Path, task_id: str, strict_scope: bool = False) -> ValidationResult:
+def validate_all(
+    artifacts_root: Path,
+    task_id: str,
+    strict_scope: bool = False,
+    validation_mode: str = AUTO_CLASSIFY_FULL,
+) -> ValidationResult:
     errors: List[str] = validate_task_id(task_id)
     warnings: List[str] = []
     if errors:
@@ -988,30 +1491,194 @@ def validate_all(artifacts_root: Path, task_id: str, strict_scope: bool = False)
     schema_result = validate_status_schema(status, task_id)
     errors.extend(schema_result.errors)
     warnings.extend(schema_result.warnings)
-    state = status.get("state")
+    state = resolve_status_state(status)
     if state in VALID_STATES:
-        presence_result = validate_artifact_presence(artifacts_root, task_id, state, status, strict_scope=strict_scope)
+        presence_result = validate_artifact_presence(
+            artifacts_root,
+            task_id,
+            state,
+            status,
+            strict_scope=strict_scope,
+            validation_mode=validation_mode,
+        )
         errors.extend(presence_result.errors)
         warnings.extend(presence_result.warnings)
     return ValidationResult(errors, warnings)
 
 
-def write_transition(artifacts_root: Path, task_id: str, from_state: str, to_state: str, strict_scope: bool = False) -> ValidationResult:
+def parse_missing_required_artifacts(error: str) -> Set[str]:
+    if "Missing required artifacts for state" not in error:
+        return set()
+    tail = error.split(":", 1)[-1]
+    return {match.strip() for match in re.findall(r"'([^']+)'", tail)}
+
+
+def classify_decision_waiver_gate(error: str) -> Optional[str]:
+    lowered = error.lower()
+    if "waiver expired" in lowered:
+        return None
+    if error.startswith("Target state '"):
+        return "__META__"
+    missing_artifacts = parse_missing_required_artifacts(error)
+    if missing_artifacts:
+        gates = {
+            gate
+            for artifact_name, gate in {
+                "research": "Gate_A",
+                "plan": "Gate_B",
+                "code": "Gate_C",
+                "verify": "Gate_D",
+            }.items()
+            if artifact_name in missing_artifacts
+        }
+        return next(iter(gates)) if len(gates) == 1 else None
+    if "requires an improvement artifact" in lowered or "gate e (pdca)" in lowered:
+        return "Gate_E"
+    if "done state requires verify artifact" in lowered or ".verify.md" in error:
+        return "Gate_D"
+    if "plan artifact is not ready for coding" in lowered or ".plan.md" in error:
+        return "Gate_B"
+    if ".code.md" in error:
+        return "Gate_C"
+    if ".research.md" in error or "research artifact" in lowered:
+        return "Gate_A"
+    return None
+
+
+def active_decision_waivers(status: dict) -> Dict[str, dict]:
+    active: Dict[str, dict] = {}
+    now = datetime.now(TAIPEI_TZ)
+    decision_waivers = status.get("decision_waivers", [])
+    if not isinstance(decision_waivers, list):
+        return active
+    for entry in decision_waivers:
+        if not isinstance(entry, dict):
+            continue
+        gate = str(entry.get("gate", "")).strip()
+        expires = parse_taipei_datetime(str(entry.get("expires", "")).strip())
+        if gate in DECISION_WAIVER_GATES and expires is not None and expires > now:
+            active[gate] = entry
+    return active
+
+
+def apply_decision_waivers(result: ValidationResult, status: dict) -> ValidationResult:
+    waivers = active_decision_waivers(status)
+    if not waivers or not result.errors:
+        return result
+
+    remaining_errors: List[str] = []
+    meta_errors: List[str] = []
+    waived_gate_letters: List[str] = []
+    used_gates: Set[str] = set()
+
+    for error in result.errors:
+        gate = classify_decision_waiver_gate(error)
+        if gate == "__META__":
+            meta_errors.append(error)
+            continue
+        if gate and gate in waivers:
+            used_gates.add(gate)
+            continue
+        remaining_errors.append(error)
+
+    if remaining_errors:
+        return ValidationResult(remaining_errors + meta_errors, list(result.warnings), list(result.active_waivers))
+
+    for gate in sorted(used_gates):
+        waived_gate_letters.append(DECISION_WAIVER_GATES[gate])
+    return ValidationResult([], list(result.warnings), sorted(set(result.active_waivers + waived_gate_letters)))
+
+
+def categorize_override_error(message: str) -> str:
+    lowered = message.lower()
+    if "override log missing" in lowered:
+        return "override_log_missing"
+    if ": premortem" in lowered or lowered.startswith("premortem"):
+        if any(pattern in lowered for pattern in PREMORTEM_MISSING_PATTERNS):
+            return "premortem_missing"
+        return "premortem"
+    return "critical"
+
+
+def ensure_override_log_not_missing(artifacts_root: Path, task_id: str) -> None:
+    status = load_json(artifact_path(artifacts_root, task_id, "status"))
+    if not status.get(OVERRIDE_STATUS_FLAG):
+        return
+    path = override_log_path(artifacts_root, task_id)
+    if not path.exists():
+        raise GuardError(f"{task_id}: override log missing ({path.name})")
+    load_override_log(path)
+
+
+def append_override_record(artifacts_root: Path, task_id: str, reason: str, approver: str, overridden_errors: List[str]) -> None:
+    path = override_log_path(artifacts_root, task_id)
+    log_entries = load_override_log(path)
+    log_entries.append(
+        {
+            "timestamp": current_taipei_timestamp(),
+            "reason": reason,
+            "approver": approver,
+            "overridden_errors": overridden_errors,
+        }
+    )
+    path.write_text(json.dumps(log_entries, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    status_path = artifact_path(artifacts_root, task_id, "status")
+    status = load_json(status_path)
+    status[OVERRIDE_STATUS_FLAG] = True
+    status_path.write_text(json.dumps(status, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def apply_override(result: ValidationResult, artifacts_root: Path, task_id: str, reason: str, approver: str) -> ValidationResult:
+    warnings = list(result.warnings)
+    errors: List[str] = []
+    overridden_errors: List[str] = []
+    for error in result.errors:
+        category = categorize_override_error(error)
+        if category in {"premortem_missing", "override_log_missing"}:
+            errors.append(error)
+            continue
+        if category == "premortem":
+            warnings.append(f"[OVERRIDE PREMORTEM WARNING] {error}")
+            continue
+        warnings.append(f"[OVERRIDDEN] {error}")
+        overridden_errors.append(error)
+    if errors:
+        return ValidationResult(errors, warnings)
+    append_override_record(artifacts_root, task_id, reason, approver, overridden_errors)
+    return ValidationResult([], warnings)
+
+
+def write_transition(
+    artifacts_root: Path,
+    task_id: str,
+    from_state: str,
+    to_state: str,
+    strict_scope: bool = False,
+    validation_mode: str = AUTO_CLASSIFY_FULL,
+) -> ValidationResult:
     transition_result = validate_transition(from_state, to_state, artifacts_root, task_id)
     if transition_result.errors:
         return transition_result
-    full_result = validate_all(artifacts_root, task_id, strict_scope=strict_scope)
+    full_result = validate_all(artifacts_root, task_id, strict_scope=strict_scope, validation_mode=validation_mode)
     if full_result.errors:
         return full_result
     status_path = artifact_path(artifacts_root, task_id, "status")
     status = load_json(status_path)
-    if status.get("state") != from_state:
-        return ValidationResult([f"Refusing transition because status.json state is {status.get('state')}, not expected {from_state}"], [])
-    target_presence = validate_artifact_presence(artifacts_root, task_id, to_state, status, strict_scope=strict_scope)
+    current_state = resolve_status_state(status)
+    if current_state != from_state:
+        return ValidationResult([f"Refusing transition because status.json state is {current_state}, not expected {from_state}"], [])
+    target_presence = validate_artifact_presence(
+        artifacts_root,
+        task_id,
+        to_state,
+        status,
+        strict_scope=strict_scope,
+        validation_mode=validation_mode,
+    )
     if target_presence.errors:
         return ValidationResult([f"Target state '{to_state}' requirements are not yet satisfied.", *target_presence.errors], target_presence.warnings)
     existing = compute_existing_artifacts(artifacts_root, task_id)
-    required = state_required_artifacts(to_state, existing)
+    required = state_required_artifacts(to_state, existing, validation_mode=validation_mode)
     status["state"] = to_state
     status["required_artifacts"] = sorted(required)
     status["available_artifacts"] = sorted(existing)
@@ -1024,9 +1691,7 @@ def write_transition(artifacts_root: Path, task_id: str, from_state: str, to_sta
         for imp_path in improvement_paths:
             imp_text = load_text(imp_path)
             if "Status: applied" in imp_text or "Status:applied" in imp_text:
-                from datetime import datetime, timezone
-                now = datetime.now(timezone.utc).astimezone()  # Convert to local then explicit +08:00
-                gate_e_timestamp = now.strftime("%Y-%m-%dT%H:%M:%S+08:00")
+                gate_e_timestamp = current_taipei_timestamp()
                 status["Gate_E_passed"] = True
                 status["Gate_E_evidence"] = [
                     f"artifacts/improvement/{imp_path.name}",
@@ -1039,11 +1704,15 @@ def write_transition(artifacts_root: Path, task_id: str, from_state: str, to_sta
             if from_state == "blocked":
                 status["Gate_E_passed"] = False
                 status["Gate_E_evidence"] = []
-    status_path.write_text(json.dumps(status, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_json(status_path, status)
     return ValidationResult([], transition_result.warnings + full_result.warnings + target_presence.warnings)
 
 
-def print_result(result: ValidationResult) -> None:
+def print_result(result: ValidationResult, override_active: bool = False) -> None:
+    if override_active:
+        print("[OVERRIDE ACTIVE]")
+    for gate in result.active_waivers:
+        print(f"[WAIVER ACTIVE gate={gate}]")
     print("[OK] Validation passed" if result.ok else "[ERROR] Validation failed")
     for warning in result.warnings:
         print(f"[WARN] {warning}")
@@ -1053,7 +1722,7 @@ def print_result(result: ValidationResult) -> None:
 
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Validate artifact workflow status and transitions.")
-    parser.add_argument("--task-id", required=True, help="Task id, for example TASK-001")
+    parser.add_argument("--task-id", "--task", dest="task_id", required=True, help="Task id, for example TASK-001")
     parser.add_argument("--artifacts-root", default="./artifacts", help="Artifacts root directory. Default: ./artifacts")
     parser.add_argument("--from-state", help="Validate a proposed transition from this state")
     parser.add_argument("--to-state", help="Validate a proposed transition to this state")
@@ -1068,6 +1737,14 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         action="store_true",
         help="Allow plan/code scope drift, including git-backed or historical diff evidence checks, as warning only when an explicit decision waiver exists. Default behavior treats drift as failure.",
     )
+    parser.add_argument(
+        "--auto-classify",
+        action="store_true",
+        help="Auto-classify lightweight vs full validation mode from task/status artifacts before validation.",
+    )
+    parser.add_argument("--override", help="Human-approved override reason. Must be used with --override-approver.")
+    parser.add_argument("--override-approver", help="Human approver for --override. Must be used with --override.")
+    parser.add_argument("--reconcile", action="store_true", help="Backfill missing status.json fields from task artifacts without overwriting existing values.")
     return parser.parse_args(argv)
 
 
@@ -1077,8 +1754,26 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if args.strict_scope and args.allow_scope_drift:
         print("[FAIL] --strict-scope and --allow-scope-drift cannot be used together", file=sys.stderr)
         return 2
+    if bool(args.override) != bool(args.override_approver):
+        print("[FAIL] --override and --override-approver must be used together", file=sys.stderr)
+        return 2
+    if args.override and (not args.override.strip() or not args.override_approver.strip()):
+        print("[FAIL] --override and --override-approver must be non-empty", file=sys.stderr)
+        return 2
+    if args.reconcile and (args.override or args.override_approver):
+        print("[FAIL] --reconcile cannot be combined with override options", file=sys.stderr)
+        return 2
     strict_scope = args.strict_scope or not args.allow_scope_drift
     try:
+        auto_classification = resolve_validation_mode(artifacts_root, args.task_id, args.auto_classify)
+        validation_mode = auto_classification.validation_mode
+        if args.reconcile:
+            result = reconcile_status(artifacts_root, args.task_id)
+            result.warnings = auto_classification.warnings + result.warnings
+            print_result(result)
+            return 0 if result.ok else 1
+        if args.override:
+            ensure_override_log_not_missing(artifacts_root, args.task_id)
         if args.write_transition:
             result = write_transition(
                 artifacts_root,
@@ -1086,18 +1781,32 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 args.write_transition[0],
                 args.write_transition[1],
                 strict_scope=strict_scope,
+                validation_mode=validation_mode,
             )
-            print_result(result)
+            result = apply_decision_waivers(result, load_json(artifact_path(artifacts_root, args.task_id, "status")))
+            result.warnings = auto_classification.warnings + result.warnings
+            if args.override:
+                result = apply_override(result, artifacts_root, args.task_id, args.override, args.override_approver)
+            print_result(result, override_active=bool(args.override))
             return 0 if result.ok else 1
         if bool(args.from_state) != bool(args.to_state):
             print("[FAIL] --from-state and --to-state must be used together", file=sys.stderr)
             return 2
-        result = validate_all(artifacts_root, args.task_id, strict_scope=strict_scope)
+        result = validate_all(
+            artifacts_root,
+            args.task_id,
+            strict_scope=strict_scope,
+            validation_mode=validation_mode,
+        )
         if args.from_state and args.to_state:
             transition_result = validate_transition(args.from_state, args.to_state, artifacts_root, args.task_id)
             result.errors.extend(transition_result.errors)
             result.warnings.extend(transition_result.warnings)
-        print_result(result)
+        result = apply_decision_waivers(result, load_json(artifact_path(artifacts_root, args.task_id, "status")))
+        result.warnings = auto_classification.warnings + result.warnings
+        if args.override:
+            result = apply_override(result, artifacts_root, args.task_id, args.override, args.override_approver)
+        print_result(result, override_active=bool(args.override))
         return 0 if result.ok else 1
     except GuardError as exc:
         print(f"[FAIL] {exc}", file=sys.stderr)

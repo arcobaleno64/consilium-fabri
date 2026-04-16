@@ -8,16 +8,21 @@ import subprocess
 from pathlib import Path
 from typing import Dict, List, Sequence
 
+from workflow_constants import REQUIRED_TOPICS, TOPIC_PATTERN
+
 EXACT_SYNC_FILES = [
     "AGENTS.md",
     "BOOTSTRAP_PROMPT.md",
     "CODEX.md",
     "GEMINI.md",
+    "artifacts/scripts/build_decision_registry.py",
     "artifacts/scripts/guard_contract_validator.py",
     "artifacts/scripts/prompt_regression_validator.py",
     "artifacts/scripts/run_red_team_suite.py",
     "artifacts/scripts/drills/prompt_regression_cases.json",
     "artifacts/scripts/guard_status_validator.py",
+    "artifacts/scripts/update_repository_profile.py",
+    "artifacts/scripts/workflow_constants.py",
     "docs/artifact_schema.md",
     "docs/lightweight_mode_rules.md",
     "docs/orchestration.md",
@@ -123,18 +128,6 @@ REPOSITORY_PROFILE_FILES = (
     ".github/repository-profile.json",
     "template/.github/repository-profile.json",
 )
-
-REQUIRED_TOPICS = {
-    "multi-agent",
-    "developer-tools",
-    "workflow-template",
-    "artifact-first",
-    "gate-guarded",
-    "premortem",
-}
-
-TOPIC_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-
 
 def load_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")

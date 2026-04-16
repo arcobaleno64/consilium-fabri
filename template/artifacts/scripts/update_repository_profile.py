@@ -3,20 +3,10 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 from pathlib import Path
 from typing import List
 
-REQUIRED_TOPICS = [
-    "multi-agent",
-    "developer-tools",
-    "workflow-template",
-    "artifact-first",
-    "gate-guarded",
-    "premortem",
-]
-
-TOPIC_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+from workflow_constants import REQUIRED_TOPICS, TOPIC_PATTERN
 
 
 def parse_topics(raw: str) -> List[str]:
