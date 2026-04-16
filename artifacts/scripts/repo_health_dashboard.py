@@ -233,15 +233,17 @@ def render_markdown(dashboard: dict) -> str:
     lines.append("|---|---|---|---|---|")
     for t in dashboard["tasks"]:
         present = [a for a, v in t["artifacts"].items() if v]
-        flags = ""
-        if t["is_blocked"]:
-            flags += " BLOCKED"
-        if t["is_stale"]:
-            flags += " STALE"
-        if t["missing_verify"]:
-            flags += " NO-VERIFY"
+        state_upper = str(t["state"]).upper()
+        flags: list[str] = []
+        if t["is_blocked"] and state_upper != "BLOCKED":
+            flags.append("BLOCKED")
+        if t["is_stale"] and state_upper != "STALE":
+            flags.append("STALE")
+        if t["missing_verify"] and state_upper != "NO-VERIFY":
+            flags.append("NO-VERIFY")
+        suffix = f" {' '.join(flags)}" if flags else ""
         artifact_str = ", ".join(present)
-        lines.append(f"| {t['task_id']} | {t['state']}{flags} | {t['owner']} | {t['last_updated'][:19]} | {artifact_str} |")
+        lines.append(f"| {t['task_id']} | {t['state']}{suffix} | {t['owner']} | {t['last_updated'][:19]} | {artifact_str} |")
 
     return "\n".join(lines) + "\n"
 
