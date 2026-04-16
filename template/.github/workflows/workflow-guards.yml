@@ -6,6 +6,9 @@ on:
     branches:
       - master
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -49,6 +52,9 @@ jobs:
 
       - name: Red Team Static Phase
         run: python artifacts/scripts/run_red_team_suite.py --phase static
+
+      - name: Context Stack Validation
+        run: python artifacts/scripts/validate_context_stack.py --root .
 
       - name: Repo Health Dashboard
         run: python artifacts/scripts/repo_health_dashboard.py --root .
