@@ -290,6 +290,14 @@ Copy the `template/` directory contents into your repository root, replace place
 
 ---
 
+## Operational Notes
+
+- The default `workflow-guards` CI now runs with explicit read-only GitHub token permissions, disables persisted checkout credentials, cancels superseded runs per branch or pull request, and applies a job timeout to reduce avoidable runner exposure.
+- `artifacts/scripts/load_env.ps1` and its `template/` counterpart now parse quoted `.env` values, ignore blank and commented lines, accept optional `export` prefixes, and preserve existing process environment variables by default.
+- Use `pwsh -NoProfile -File artifacts/scripts/load_env.ps1 -Quiet` for silent loading in local automation, or add `-Force` only when you intentionally want `.env` values to overwrite variables that already exist in the current process.
+
+---
+
 ## Context System
 
 This project includes a layered context management system for VS Code Copilot:

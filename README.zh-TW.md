@@ -290,6 +290,14 @@ python artifacts/scripts/run_red_team_suite.py --phase all
 
 ---
 
+## 操作備註
+
+- 預設的 `workflow-guards` CI 現在會明確使用唯讀 GitHub token 權限、停用 checkout 的持久認證、在同一 branch 或 pull request 上取消被覆蓋的舊執行，並設定 job timeout，以降低不必要的 runner 暴露面。
+- `artifacts/scripts/load_env.ps1` 與其 `template/` 對應版本現在可解析帶引號的 `.env` 值、忽略空白行與註解、接受可選的 `export` 前綴，且預設不覆蓋目前 process 中已存在的環境變數。
+- 本機自動化若只需要安靜載入，可使用 `pwsh -NoProfile -File artifacts/scripts/load_env.ps1 -Quiet`；只有在你明確要讓 `.env` 覆蓋目前 process 變數時，再加上 `-Force`。
+
+---
+
 ## 上下文管理系統
 
 本專案包含分層式上下文管理系統，搭配 VS Code Copilot 使用：
