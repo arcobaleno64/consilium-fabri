@@ -191,6 +191,9 @@ The model is simple on purpose: each stage produces the artifact that justifies 
 git clone https://github.com/arcobaleno64/consilium-fabri.git my-project
 cd my-project
 
+# 1.5. Initialize external integrations tracked as submodules
+git submodule update --init --recursive
+
 # 2. Replace placeholders in CLAUDE.md (remove fork section if not needed)
 #    {{PROJECT_NAME}}, {{REPO_NAME}}, {{UPSTREAM_ORG}}
 
@@ -210,6 +213,8 @@ See `BOOTSTRAP_PROMPT.md` for the full bootstrapping guide.
 ### Quick Start — Existing Project
 
 Copy the `template/` directory contents into your repository root, replace placeholders, and run the same bootstrap validation commands above.
+
+If your repository keeps external integrations as Git submodules, run `git submodule update --init --recursive` after cloning so local development and CI operate on the same tree shape.
 
 ---
 

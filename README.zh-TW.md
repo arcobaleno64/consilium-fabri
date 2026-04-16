@@ -191,6 +191,9 @@ Done
 git clone https://github.com/arcobaleno64/consilium-fabri.git my-project
 cd my-project
 
+# 1.5. 初始化以 submodule 追蹤的外部整合
+git submodule update --init --recursive
+
 # 2. 替換 CLAUDE.md 中的 placeholder（無 fork 則移除 fork 區段）
 #    {{PROJECT_NAME}}, {{REPO_NAME}}, {{UPSTREAM_ORG}}
 
@@ -210,6 +213,8 @@ python artifacts/scripts/run_red_team_suite.py --phase all
 ### 快速上手 — 既有專案
 
 將 `template/` 目錄內容複製到你的專案根目錄，替換 placeholder 後，執行上述相同的驗證指令。
+
+若你的儲存庫把外部整合維護成 Git submodule，clone 後請先執行 `git submodule update --init --recursive`，讓本機開發與 CI 使用相同的目錄形狀。
 
 ---
 
