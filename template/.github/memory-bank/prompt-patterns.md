@@ -1,7 +1,7 @@
 # Prompt Patterns — 本 Repo 的寫作範式
 
-**Last Synced**: AGENTS.md, BOOTSTRAP_PROMPT.md  
-**Updated**: 2026-04-16 +08:00
+**Reference**: AGENTS.md, BOOTSTRAP_PROMPT.md  
+**Last Updated**: 2026-04-16 +08:00
 
 ## Agent Dispatch Pattern
 

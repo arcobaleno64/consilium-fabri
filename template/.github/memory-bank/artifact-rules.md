@@ -1,8 +1,7 @@
 # Artifact Rules — 已知觸發點與避免
 
-**版本**: 1.0  
-**Last Sync**: CLAUDE.md §3, docs/artifact_schema.md §5  
-**Updated**: 2026-04-16 +08:00
+**Reference**: CLAUDE.md §3, docs/artifact_schema.md §5  
+**Last Updated**: 2026-04-16 +08:00
 
 ## Task Artifact
 

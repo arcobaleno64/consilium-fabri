@@ -1,8 +1,7 @@
 # Project Facts — 技術棧、集成點、部署約定
 
-**Last Updated**: 2026-04-16 +08:00  
-**Maintained by**: Core Team  
-**Review Cycle**: Quarterly
+**Reference**: docs/orchestration.md, .github/workflows/  
+**Last Updated**: 2026-04-16 +08:00
 
 ## 技術棧
 

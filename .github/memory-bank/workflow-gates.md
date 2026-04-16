@@ -42,10 +42,10 @@ ELSE:
 
 ## Coding 自 Review 轉換
 
-Code artifact 存在且包含 Files Changed  
-Plan 的 Files Likely Affected 包含 Code 的 Files Changed  
-若 code 改了未計劃的檔案，設 status = scope-drift-detected  
-可用 decision 的 Guard Exception override
+- Code artifact 存在且包含 Files Changed
+- Plan 的 Files Likely Affected 包含 Code 的 Files Changed
+- 若 code 改了未計劃的檔案，設 status = scope-drift-detected
+- 可用 decision 的 Guard Exception override
 
 ## Review 自 Verification 轉換
 
@@ -59,13 +59,13 @@ Plan 的 Files Likely Affected 包含 Code 的 Files Changed
 - 或 task 在 `drafted` / `researched` 且無 plan artifact 且無 code artifact
 
 輕量級標準：
-不要求 R1-R4 premortem  
-需要 basic plan with objectives  
-需要 code artifact with Files Changed  
-需要 verify with Environment
+- 不要求 R1-R4 premortem
+- 需要 basic plan with objectives
+- 需要 code artifact with Files Changed
+- 需要 verify with Environment
 
 重量級標準（預設）：
-需要完整 premortem (R1-R4+)  
-需要 verify with Build Guarantee
+- 需要完整 premortem (R1-R4+)
+- 需要 verify with Build Guarantee
 
 升級條件：若任務變複雜，自動升級回 full gate（guard 會偵測）
