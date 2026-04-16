@@ -45,9 +45,9 @@ Workflow template 位於：【填入 artifact-harness repo clone 路徑，或直
 
 - Orchestrator：Claude Code（你）
 - Research agent：Gemini CLI
-  - 模型：gemini-3.1-flash-lite-preview（預設），有問題時可升級至 gemini-3.1-flash，若仍無法解決則動用 gemini-3.1-pro
-  - API Key 環境變數：GEMINI_API_KEY
-  - 呼叫方式：GEMINI_API_KEY="<key>" gemini -m gemini-3.1-flash-lite-preview --approval-mode=yolo -p "<prompt>"
+  - 模型：gemini-3.1-flash-lite-preview（預設），有問題時可升級至 gemini-3-flash-preview，若仍無法解決則動用 gemini-3.1-pro-preview
+  - 認證方式：由 CLI 內部 OAuth 處理，不依賴 `GEMINI_API_KEY` 環境變數（若未登入請先執行 `gemini auth`）
+  - 呼叫方式：gemini -m gemini-3.1-flash-lite-preview --approval-mode=yolo -p "<prompt>"
   - 入口檔：GEMINI.md（品質硬規則已內嵌，不需額外載入）
 - Implementation agent：Codex CLI（或 Claude 自行實作，視任務規模）
   - 入口檔：CODEX.md
@@ -114,6 +114,6 @@ TASK-001：【任務目標】
 ### 注意事項
 
 1. **範本路徑**：若 template 已搬移到其他位置，更新路徑即可。
-2. **Gemini API Key**：不要寫死在 prompt 裡。建議用環境變數或在 session 中單獨設定。
+2. **Gemini 認證**：Gemini CLI 使用 OAuth 登入，不需要 API Key。若未登入請先執行 `gemini auth`。
 3. **第一個任務**：建議從一個小任務開始（例如 TASK-001: 確認 build 正常），驗證整個流程跑得通後再做大任務。
 4. **Lightweight mode**：極小型任務可搭配 `guard_status_validator.py --auto-classify` 自動判定 lightweight / full gate。

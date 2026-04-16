@@ -336,6 +336,78 @@ Codex CLI 不得：
 
 Template sync 與 Obsidian sync 由 **Orchestrator（Claude Code）** 負責。Gemini CLI 與 Codex CLI 不直接操作 template/。
 
+### 9.6 同步責任邊界
+
+以下矩陣定義每個檔案類別的同步策略。`guard_contract_validator.py` 的 `EXACT_SYNC_FILES` 清單是程式化的 source of truth。
+
+#### Tier 1: Exact Sync（由 contract guard 強制執行）
+
+此類檔案在 root 與 template 之間必須**內容完全一致**（扣除 placeholder 泛化後）。
+
+| 檔案 | 說明 |
+|---|---|
+| `AGENTS.md` | 文件索引 |
+| `BOOTSTRAP_PROMPT.md` | 新專案啟動範本 |
+| `CODEX.md`、`GEMINI.md` | Agent 入口檔 |
+| `docs/*.md`（10 個核心規範） | 流程規範文件 |
+| `artifacts/scripts/guard_status_validator.py` | 狀態驗證器 |
+| `artifacts/scripts/guard_contract_validator.py` | 同步守護器 |
+| `artifacts/scripts/run_red_team_suite.py` | 紅隊演練 |
+| `artifacts/scripts/prompt_regression_validator.py` | Prompt 回歸測試 |
+| `artifacts/scripts/build_decision_registry.py` | Decision registry 建構 |
+| `artifacts/scripts/update_repository_profile.py` | Repository profile 管理 |
+| `artifacts/scripts/workflow_constants.py` | 共用常數 |
+| `artifacts/scripts/drills/prompt_regression_cases.json` | 回歸測試案例 |
+
+#### Tier 2: Placeholder-Generalized Sync（由 contract guard 規範化比對）
+
+此類檔案允許 `{{PROJECT_NAME}}`、`{{REPO_NAME}}`、`{{UPSTREAM_ORG}}` 泛化，但結構與規則必須一致。
+
+| 檔案 | 說明 |
+|---|---|
+| `CLAUDE.md` | 主控 agent 入口（含 `Repository boundaries` placeholder 區段） |
+
+#### Tier 3: Phrase-Checked Sync（由 contract guard 驗證關鍵短語存在）
+
+此類檔案不要求逐字一致，但必須包含指定的關鍵短語（參見 `REQUIRED_PHRASES`）。
+
+| 檔案 | 說明 |
+|---|---|
+| `OBSIDIAN.md` / `template/OBSIDIAN.md` | Obsidian 入口 |
+| `README.md` / `README.zh-TW.md` | 專案 README |
+| `template/README.md` / `template/README.zh-TW.md` | 範本 README |
+
+#### Tier 4: Manual Sync（無自動化強制）
+
+此類檔案存在於 root 與 template 中，但**不在** contract guard 清單內。修改時需人工判斷是否同步。
+
+| 檔案 | Root 用途 | Template 用途 | 同步建議 |
+|---|---|---|---|
+| `.gitignore` | 專案 ignore 規則 | 範本 ignore 規則 | 應保持一致 |
+| `.coveragerc` | 測試 coverage 設定 | 範本 coverage 設定 | 應保持一致 |
+| `requirements.txt` | Python 依賴聲明 | 範本依賴聲明 | 應保持一致 |
+| `LICENSE` | 授權 | 範本授權 | 應保持一致 |
+| `.github/workflows/workflow-guards.yml` | CI pipeline | 範本 CI pipeline | 應保持一致 |
+| `.github/agents/*.agent.md` | GitHub Agents 設定 | 範本 Agents 設定 | 應保持一致 |
+| `.github/repository-profile.json` | 專案 profile（有獨立驗證） | 範本 profile | 獨立驗證 |
+| `artifacts/scripts/*.py`（非 Tier 1） | 輔助腳本 | 範本輔助腳本 | 應保持一致 |
+| `artifacts/scripts/*.ps1` | PowerShell wrapper | 範本 wrapper | 應保持一致 |
+| `docs/templates/*/TEMPLATE.md` | Subagent 範本 | 範本 subagent 範本 | 應保持一致 |
+
+#### Tier 5: Project-Specific（不同步）
+
+此類檔案僅存在於 root 或 template 有不同內容，不需要同步。
+
+| 檔案 | 說明 |
+|---|---|
+| `artifacts/(tasks\|research\|plans\|code\|verify\|status\|decisions\|improvement\|red_team)/*` | 專案執行 artifacts |
+| `docs/repo_structure_workflow_maturity_assessment.md` | 專案評估（template 為空白範本） |
+| `docs/red_team_scorecard.generated.md` | 生成的計分卡 |
+| `artifacts/scripts/test_guard_units.py` | Unit test（測試框架函式） |
+| `.env`、`.vscode/settings.json`、`.claude/settings.local.json` | 本地環境設定 |
+| `temp_test.ps1`、`test_e2e.ps1` | 暫存測試腳本 |
+| `external/*` | 外部 repo |
+
 ## 10. Template Enforcement: README Structure Lock
 
 ### 10.1 新專案啟動規則
