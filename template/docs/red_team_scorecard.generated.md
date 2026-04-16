@@ -3,8 +3,8 @@
 此檔由 `artifacts/scripts/aggregate_red_team_scorecard.py` 依 red-team report 自動產生。
 
 ## Metadata
-- Source Report: `C:/Users/arcobaleno/Documents/Antigravity/CLI/artifacts/red_team/latest_report.md`
-- Generated At: 2026-04-13T12:04:46+08:00
+- Source Report: `artifacts/red_team/latest_report.md`
+- Generated At: (regenerate with `python artifacts/scripts/aggregate_red_team_scorecard.py`)
 - Timezone: Asia/Taipei (+08:00)
 
 ## Aggregated Cases
