@@ -8,7 +8,7 @@
 
 - 檔名必須嚴格遵循 `artifacts/tasks/TASK-XXX.task.md`（guard 只認此格式）
 - Metadata 區段必須包含 `Task ID`、`Status`、`Owner`、`Last Updated`
-- `Status` 只能用標準值：`drafted`, `researched`, `planned`, `in-review`, `approved`, `completed`
+- `Status` 只能用標準值：`drafted`, `approved`, `blocked`, `done` — see docs/artifact_schema.md §4.2
 
 注意：自訂檔名（如 `task-notes.md`）會被 guard 忽略。
 

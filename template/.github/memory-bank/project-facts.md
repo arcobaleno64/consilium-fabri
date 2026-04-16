@@ -4,13 +4,14 @@
 **Maintained by**: Core Team  
 **Review Cycle**: Quarterly
 
-技術棧
-Language: Python 3.9+  
-Framework: N/A (CLI utility)  
-Testing: pytest  
-Linting: pylint 加 black  
-Version Control: Git 加 GitHub  
-CI/CD: GitHub Actions (see .github/workflows/)  
+## 技術棧
+
+Language: Python 3.9+
+Framework: N/A (CLI utility)
+Testing: pytest
+Linting: pylint + black
+Version Control: Git + GitHub
+CI/CD: GitHub Actions (see .github/workflows/)
 Context Tooling: code2prompt (optional, 用於 pack-context CLI mode, `cargo install code2prompt`)
 
 ## 主要組件
@@ -19,6 +20,7 @@ Context Tooling: code2prompt (optional, 用於 pack-context CLI mode, `cargo ins
 |---|---|---|
 | Guard Status Validator | artifacts/scripts/guard_status_validator.py | Artifact 流程檢查 |
 | Guard Contract Validator | artifacts/scripts/guard_contract_validator.py | Prompt 和 README 同步檢查 |
+| Context Stack Validator | artifacts/scripts/validate_context_stack.py | 上下文系統完整性驗證 |
 | Red Team Suite | artifacts/scripts/run_red_team_suite.py | 自動化紅隊演練 |
 | Regression Validator | artifacts/scripts/prompt_regression_validator.py | Prompt 變更檢測 |
 
@@ -27,13 +29,13 @@ Context Tooling: code2prompt (optional, 用於 pack-context CLI mode, `cargo ins
 本專案與以下外部系統有集成關係。
 
 ### GitHub API
-用途：讀取 PR 和 issue metadata, 推送 artifact 到 release notes  
-認證：Personal access token（環境變數 GITHUB_TOKEN，勿寫進 memory）  
+用途：讀取 PR 和 issue metadata, 推送 artifact 到 release notes
+認證：Personal access token（環境變數 GITHUB_TOKEN，勿寫進 memory-bank）
 端點：api.github.com/repos/{{ORG}}/{{REPO}}/...
 
 ### Upstream Repo（若有 fork）
-Location: external/{{REPO_NAME}}-upstream-pr/  
-同步方式：Each PR reset to upstream/<default> via git fetch upstream 加 git reset --hard upstream/main  
+Location: external/{{REPO_NAME}}-upstream-pr/
+同步方式：每次 PR 執行 git fetch upstream + git reset --hard upstream/main
 Protected: 禁止本地特性分支進入此目錄
 
 ## 環境變數
@@ -42,7 +44,10 @@ Protected: 禁止本地特性分支進入此目錄
 |---|---|---|---|
 | GITHUB_TOKEN | 驗證 GitHub API | ghp_xxx... | 否（fallback 為唯讀） |
 | PYTHONPATH | Import artifacts/scripts | C:\...\CLI | 用於 guard scripts |
-| .venv/ | Python venv | 在執行 guard 前啟動 | 是 |
+
+## 執行環境
+
+Python venv（`.venv/`）：在執行 guard scripts 前必須啟動。
 
 ## 構建和部署
 

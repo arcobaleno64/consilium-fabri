@@ -39,10 +39,10 @@ MEMORY_BANK_EXPECTED_FILES = [
 
 # 每個 memory-bank 檔案的必要標題
 MEMORY_BANK_REQUIRED_HEADINGS: Dict[str, List[str]] = {
-    "artifact-rules.md": [],
+    "artifact-rules.md": ["Task", "Plan", "Code", "Verify"],
     "workflow-gates.md": ["Intake", "Research", "Planning", "Coding", "Review"],
-    "prompt-patterns.md": [],
-    "project-facts.md": ["主要組件", "環境變數"],
+    "prompt-patterns.md": ["Agent Dispatch", "Artifact Output"],
+    "project-facts.md": ["技術棧", "主要組件", "環境變數"],
 }
 
 MEMORY_BANK_MAX_LINES = 120

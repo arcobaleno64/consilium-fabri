@@ -14,25 +14,25 @@ applyTo: "**"
    - 不要一次載入所有文件
    - 大任務先用 `pack-context.prompt.md` 收斂，再逐步深入
 
-3. **記憶體系統**
-   - 個人記憶：`/memories/` - 跨 workspace 的長期筆記
-   - Session 記憶：`/memories/session/` - 當前對話的臨時記錄
-   - Repository 記憶：`/memories/repo/` - 本 repo 的經驗法則
+3. **知識庫系統**
+   - Repository 知識：`.github/memory-bank/` — 本 repo 的穩定經驗法則
+   - 經驗沉澱：`.github/prompts/remember-capture.prompt.md` — 結構化寫入流程
+   - 修改前預檢：`.github/prompts/context-review.prompt.md` — 檔案級就緒度分析
 
 4. **任務完成標準**
-   - 若需要 artifact，輸出必須符合 schema（讀 AGENTS.md 的索引表）
-   - 若需要代碼，必須有驗證證據（測試、lint、build log）
+   - 若需要 artifact，輸出必須符合 schema（見 docs/artifact_schema.md）
+   - 若需要程式碼，必須有驗證證據（測試、lint、build log）
    - 若需要文件修改，必須同步相關層（root + template + README）
 
 ## 禁止項
 
-禁止在 prompt 檔中寫密碼、token、連線字串。  
-禁止在 memory 寫 API key（改用環境變數或 Vault）。  
+禁止在 prompt 檔中寫密碼、token、連線字串。
+禁止在 memory-bank 寫 API key（改用環境變數或 Vault）。
 禁止不經驗證就標記任務完成。
 
 ## 工作流觸發
 
-新任務時：讀 `.github/copilot-instructions.md` 加 `CLAUDE.md`。  
-上下文不足時：用 `pack-context.prompt.md` 或 `memory-bank/*.md`。  
-任務完成前：必須執行 `reviewUnstaged` 或 `review` 工具。  
-記憶體更新時：使用 `memory` 工具，重點寫進 `/memories/repo/`。
+新任務時：讀 `.github/copilot-instructions.md` 加 `CLAUDE.md`。
+上下文不足時：用 `pack-context.prompt.md` 或 `.github/memory-bank/*.md`。
+任務完成前：確認所有 artifact 符合 schema，驗證證據到位。
+經驗沉澱時：用 `remember-capture.prompt.md` 寫入 `.github/memory-bank/`。

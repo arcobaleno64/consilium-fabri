@@ -3,19 +3,19 @@
 **Reference**: artifacts/scripts/guard_status_validator.py  
 **Last Verified**: 2026-04-16 +08:00
 
-## Intake 自 Research 畳轉
+## Intake 自 Research 轉換
 
-- Task artifact 必須存在且 status ∈ {`drafted`, `researched`, `proposed`}
+- Task artifact 必須存在且 status ∈ {`drafted`, `approved`, `blocked`} — see docs/artifact_schema.md §4.2
 - 若無 research artifact，guard 自動建議進入 lightweight mode
 - Lightweight mode 不要求 premortem，只需 basic plan
 
-## Research 自 Planning 畳轉
+## Research 自 Planning 轉換
 
 - Research artifact 必須包含 `## Sources`（至少 2 條來源）
 - 每個源必須附 URL 或 internal reference
 - 若只有摘述，缺少原始連結，guard 會警告但不擋
 
-## Planning 自 Coding 畳轉
+## Planning 自 Coding 轉換
 
 ```
 IF task.lightweight == true:
@@ -40,14 +40,14 @@ ELSE:
 
 此步驟非強制 gate，不阻擋流程。目的是在派發 Codex 前補強檔案級就緒度，減少 scope-drift。
 
-## Coding 自 Review 畳轉
+## Coding 自 Review 轉換
 
 Code artifact 存在且包含 Files Changed  
 Plan 的 Files Likely Affected 包含 Code 的 Files Changed  
 若 code 改了未計劃的檔案，設 status = scope-drift-detected  
 可用 decision 的 Guard Exception override
 
-## Review 自 Verification 畳轉
+## Review 自 Verification 轉換
 
 - Verify artifact 必須包含 `## Environment` 和 `## Build Guarantee`
 - Build Guarantee 至少 1 條：commit hash、CI log URL、binary checkpoint

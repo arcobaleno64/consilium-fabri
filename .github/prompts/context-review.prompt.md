@@ -44,8 +44,6 @@ Plan artifact 路徑（例：`artifacts/plans/TASK-XXX.plan.md`）
 - 比對 plan 的 `## Risks` (R1-R4) 是否涵蓋了 Step 2 發現的風險
 - 若有 Step 2 發現但 plan 未列的風險，標記為 Gap
 
-### Step 4 — 輸出
-
 ## 輸出格式
 
 固定使用以下結構：
