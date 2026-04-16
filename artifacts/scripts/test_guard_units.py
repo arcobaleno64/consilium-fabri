@@ -20,6 +20,7 @@ import prompt_regression_validator as prv
 import build_decision_registry as bdr
 import aggregate_red_team_scorecard as ars
 import validate_scorecard_deltas as vsd
+import validate_context_stack as vcs
 import workflow_constants as wc
 
 
@@ -436,6 +437,172 @@ class TestWorkflowConstants:
         assert wc.TOPIC_PATTERN.match("developer-tools")
         assert not wc.TOPIC_PATTERN.match("UPPERCASE")
         assert not wc.TOPIC_PATTERN.match("has space")
+
+
+# ─────────────────────────────────────────────
+# validate_context_stack
+# ─────────────────────────────────────────────
+
+
+class TestContextStackHelpers:
+    def test_estimate_tokens_counts_cjk_and_ascii(self):
+        result = vcs.estimate_tokens("abc def 測試")
+        assert result >= 5
+
+    def test_extract_frontmatter_name(self):
+        text = "---\nname: sample-skill\ndescription: test\n---\n# Title"
+        assert vcs.extract_frontmatter_name(text) == "sample-skill"
+
+    def test_extract_headings(self):
+        headings = vcs.extract_headings("# One\n## Two\n### Three")
+        assert headings == ["One", "Two", "Three"]
+
+
+class TestContextStackChecks:
+    def _write_file(self, root: Path, rel_path: str, content: str) -> None:
+        path = root / rel_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+
+    def _build_valid_repo(self, root: Path) -> None:
+        self._write_file(
+            root,
+            ".github/memory-bank/artifact-rules.md",
+            "# Task\ncontent\n# Plan\ncontent\n# Code\ncontent\n# Verify\ncontent\n",
+        )
+        self._write_file(
+            root,
+            ".github/memory-bank/workflow-gates.md",
+            "# Intake\ncontent\n# Research\ncontent\n# Planning\ncontent\n# Coding\ncontent\n# Review\ncontent\n",
+        )
+        self._write_file(
+            root,
+            ".github/memory-bank/prompt-patterns.md",
+            "# Agent Dispatch\ncontent\n# Artifact Output\ncontent\n",
+        )
+        self._write_file(
+            root,
+            ".github/memory-bank/project-facts.md",
+            "# 技術棧\ncontent\n# 主要組件\ncontent\n# 環境變數\ncontent\n",
+        )
+        self._write_file(
+            root,
+            ".github/copilot-instructions.md",
+            "short copilot instructions",
+        )
+        self._write_file(
+            root,
+            ".github/prompts/example.md",
+            "---\nname: example-prompt\n---\n# Prompt",
+        )
+        self._write_file(
+            root,
+            ".github/skills/example/SKILL.md",
+            "---\nname: example-skill\n---\n# Skill",
+        )
+        self._write_file(
+            root,
+            "docs/reference.md",
+            "reference target",
+        )
+        self._write_file(
+            root,
+            "template/.github/memory-bank/artifact-rules.md",
+            "# Task\ncontent\n# Plan\ncontent\n# Code\ncontent\n# Verify\ncontent\n",
+        )
+        self._write_file(
+            root,
+            "template/.github/memory-bank/workflow-gates.md",
+            "# Intake\ncontent\n# Research\ncontent\n# Planning\ncontent\n# Coding\ncontent\n# Review\ncontent\n",
+        )
+        self._write_file(
+            root,
+            "template/.github/memory-bank/prompt-patterns.md",
+            "# Agent Dispatch\ncontent\n# Artifact Output\ncontent\n",
+        )
+        self._write_file(
+            root,
+            "template/.github/memory-bank/project-facts.md",
+            "# 技術棧\ncontent\n# 主要組件\ncontent\n# 環境變數\ncontent\n",
+        )
+        self._write_file(
+            root,
+            "template/.github/prompts/example.md",
+            "---\nname: example-prompt\n---\n# Prompt",
+        )
+        self._write_file(
+            root,
+            "template/.github/skills/example/SKILL.md",
+            "---\nname: example-skill\n---\n# Skill",
+        )
+        self._write_file(
+            root,
+            "template/.github/copilot-instructions.md",
+            "short copilot instructions",
+        )
+
+    def test_check_memory_bank_existence(self, tmp_path):
+        self._build_valid_repo(tmp_path)
+        assert vcs.check_memory_bank_existence(tmp_path) == []
+
+    def test_check_cross_references_flags_missing_target(self, tmp_path):
+        self._build_valid_repo(tmp_path)
+        path = tmp_path / ".github/memory-bank/artifact-rules.md"
+        path.write_text("# Task\nsee docs/missing.md\n# Plan\ncontent\n# Code\ncontent\n# Verify\ncontent\n", encoding="utf-8")
+        errors = vcs.check_cross_references(tmp_path)
+        assert any("docs/missing.md" in error for error in errors)
+
+    def test_check_frontmatter_and_uniqueness(self, tmp_path):
+        self._build_valid_repo(tmp_path)
+        errors, names = vcs.check_frontmatter(tmp_path)
+        assert errors == []
+        assert names["prompt"] == ["example-prompt"]
+        assert names["skill"] == ["example-skill"]
+        assert vcs.check_name_uniqueness(names) == []
+
+    def test_check_name_uniqueness_detects_collisions(self):
+        errors = vcs.check_name_uniqueness(
+            {"prompt": ["dup", "dup", "shared"], "skill": ["skill", "shared"]}
+        )
+        assert any("Duplicate prompt name" in error for error in errors)
+        assert any("Name collision" in error for error in errors)
+
+    def test_check_copilot_instructions_size_flags_oversized_file(self, tmp_path):
+        self._build_valid_repo(tmp_path)
+        oversized = "詞" * 1400
+        (tmp_path / ".github/copilot-instructions.md").write_text(oversized, encoding="utf-8")
+        errors = vcs.check_copilot_instructions_size(tmp_path)
+        assert any("copilot-instructions" in error for error in errors)
+
+    def test_check_template_sync_reports_missing_template_file(self, tmp_path):
+        self._build_valid_repo(tmp_path)
+        (tmp_path / "template/.github/skills/example/SKILL.md").unlink()
+        errors = vcs.check_template_sync(tmp_path)
+        assert any("template/.github/skills missing" in error for error in errors)
+
+    def test_check_memory_bank_quality_warns_on_orphan_and_long_file(self, tmp_path):
+        self._build_valid_repo(tmp_path)
+        long_content = "# Task\ncontent\n# Plan\ncontent\n# Code\ncontent\n# Verify\ncontent\n" + "\n".join(
+            f"line {index}" for index in range(130)
+        )
+        (tmp_path / ".github/memory-bank/artifact-rules.md").write_text(
+            long_content,
+            encoding="utf-8",
+        )
+        (tmp_path / ".github/memory-bank/prompt-patterns.md").write_text(
+            "# Agent Dispatch\ncontent\n# Artifact Output\n",
+            encoding="utf-8",
+        )
+        issues = vcs.check_memory_bank_quality(tmp_path)
+        assert any("consider consolidation" in issue for issue in issues)
+        assert any("orphan section" in issue for issue in issues)
+
+    def test_main_passes_on_valid_repo(self, tmp_path, monkeypatch, capsys):
+        self._build_valid_repo(tmp_path)
+        monkeypatch.setattr(sys, "argv", ["validate_context_stack.py", "--root", str(tmp_path)])
+        assert vcs.main() == 0
+        captured = capsys.readouterr()
+        assert "PASSED" in captured.out
 
 
 # ═════════════════════════════════════════════
