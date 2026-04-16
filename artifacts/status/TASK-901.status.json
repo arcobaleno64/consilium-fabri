@@ -6,6 +6,6 @@
   "required_artifacts": ["task", "status"],
   "available_artifacts": ["task", "status", "decision"],
   "missing_artifacts": [],
-  "blocked_reason": "Gemini research pending: auth method changed from GEMINI_API_KEY to OAuth (see subagent_roles.md §4). Run 'gemini auth' to login, then re-dispatch research for TASK-901.",
-  "last_updated": "2026-04-16T14:15:00+08:00"
+  "blocked_reason": "Archived: external/Wino-Mail/ no longer exists in workspace. Task is effectively stale. Re-clone Wino-Mail and update inputs to resume.",
+  "last_updated": "2026-04-16T14:20:00+08:00"
 }
