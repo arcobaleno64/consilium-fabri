@@ -170,3 +170,155 @@ Done
 ```
 
 The model is simple on purpose: each stage produces the artifact that justifies the next stage. That keeps collaboration inspectable and prevents "magic progress" that only exists inside a chat transcript.
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+- **Python 3.10+** (for validator scripts)
+- **Git** (version control)
+- **Claude Code** (orchestrator agent — via VS Code extension or CLI)
+- **Gemini CLI** (research agent — optional, for full workflow)
+- **Codex CLI** (implementation agent — optional, for full workflow)
+- **PyYAML** (`pip install -r requirements.txt`)
+
+### Quick Start — New Project
+
+```bash
+# 1. Clone the template into your project
+git clone https://github.com/arcobaleno64/consilium-fabri.git my-project
+cd my-project
+
+# 2. Replace placeholders in CLAUDE.md (remove fork section if not needed)
+#    {{PROJECT_NAME}}, {{REPO_NAME}}, {{UPSTREAM_ORG}}
+
+# 3. Bootstrap validation
+python artifacts/scripts/guard_status_validator.py --task-id TASK-900 --auto-classify
+python artifacts/scripts/update_repository_profile.py
+python artifacts/scripts/guard_contract_validator.py --check-readme
+python artifacts/scripts/guard_contract_validator.py
+python artifacts/scripts/prompt_regression_validator.py --root .
+
+# 4. (Optional) Run the red-team suite
+python artifacts/scripts/run_red_team_suite.py --phase all
+```
+
+See `BOOTSTRAP_PROMPT.md` for the full bootstrapping guide.
+
+### Quick Start — Existing Project
+
+Copy the `template/` directory contents into your repository root, replace placeholders, and run the same bootstrap validation commands above.
+
+---
+
+## Repository Structure
+
+```
+.
+├── AGENTS.md                  # Document index and phase-loading matrix
+├── CLAUDE.md                  # Orchestrator (Claude Code) entry file
+├── GEMINI.md                  # Research agent (Gemini CLI) entry file
+├── CODEX.md                   # Implementation agent (Codex CLI) entry file
+├── OBSIDIAN.md                # Obsidian vault entry note
+├── BOOTSTRAP_PROMPT.md        # New project bootstrapping guide
+├── README.md / README.zh-TW.md
+├── requirements.txt           # Python dependencies (PyYAML)
+│
+├── docs/                      # Workflow specification documents
+│   ├── orchestration.md       # Full workflow: goals, principles, stages, gates
+│   ├── artifact_schema.md     # 8 artifact type schemas (§5.1–§5.8)
+│   ├── workflow_state_machine.md  # 8 states + legal transitions
+│   ├── premortem_rules.md     # Risk analysis format + quality guardrails
+│   ├── subagent_roles.md      # 7 agent role definitions
+│   ├── subagent_task_templates.md
+│   ├── lightweight_mode_rules.md
+│   ├── red_team_runbook.md    # Red-team exercise playbook
+│   ├── red_team_scorecard.md  # Scoring matrix
+│   ├── red_team_backlog.md    # Hardening backlog
+│   └── templates/             # Subagent task prompt templates
+│
+├── artifacts/                 # All workflow artifacts (the single source of truth)
+│   ├── tasks/                 # Task artifacts
+│   ├── research/              # Research artifacts
+│   ├── plans/                 # Plan artifacts
+│   ├── code/                  # Code artifacts
+│   ├── verify/                # Verification artifacts
+│   ├── decisions/             # Decision artifacts
+│   ├── improvement/           # Improvement artifacts
+│   ├── status/                # Machine-readable status + decision registry
+│   ├── red_team/              # Red-team exercise reports
+│   └── scripts/               # Validator and automation scripts
+│       ├── guard_status_validator.py
+│       ├── guard_contract_validator.py
+│       ├── prompt_regression_validator.py
+│       ├── run_red_team_suite.py
+│       ├── repo_health_dashboard.py
+│       ├── build_decision_registry.py
+│       └── drills/            # Prompt regression test cases
+│
+├── .github/
+│   ├── copilot-instructions.md    # VS Code Copilot global rules
+│   ├── repository-profile.json   # GitHub About / Topics profile
+│   ├── memory-bank/               # Stable reference knowledge base
+│   ├── prompts/                   # Prompt and skill files
+│   ├── agents/                    # Agent definition files
+│   ├── skills/                    # Skill metadata
+│   └── workflows/                 # GitHub Actions CI
+│
+├── template/                  # Clean template for new projects (sync target)
+└── external/                  # External project integrations
+```
+
+---
+
+## Validator Commands
+
+| Command | Purpose |
+|---|---|
+| `python artifacts/scripts/guard_status_validator.py --task-id TASK-XXX` | Validate task state, artifacts, and scope drift |
+| `python artifacts/scripts/guard_status_validator.py --task-id TASK-XXX --auto-classify` | Auto-classify task as lightweight or full-gate |
+| `python artifacts/scripts/guard_contract_validator.py` | Validate root ↔ template ↔ Obsidian sync |
+| `python artifacts/scripts/guard_contract_validator.py --check-readme` | Validate README structure compliance |
+| `python artifacts/scripts/prompt_regression_validator.py --root .` | Run prompt regression test cases |
+| `python artifacts/scripts/run_red_team_suite.py --phase all` | Run the full red-team exercise suite |
+| `python artifacts/scripts/run_red_team_suite.py --phase prompt` | Run prompt regression via the report pipeline |
+| `python artifacts/scripts/repo_health_dashboard.py` | Generate repository health dashboard |
+| `python artifacts/scripts/build_decision_registry.py --root .` | Rebuild the decision registry |
+| `python artifacts/scripts/update_repository_profile.py` | Update GitHub repository profile |
+
+---
+
+## Context System
+
+This project includes a layered context management system for VS Code Copilot:
+
+- **`.github/copilot-instructions.md`** — Global stable rules, auto-loaded by VS Code
+- **`.github/memory-bank/`** — Stable reference knowledge (artifact rules, workflow gates, prompt patterns, project facts)
+- **`.github/prompts/`** — Task-scoped prompts (pack-context, context-review, remember-capture)
+- **`.github/skills/`** — Reusable skill definitions (always-ask-next)
+
+Agents load documentation by role and phase, not all at once. See `AGENTS.md` for the phase-loading matrix.
+
+---
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Follow the artifact-first workflow: task → research → plan → code → verify
+4. Run validators before submitting:
+   ```bash
+   python artifacts/scripts/guard_contract_validator.py
+   python artifacts/scripts/prompt_regression_validator.py --root .
+   ```
+5. Open a Pull Request
+
+All workflow documentation defaults to Traditional Chinese (Taiwan). Commands, file paths, placeholders, schema literals, and status values remain in English.
+
+---
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).

@@ -168,3 +168,157 @@ Verification
   v
 Done
 ```
+
+流程設計刻意保持簡潔：每個階段產出的 artifact 就是下一階段的依據。這讓協作過程可追蹤、可檢視，避免「只存在於對話紀錄中的隱形進度」。
+
+---
+
+## 開始使用
+
+### 前置需求
+
+- **Python 3.10+**（執行驗證腳本）
+- **Git**（版本控制）
+- **Claude Code**（協調者 agent — 透過 VS Code 擴充功能或 CLI）
+- **Gemini CLI**（研究 agent — 選配，完整工作流所需）
+- **Codex CLI**（實作 agent — 選配，完整工作流所需）
+- **PyYAML**（`pip install -r requirements.txt`）
+
+### 快速上手 — 新專案
+
+```bash
+# 1. 複製範本到你的專案
+git clone https://github.com/arcobaleno64/consilium-fabri.git my-project
+cd my-project
+
+# 2. 替換 CLAUDE.md 中的 placeholder（無 fork 則移除 fork 區段）
+#    {{PROJECT_NAME}}, {{REPO_NAME}}, {{UPSTREAM_ORG}}
+
+# 3. 啟動驗證
+python artifacts/scripts/guard_status_validator.py --task-id TASK-900 --auto-classify
+python artifacts/scripts/update_repository_profile.py
+python artifacts/scripts/guard_contract_validator.py --check-readme
+python artifacts/scripts/guard_contract_validator.py
+python artifacts/scripts/prompt_regression_validator.py --root .
+
+# 4. （選配）執行紅隊演練
+python artifacts/scripts/run_red_team_suite.py --phase all
+```
+
+完整啟動指引請參閱 `BOOTSTRAP_PROMPT.md`。
+
+### 快速上手 — 既有專案
+
+將 `template/` 目錄內容複製到你的專案根目錄，替換 placeholder 後，執行上述相同的驗證指令。
+
+---
+
+## 儲存庫結構
+
+```
+.
+├── AGENTS.md                  # 文件索引與階段載入矩陣
+├── CLAUDE.md                  # 協調者（Claude Code）入口檔
+├── GEMINI.md                  # 研究 agent（Gemini CLI）入口檔
+├── CODEX.md                   # 實作 agent（Codex CLI）入口檔
+├── OBSIDIAN.md                # Obsidian vault 入口筆記
+├── BOOTSTRAP_PROMPT.md        # 新專案啟動指引
+├── README.md / README.zh-TW.md
+├── requirements.txt           # Python 相依套件（PyYAML）
+│
+├── docs/                      # 工作流規範文件
+│   ├── orchestration.md       # 完整流程：目標、原則、階段、gate
+│   ├── artifact_schema.md     # 8 種 artifact schema（§5.1–§5.8）
+│   ├── workflow_state_machine.md  # 8 個狀態 + 合法轉移
+│   ├── premortem_rules.md     # 風險分析格式 + 品質護欄
+│   ├── subagent_roles.md      # 7 種 agent 角色定義
+│   ├── subagent_task_templates.md
+│   ├── lightweight_mode_rules.md
+│   ├── red_team_runbook.md    # 紅隊演練 runbook
+│   ├── red_team_scorecard.md  # 評分矩陣
+│   ├── red_team_backlog.md    # 補強追蹤清單
+│   └── templates/             # 子代理任務 prompt 範本
+│
+├── artifacts/                 # 所有工作流產物（單一事實來源）
+│   ├── tasks/                 # 任務產物
+│   ├── research/              # 研究產物
+│   ├── plans/                 # 計畫產物
+│   ├── code/                  # 程式碼產物
+│   ├── verify/                # 驗證產物
+│   ├── decisions/             # 決策產物
+│   ├── improvement/           # 改善產物
+│   ├── status/                # 機器可讀狀態 + 決策登錄冊
+│   ├── red_team/              # 紅隊演練報告
+│   └── scripts/               # 驗證器與自動化腳本
+│       ├── guard_status_validator.py
+│       ├── guard_contract_validator.py
+│       ├── prompt_regression_validator.py
+│       ├── run_red_team_suite.py
+│       ├── repo_health_dashboard.py
+│       ├── build_decision_registry.py
+│       └── drills/            # Prompt regression 測例
+│
+├── .github/
+│   ├── copilot-instructions.md    # VS Code Copilot 全域規則
+│   ├── repository-profile.json   # GitHub About / Topics 設定檔
+│   ├── memory-bank/               # 穩定參考知識庫
+│   ├── prompts/                   # Prompt 與 skill 檔案
+│   ├── agents/                    # Agent 定義檔
+│   ├── skills/                    # Skill 詮釋資料
+│   └── workflows/                 # GitHub Actions CI
+│
+├── template/                  # 新專案用的乾淨範本（同步目標）
+└── external/                  # 外部專案整合
+```
+
+---
+
+## 驗證指令
+
+| 指令 | 用途 |
+|---|---|
+| `python artifacts/scripts/guard_status_validator.py --task-id TASK-XXX` | 驗證任務狀態、產物與 scope drift |
+| `python artifacts/scripts/guard_status_validator.py --task-id TASK-XXX --auto-classify` | 自動判定任務為 lightweight 或 full-gate |
+| `python artifacts/scripts/guard_contract_validator.py` | 驗證 root ↔ template ↔ Obsidian 同步 |
+| `python artifacts/scripts/guard_contract_validator.py --check-readme` | 驗證 README 結構合規性 |
+| `python artifacts/scripts/prompt_regression_validator.py --root .` | 執行 prompt regression 測例 |
+| `python artifacts/scripts/run_red_team_suite.py --phase all` | 執行完整紅隊演練 |
+| `python artifacts/scripts/run_red_team_suite.py --phase prompt` | 透過報表流程執行 prompt regression |
+| `python artifacts/scripts/repo_health_dashboard.py` | 產生儲存庫健康儀表板 |
+| `python artifacts/scripts/build_decision_registry.py --root .` | 重建決策登錄冊 |
+| `python artifacts/scripts/update_repository_profile.py` | 更新 GitHub 儲存庫 profile |
+
+---
+
+## 上下文管理系統
+
+本專案包含分層式上下文管理系統，搭配 VS Code Copilot 使用：
+
+- **`.github/copilot-instructions.md`** — 全域穩定規則，VS Code 自動載入
+- **`.github/memory-bank/`** — 穩定參考知識（artifact 規則、workflow gate、prompt 模式、專案事實）
+- **`.github/prompts/`** — 任務導向的 prompt（pack-context、context-review、remember-capture）
+- **`.github/skills/`** — 可重複使用的 skill 定義（always-ask-next）
+
+Agent 依角色與階段載入所需文件，不會一次全部讀取。詳見 `AGENTS.md` 的階段載入矩陣。
+
+---
+
+## 貢獻指引
+
+1. Fork 本儲存庫
+2. 建立 feature branch
+3. 遵循 artifact-first 工作流：task → research → plan → code → verify
+4. 提交前執行驗證：
+   ```bash
+   python artifacts/scripts/guard_contract_validator.py
+   python artifacts/scripts/prompt_regression_validator.py --root .
+   ```
+5. 開啟 Pull Request
+
+所有工作流文件預設以繁體中文（臺灣）撰寫。指令、檔案路徑、placeholder、schema literal 與狀態值保留英文。
+
+---
+
+## 授權條款
+
+本專案採用 [MIT License](LICENSE) 授權。
