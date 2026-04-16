@@ -8,10 +8,17 @@ Context Stack Validator
 from __future__ import annotations
 
 import argparse
+import io
 import re
 import sys
 from pathlib import Path
 from typing import Dict, List, Set, Tuple
+
+# Ensure UTF-8 output on Windows
+if sys.stdout.encoding != "utf-8":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+if sys.stderr.encoding != "utf-8":
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
 # ---------------------------------------------------------------------------
 # Config
@@ -271,14 +278,32 @@ def check_memory_bank_quality(root: Path) -> List[str]:
                 errors.append(f"{rel}: missing required heading containing '{req}'")
 
         # Orphan sections (heading followed by another heading or EOF with no content)
+        # Skip headings inside code fences
+        in_fence = False
         for i, line in enumerate(lines):
+            if line.strip().startswith("```"):
+                in_fence = not in_fence
+                continue
+            if in_fence:
+                continue
             if re.match(r"^#{1,3}\s+", line):
                 # Look ahead for content before next heading or EOF
                 has_content = False
-                for j in range(i + 1, min(i + 10, len(lines))):
+                fence_depth = False
+                for j in range(i + 1, min(i + 15, len(lines))):
+                    stripped = lines[j].strip()
+                    if stripped.startswith("```"):
+                        fence_depth = not fence_depth
+                        # A code fence opening counts as content
+                        if fence_depth:
+                            has_content = True
+                            break
+                        continue
+                    if fence_depth:
+                        continue
                     if re.match(r"^#{1,3}\s+", lines[j]):
                         break
-                    if lines[j].strip() and not lines[j].startswith("<!--"):
+                    if stripped and not stripped.startswith("<!--"):
                         has_content = True
                         break
                 if not has_content:

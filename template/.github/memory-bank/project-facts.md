@@ -24,6 +24,8 @@ Context Tooling: code2prompt (optional, 用於 pack-context CLI mode, `cargo ins
 
 ## 已知集成點
 
+本專案與以下外部系統有集成關係。
+
 ### GitHub API
 用途：讀取 PR 和 issue metadata, 推送 artifact 到 release notes  
 認證：Personal access token（環境變數 GITHUB_TOKEN，勿寫進 memory）  
