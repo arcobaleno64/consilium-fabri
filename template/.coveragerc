@@ -5,6 +5,7 @@ omit =
     artifacts/scripts/run_red_team_suite.py
     artifacts/scripts/discover_templates.py
     artifacts/scripts/update_repository_profile.py
+    artifacts/scripts/repo_health_dashboard.py
     artifacts/scripts/Invoke-*.ps1
     artifacts/scripts/load_env.ps1
 
