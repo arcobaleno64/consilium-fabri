@@ -44,7 +44,7 @@ jobs:
           for status_file in artifacts/status/TASK-*.status.json; do
             task_id=$(basename "$status_file" .status.json)
             echo "--- Validating $task_id ---"
-            if ! python artifacts/scripts/guard_status_validator.py --task-id "$task_id" --allow-scope-drift; then
+            if ! python artifacts/scripts/guard_status_validator.py --task-id "$task_id"; then
               failed=1
             fi
           done
