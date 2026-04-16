@@ -27,7 +27,7 @@ GEMINI.md 的規則：【embed key rules】
 ```
 你是 implementation agent。任務：【describe】
 
-Prerequisites:
+先決條件：
 - 已有 Plan artifact（位於 artifacts/plans/TASK-XXX.plan.md）
 - Premortem 已完成，風險 R1-R4 都在
 - 環境變數已設定（列舉必要的）
@@ -38,7 +38,7 @@ Prerequisites:
 3. 輸出 Code artifact（see docs/artifact_schema.md §5.4）
 4. 輸出 Verify artifact with Build Guarantee
 
-Scope：【明確不做什麼】
+範圍：【明確不做什麼】
 
 CODEX.md 的規則：【embed key rules】
 ```
@@ -126,7 +126,7 @@ Option C: Abort and refile as TASK-XXX-2 (sub task)
 
 ## 禁止項
 
-- ❌ Artifact 不按 schema 寫
-- ❌ 使用非標準 status 值
-- ❌ Metadata 缺時間戳或 owner
-- ❌ Risk 區段只寫結論，不寫 trigger/detection/mitigation
+- Artifact 不按 schema 寫
+- 使用非標準 status 值
+- Metadata 缺時間戳或 owner
+- Risk 區段只寫結論，不寫 trigger/detection/mitigation

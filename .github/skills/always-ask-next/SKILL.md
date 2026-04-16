@@ -5,41 +5,39 @@
 **Last Updated**: 2026-04-16 +08:00  
 **Status**: production
 
-## Description
+## 說明
 
-Prompt you with 3 contextually relevant next actions before marking a task complete.
+在標記任務完成前，使用 3 個符合上下文的下一步行動提示使用者。
 
-## When to Use
+## 何時使用
 
-- After successfully completing a task
-- Before calling `task_complete`
-- When the user might benefit from guided next steps
+成功完成任務後  
+在呼叫 task_complete 前  
+當使用者可能受益於引導式下一步行動時
 
-## When NOT to Use
+## 何時不使用
 
-- Task failed or is blocked
-- User explicitly said "just finish"
-- No clear next action exists
+任務失敗或被阻擋  
+使用者明確說「直接完成」  
+沒有明確的下一步行動
 
-## Implementation
+## 實作
 
-See [`.github/prompts/always-ask-next.skill.md`](../../prompts/always-ask-next.skill.md)
+見 .github/prompts/always-ask-next.skill.md
 
-## Invokes
+## 呼叫方式
 
-- `vscode_askQuestions` tool
-- `task_complete` tool
+vscode_askQuestions 工具  
+task_complete 工具
 
-## Example Triggers
+## 觸發範例
 
-```
-"I just completed setup"           → Ask about next steps
-"Testing passed"                   → Ask about documentation / deployment
-"Did the changes work?"            → Ask about regression testing / rollout
-```
+「I just completed setup」- 提示下一步  
+「Testing passed」- 提示文件或部署選項  
+「Did the changes work?」- 提示 regression 測試或部署選項
 
-## Notes
+## 注意事項
 
-- Options should be 3-5 words each (concise)
-- Base options on **completed task type**, not generic "what's next"
-- Always include "Other" as final option
+每個選項應保持簡潔（3-5 個字）  
+根據已完成的任務類型基礎化選項，而非泛用的「下一步是什麼」  
+始終包含「Other」作為最後選項

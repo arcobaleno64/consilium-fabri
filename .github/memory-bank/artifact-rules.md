@@ -10,7 +10,7 @@
 - Metadata 區段必須包含 `Task ID`、`Status`、`Owner`、`Last Updated`
 - `Status` 只能用標準值：`drafted`, `researched`, `planned`, `in-review`, `approved`, `completed`
 
-**Risk**: 自訂檔名（如 `task-notes.md`）會被 guard 忽略
+注意：自訂檔名（如 `task-notes.md`）會被 guard 忽略。
 
 ## Plan Artifact
 
@@ -18,14 +18,14 @@
 - 若沒有 `## Risks` 或只有單句模糊敘述，guard 會拒絕進入 coding gate
 - 每個 risk 須包含：Trigger、Detection、Mitigation、Severity
 
-**Risk**: R1-R3 ok，但缺 R4，guard 會報 incomplete
+注意：R1-R3 沒有問題，但缺 R4，guard 會報 incomplete。
 
 ## Code Artifact
 
 - `## Files Changed` 中列出的檔案必須在 plan 的 `## Files Likely Affected` 中也出現
 - 若 code artifact 改了 status.json，plan 也要把 status.json 列進去，否則視為 scope drift
 
-**Risk**: 改了 10 個檔，但 plan 只列了 8 個 + status.json，會被 guard flag
+注意：改了 10 個檔案，但 plan 只列了 8 個加 status.json，會被 guard 標記。
 
 ## Verify Artifact
 
@@ -33,7 +33,7 @@
 - 若執行環境無法測試（如跨平台 GUI），要在 `## Environment Constraint` 中明確說明
 - 票據形式：commit hash、CI log URL、或附檔（binary / checkpoint）
 
-**Risk**: 只有「我測試過」，沒有 build log 或 commit，會被視為 UNVERIFIED
+注意：只有「我測試過」，沒有 build log 或 commit，會被視為 UNVERIFIED。
 
 ## 例外流程
 

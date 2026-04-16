@@ -26,13 +26,13 @@ applyTo: "**"
 
 ## 禁止項
 
-- 🚫 在 prompt 檔中寫密碼、token、連線字串
-- 🚫 在 memory 寫 API key（改用環境變數或 Vault）
-- 🚫 不經驗證就標記任務完成
+禁止在 prompt 檔中寫密碼、token、連線字串。  
+禁止在 memory 寫 API key（改用環境變數或 Vault）。  
+禁止不經驗證就標記任務完成。
 
 ## 工作流觸發
 
-- 新任務 → 讀 `.github/copilot-instructions.md` + `CLAUDE.md`
-- 上下文不足 → 用 `pack-context.prompt.md` 或 `memory-bank/*.md`
-- 任務完成前 → 必須執行 `reviewUnstaged` 或 `review` 工具
-- 記憶更新 → 使用 `memory` 工具，重點寫進 `/memories/repo/`
+新任務時：讀 `.github/copilot-instructions.md` 加 `CLAUDE.md`。  
+上下文不足時：用 `pack-context.prompt.md` 或 `memory-bank/*.md`。  
+任務完成前：必須執行 `reviewUnstaged` 或 `review` 工具。  
+記憶體更新時：使用 `memory` 工具，重點寫進 `/memories/repo/`。
