@@ -112,7 +112,9 @@ ls -la .github/memory-bank/
 ```
 
 若缺失，重新執行以下命令：
+```bash
 python validate_mvp_context.py
+```
 
 #### Q: `.github/copilot-instructions.md` 不被讀取
 
@@ -163,7 +165,7 @@ Status: production
 
 ---
 
-### 🎯 成效檢查
+### 成效檢查
 
 完成 3-5 個任務後，評估：
 
@@ -180,8 +182,8 @@ Status: production
 
 建議的改進點：
 1. 若 memory-bank 檔案過期 → 更新對應檔案
-2. 若 guard 規則有新觸發點
-3. 若 prompt 失效
+2. 若 guard 規則有新觸發點 → 補充 workflow-gates.md
+3. 若 prompt 失效 → 改進 prompt-patterns.md
 
 所有改進都在 memory-bank 層完成，無需觸動 CLAUDE.md 核心。
 

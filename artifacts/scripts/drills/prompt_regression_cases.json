@@ -169,14 +169,14 @@
           "No verification = not done.",
           "No evidence = not valid."
         ],
-        "note": "Claude must state the artifact-only truth rule and explicit completion boundaries."
+        "note": "Claude must treat artifacts as the only truth source and completion boundary."
       }
     ]
   },
   {
     "id": "PR-009",
     "title": "Workflow Sync Completeness",
-    "description": "Workflow prompt must require root/template sync, placeholder generalization, and README/Obsidian updates for workflow changes, including explicit wording for workflow-file edits.",
+    "description": "Workflow prompt must require root/template sync, placeholder generalization, and README/Obsidian updates for workflow changes.",
     "assertions": [
       {
         "file": "CLAUDE.md",
@@ -187,7 +187,7 @@
           "必須同步更新 `README.md`",
           "任一同步缺漏（包含 Obsidian 入口）都視為 workflow 變更未完成"
         ],
-        "note": "Claude must require complete workflow sync, placeholder generalization, and README or Obsidian follow-through instead of partial edits."
+        "note": "Claude must require complete workflow sync instead of partial edits."
       }
     ]
   },
@@ -284,14 +284,14 @@
   {
     "id": "PR-015",
     "title": "External Failure Stop Contract",
-    "description": "Claude prompt must stop, record the result, and avoid scope expansion when environment, build, or test fails due to external limitations.",
+    "description": "Claude prompt must stop and record the result when environment, build, or test fails due to external limitations.",
     "assertions": [
       {
         "file": "CLAUDE.md",
         "must_contain_all": [
           "若 environment/build/test 因外部限制失敗，必須 STOP 並記錄結果。不得擴張範圍。"
         ],
-        "note": "External execution failure must stop the workflow, be recorded, and must not trigger scope expansion."
+        "note": "External execution failure must stop the workflow instead of expanding scope."
       }
     ]
   },

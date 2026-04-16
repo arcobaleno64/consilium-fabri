@@ -12,6 +12,7 @@ Ctrl+F 搜尋「metadata」
 問 Copilot：  
 ```
 "Artifact metadata 的必需欄位是什麼？"
+```
 
 Copilot 自動查詢 .github/memory-bank/artifact-rules.md  
 立即得到答案：Task ID、Status、Owner、Last Updated  
@@ -29,8 +30,6 @@ TASK-950（Guard Contract Validator 改進）
 Prompt:
 我需要完成 TASK-950。在實作前，請幫我整理一下上下文。
 （已存在）
-- artifacts/plans/TASK-950.plan.md（已存在）
-- artifacts/research/TASK-950.research.md（已存在）
 - artifacts/plans/TASK-950.plan.md（已存在）
 - artifacts/research/TASK-950.research.md（已存在）
 
@@ -103,29 +102,24 @@ Task TASK-950 已完成。
 
 ---
 
-### 場景 4: 發現新規則時
 ### 場景 4：發現新規則時
 
 執行 guard_status_validator.py 時發現一個新的觸發條件：
 
 Plan artifact 的 Objectives section 必須列舉至少 2 個明確的目標。
-1. 打開 `.github/memory-bank/artifact-rules.md`
-2. 在 `## Plan Artifact` 區段新增：
-   ```
-   - `## Objectives` 必須列舉至少 2 個明確目標
-   開啟 .github/memory-bank/artifact-rules.md
+1. 打開 .github/memory-bank/artifact-rules.md。
 2. 在 Plan Artifact 區段新增：
-   Plan artifact 的 Objectives section 必須列舉至少 2 個明確目標。  
-   每個目標應該是可驗收的陳述，不可是模糊敘述。
-3. git add 加 commit 加 push
+  Plan artifact 的 Objectives section 必須列舉至少 2 個明確目標。  
+  每個目標都應該是可驗收的陳述，不可是模糊敘述。
+3. git add、commit、push。
 
-### 場景 5：麼管理 artifact 的？」
+### 場景 5：向新隊友說明如何管理 artifact
 
-#### 舊方式
-污恔2・旧方式的痛點: 單方計讀口、口享絡找・檔案內容
+#### 舊方式的痛點
+需要自己翻長文件、搜尋段落、拼湊規則內容。
 
 #### 新方式
-新方式: 你不需要自紱在長文件裏
+你不需要自己在長文件裡翻找。
 
 ```
 1. 讀 CLAUDE.md（168 行，5 分鐘）
