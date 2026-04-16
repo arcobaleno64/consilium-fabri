@@ -52,3 +52,6 @@ jobs:
 
       - name: Red Team Static Phase
         run: python artifacts/scripts/run_red_team_suite.py --phase static
+
+      - name: Repo Health Dashboard
+        run: python artifacts/scripts/repo_health_dashboard.py --root .
