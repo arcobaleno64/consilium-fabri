@@ -6,6 +6,6 @@
   "required_artifacts": ["task", "status"],
   "available_artifacts": ["task", "status", "decision"],
   "missing_artifacts": [],
-  "blocked_reason": "Gemini research wrapper failed because no GEMINI_API_KEY or GEMINI_FALLBACK_API_KEY is available in the environment.",
-  "last_updated": "2026-04-10T15:21:52.4196845+08:00"
+  "blocked_reason": "Gemini research pending: auth method changed from GEMINI_API_KEY to OAuth (see subagent_roles.md §4). Run 'gemini auth' to login, then re-dispatch research for TASK-901.",
+  "last_updated": "2026-04-16T14:15:00+08:00"
 }
