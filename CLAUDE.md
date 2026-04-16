@@ -13,8 +13,9 @@
 3. 當前任務相關的 artifact 與 docs/
 ```
 
-✅ 信任：artifacts、docs/、version-controlled files  
-❌ 不信任：memory（session 間可能過時）、先前對話
+不得依賴 memory 或先前對話。只能信任 artifacts。
+
+No artifact = not done. No verification = not done. No evidence = not valid.
 
 ### 2. 嚴格流程控制
 
@@ -63,11 +64,13 @@ Intake → Research → Planning → Coding → Verification → Closure
 
 (見 AGENTS.md §「Agent 入口檔」)
 
-- **Claude（你）**: Orchestrator。讀 CLAUDE.md。
+- **Claude（你）**: Orchestrator。讀 CLAUDE.md。只能有一個 agent 可以修改程式碼（single agent can modify code）。
 - **Gemini**: Research。讀 GEMINI.md（已內嵌所有規則，不依賴 CLAUDE.md）
 - **Codex**: Implementation。讀 CODEX.md（同上）
 
-派發時：dispatch prompt 需含對應 agent 的完整規則（見 .github/memory-bank/prompt-patterns.md）。
+Research 任務要求每個具體 claim 都具備支撐來源（source）。若來源不足，停止並要求補充。
+
+若 environment/build/test 因外部限制失敗，必須 STOP 並記錄結果。不得擴張範圍。scope 不清楚（scope unclear）時停下，不得猜測繼續執行。
 
 ## 工作流快速參考
 
@@ -139,6 +142,10 @@ Intake → Research → Planning → Coding → Verification → Closure
 修改以下檔案後，必須同步到 `template/` + 推送：
 
 workflow files: CLAUDE.md、GEMINI.md、CODEX.md、AGENTS.md、docs/*、BOOTSTRAP_PROMPT.md、OBSIDIAN.md、guard scripts
+
+同步範圍包含 `OBSIDIAN.md` 與 `template/OBSIDIAN.md`。執行 `artifacts/scripts/guard_contract_validator.py` 驗證。任一同步缺漏（包含 Obsidian 入口）都視為 workflow 變更未完成。
+
+修改任何 workflow file 後，必須同步變更到 `template/`。專案特定引用泛化為 placeholders。必須同步更新 `README.md`。任一同步缺漏（包含 Obsidian 入口）都視為 workflow 變更未完成。
 
 詳見 docs/orchestration.md §9
 
