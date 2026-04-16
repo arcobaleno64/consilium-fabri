@@ -140,13 +140,27 @@ premortem 是預測失敗，不是宣告成功。
 
 ## 6. 最低數量要求
 
-| 任務類型 | 最少風險條目 | 需 blocking risk |
-|---|---|---|
-| 一般任務 | 2 條 | 不強制 |
-| 中等複雜任務 | 3 條 | 不強制 |
-| 安全性 / upstream PR / dependency upgrade | 4 條 | 至少 1 條 |
+最低數量要求由 `Adaptive Classification` 決定：validator 會依 task title 自動套用 `min_risks` 與 `min_critical`。實際對照表見 §7。
 
-## 7. 範例
+## 7. Adaptive Classification
+
+`guard_status_validator.py` 會讀取 task artifact 第一行標題（`# Task: ...`），依下表的 `keyword_regex` 判定 premortem task type，並動態調整最低門檻：
+
+| task_type | keyword_regex | min_risks | min_critical |
+|---|---|---|---|
+| hotfix | `\bhotfix\b|\bpatch\b` | 1 | 0 |
+| research | `\bresearch\b|\banalysis\b` | 2 | 1 |
+| planning | `\bplan\b|\bdesign\b` | 3 | 1 |
+| code | `(default)` | 3 | 1 |
+
+規則補充：
+
+- 比對目標只看 task title，不看 plan title。
+- 若沒有任何 regex 命中，預設使用 `code`。
+- `min_critical` 對應至少幾條 `Severity: blocking` 風險。
+- `override` 不得跳過 premortem missing；`## Risks` 缺失或空白仍視為 fail。
+
+## 8. 範例
 
 R1
 - Risk: MailKit 與 MimeKit 版本不同步，導致 restore 或 runtime 相依衝突
@@ -162,7 +176,7 @@ R2
 - Mitigation: 保持 PR 極小化，PR body 明確附上 advisory、驗證證據與最小變更範圍
 - Severity: non-blocking
 
-## 8. 禁止語句清單
+## 9. 禁止語句清單
 
 以下語句若未補具體內容，直接判定 guard 失敗：
 
@@ -170,14 +184,14 @@ R2
 - 再觀察 / 注意一下 / 需評估 / 有待確認
 - 相容性問題 / 效能問題
 
-## 9. 與 workflow 的關係
+## 10. 與 workflow 的關係
 
 - premortem 不合格 = 不可進入 coding
 - premortem 缺失 = 不可進入 coding
 - blocking risk 未處理 = 必須先 decision 或補 research
 - risk 實際發生 = 回退到最近合法 state
 
-## 10. 最終原則
+## 11. 最終原則
 
 Premortem 的目的不是讓人安心，而是讓錯誤提前發生在紙上，而不是發生在 production。
 

@@ -206,6 +206,8 @@
 
 ## Relevant References
 
+## Sources
+
 ## Uncertain Items
 
 ## Constraints For Implementation
@@ -216,6 +218,12 @@
 - `Research Questions`: 至少一條。
 - `Confirmed Facts`: 必須是可採用於規劃或實作的事實。
 - `Relevant References`: 需標明來源名稱或文件名稱。
+- `Sources`: 每行格式必須為 `[N] Author/Org. "Title." URL (YYYY-MM-DD retrieved)`。
+- `Sources`: 至少 2 筆。
+- `Sources` failure_grade:
+  - `CRITICAL`: 缺少 `## Sources` 區段，或 0 筆來源。
+  - `MAJOR`: 格式違規（例如缺少 URL、整體格式不符）。
+  - `MINOR`: 日期缺失或只提供 partial date。
 - `Uncertain Items`: 沒有時要寫 `None`。
 - `Constraints For Implementation`: 要可直接被 plan 使用。
 - research artifact 是 fact-only 契約，不得包含 `Recommendation`、implementation approach、PR title/body，或任何 solution 設計建議。
@@ -338,7 +346,8 @@
 欄位規則：
 
 - `Files Changed`: 至少列出實際修改檔案，沒有修改時不可建立 code artifact。若 task 專屬 artifact 仍位於 dirty git worktree 中，`guard_status_validator.py` 會用實際 git changed files 自動驗證這個欄位；若為 clean task 且存在合法 diff evidence，也會在 historical replay 中驗證這個欄位。
-- `Mapping To Plan`: 逐條或整體說明與 plan 對應關係。
+- `Mapping To Plan`: 每行格式必須為 `- plan_item: {N.N}, status: done|partial|skipped, evidence: "{short description}"`。
+- `Mapping To Plan`: 每個 plan item 都必須有對應一行；若無計畫對應則必須寫 `status: skipped, evidence: "not required by plan"`。
 - `Tests Added Or Updated`: 沒有時寫 `None`。
 - `Known Risks`: 沒有時寫 `None`。
 - `Blockers`: 沒有時寫 `None`。
@@ -435,6 +444,8 @@
 欄位規則：
 
 - `Acceptance Criteria Checklist`: 必須逐條對照 task artifact。
+- `Acceptance Criteria Checklist` item schema: `required_fields: [criterion, method, evidence, result, reviewer, timestamp]`
+- `Acceptance Criteria Checklist` item schema: `timestamp` 必須為 `Asia/Taipei` 的 ISO 8601 並帶 `+08:00`。
 - `Evidence`: 指向 code/test/research/decision artifacts。
 - `Build Guarantee` (FUP-2)：針對本 task 修改過的**每一個** build 單元，明列 build 指令、exit code、與 output tail。
   - .NET 任務：對每個被修改的 `.csproj` 執行 `dotnet build <csproj> -c Debug` 並貼出結尾段落（含「建置成功/錯誤」或等價 summary）。
@@ -490,6 +501,7 @@
 - Exception Type:
 - Scope Files:
 - Justification:
+- Override_Reason:
 ```
 
 何時必須建立 decision artifact：
@@ -506,6 +518,7 @@
 - `Exception Type: allow-scope-drift` 代表此 decision 是 scope drift 的顯式豁免。
 - `Scope Files`: 必須明列此次豁免涵蓋的 drift files，使用逗號分隔；不可只寫 `all` 或留白。
 - `Justification`: 必須說明為何這次 drift 可以被受控接受。若 `guard_status_validator.py` 在 `--allow-scope-drift` 模式下找不到對應 waiver，仍會 fail。
+- `Override_Reason`: 當使用 `guard_status_validator.py --override ... --override-approver ...` 時，decision artifact 應同步記錄人工核准的 override 理由；此欄位不得只寫 `test` 或空泛字眼，必須能對應 override log 中的 `reason`。
 
 ---
 
@@ -648,6 +661,35 @@ JSON schema 範例：
 - Preventive Action 不可只寫「注意一下」，必須是可被 guard / prompt / template 執行的具體改動。
 - Final Rule 必須是一句可直接加入 CLAUDE.md 或 guard script 的規則。
 - `Validation` 不可空白，必須說明如何驗證該改善已落地。
+
+---
+
+## 5.10 Artifact Lineage MVP
+
+用途：定義 artifact 間最小可查的 lineage 關係，供 registry 與後續自動化擴充使用。
+
+最小 schema：
+
+```yaml
+lineage_entry:
+  source_file: "artifacts/code/{task}.code.md"
+  plan_item: "N.N"
+  decision_refs:
+    - "artifacts/decisions/{task}.decision.md"
+  research_refs:
+    - "artifacts/research/{task}.research.md"
+  scope: "file-level only"
+  generated_by: "build_decision_registry.py"
+```
+
+規則：
+
+- `source_file`: 指向單一 code artifact，使用 repo-relative path。
+- `plan_item`: 對應 code artifact `## Mapping To Plan` 的 `N.N` 項目。
+- `decision_refs`: 指向相關 decision artifacts，使用 repo-relative path array。
+- `research_refs`: 指向相關 research artifacts，使用 repo-relative path array。
+- `scope`: 目前只支援 file-level only，不含行號、不含 commit hash。
+- `generated_by`: 目前由 `build_decision_registry.py` 作為最小生成入口；未來可擴充其他 producer，但不得改變 MVP 的 file-level 邊界。
 
 ---
 

@@ -56,7 +56,7 @@ foreach ($model in $Models) {
     for ($attempt = 0; $attempt -le $MaxRetriesPerTier; $attempt++) {
         
         # Construct args
-        $processArgs = @("-m", $model)
+        $processArgs = @("exec", "-m", $model)
         if ($ApprovalMode -eq "full-auto") {
             $processArgs += "--full-auto"
         } else {
@@ -65,7 +65,7 @@ foreach ($model in $Models) {
         if (![string]::IsNullOrWhiteSpace($ReasoningEffort)) {
             $processArgs += "-c", "model_reasoning_effort=`"$ReasoningEffort`""
         }
-        $processArgs += "-p", $Prompt
+        $processArgs += $Prompt
         Write-Host "    [*] Attempt $($attempt+1)/$($MaxRetriesPerTier+1)..." -ForegroundColor Gray
         
         $output = $null
@@ -74,7 +74,7 @@ foreach ($model in $Models) {
         $lastExitCode = 1
         
         try {
-            $procOutput = & $Executable $processArgs 2>&1
+            $procOutput = $null | & $Executable $processArgs 2>&1
             
             $stdOutLines = @()
             $stdErrLines = @()

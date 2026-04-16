@@ -1,0 +1,122 @@
+{
+  "generated_at": "2026-04-16T08:40:21+08:00",
+  "total": 9,
+  "entries": [
+    {
+      "task_id": "TASK-900",
+      "source_file": "artifacts/decisions/TASK-900.decision.md",
+      "decision_type": "guard_exception",
+      "summary": "採用受控 guard exception，僅在 `--allow-scope-drift` 模式下針對明確檔案集合豁免 scope drift。",
+      "plan_refs": [
+        "artifacts/plans/TASK-900.plan.md"
+      ],
+      "research_refs": [
+        "artifacts/research/TASK-900.research.md"
+      ],
+      "date": "2026-04-15T00:00:00+08:00",
+      "parse_status": "complete"
+    },
+    {
+      "task_id": "TASK-901",
+      "source_file": "artifacts/decisions/TASK-901.decision.md",
+      "decision_type": "general_decision",
+      "summary": "Stop the workflow and record `TASK-901` as blocked until Gemini credentials are available.",
+      "plan_refs": [],
+      "research_refs": [],
+      "date": "2026-04-10T15:21:52.4196845+08:00",
+      "parse_status": "partial"
+    },
+    {
+      "task_id": "TASK-902",
+      "source_file": "artifacts/decisions/TASK-902.decision.md",
+      "decision_type": "guard_exception",
+      "summary": "使用 decision-based guard exception，僅在 `--allow-scope-drift` 下豁免明確列出的 drift files。",
+      "plan_refs": [
+        "artifacts/plans/TASK-902.plan.md"
+      ],
+      "research_refs": [
+        "artifacts/research/TASK-902.research.md"
+      ],
+      "date": "2026-04-15T00:00:00+08:00",
+      "parse_status": "complete"
+    },
+    {
+      "task_id": "TASK-950",
+      "source_file": "artifacts/decisions/TASK-950.decision.md",
+      "decision_type": "guard_exception",
+      "summary": "停止推進、記錄 decision，並要求最終 artifacts 只保留 fact-only research 與 plan-scoped code 結果。",
+      "plan_refs": [
+        "artifacts/plans/TASK-950.plan.md"
+      ],
+      "research_refs": [
+        "artifacts/research/TASK-950.research.md"
+      ],
+      "date": "2026-04-11T11:00:00+08:00",
+      "parse_status": "complete"
+    },
+    {
+      "task_id": "TASK-951",
+      "source_file": "artifacts/decisions/TASK-951.decision.md",
+      "decision_type": "guard_exception",
+      "summary": "停止 resume，直到 improvement artifact 為 `Status: applied`，再由 verify artifact 記錄 blocked / resume 鏈。",
+      "plan_refs": [
+        "artifacts/plans/TASK-951.plan.md"
+      ],
+      "research_refs": [
+        "artifacts/research/TASK-951.research.md"
+      ],
+      "date": "2026-04-11T11:10:00+08:00",
+      "parse_status": "complete"
+    },
+    {
+      "task_id": "TASK-955",
+      "source_file": "artifacts/decisions/TASK-955.decision.md",
+      "decision_type": "general_decision",
+      "summary": "採用 `commit-range` snapshot 作為第一版 historical diff evidence，並把 `--allow-scope-drift` 的例外收斂為必須附 decision artifact 的結構化 guard waiver。",
+      "plan_refs": [
+        "artifacts/plans/TASK-955.plan.md"
+      ],
+      "research_refs": [],
+      "date": "2026-04-13T13:55:35+08:00",
+      "parse_status": "complete"
+    },
+    {
+      "task_id": "TASK-956",
+      "source_file": "artifacts/decisions/TASK-956.decision.md",
+      "decision_type": "general_decision",
+      "summary": "保留 repo-local `commit-range` 路徑，並加入 immutable commit pinning、changed-files snapshot 與 checksum 驗證。",
+      "plan_refs": [
+        "artifacts/plans/TASK-956.plan.md"
+      ],
+      "research_refs": [],
+      "date": "2026-04-13T14:14:56+08:00",
+      "parse_status": "complete"
+    },
+    {
+      "task_id": "TASK-957",
+      "source_file": "artifacts/decisions/TASK-957.decision.md",
+      "decision_type": "general_decision",
+      "summary": "採用 GitHub PR files endpoint，將新 evidence type 定義為 `github-pr`，並保留可覆蓋的 `API Base URL` 以支援本地 fixture 與 GHES 類環境。",
+      "plan_refs": [
+        "artifacts/plans/TASK-957.plan.md"
+      ],
+      "research_refs": [
+        "artifacts/research/TASK-957.research.md"
+      ],
+      "date": "2026-04-13T14:40:02+08:00",
+      "parse_status": "complete"
+    },
+    {
+      "task_id": "TASK-958",
+      "source_file": "artifacts/decisions/TASK-958.decision.md",
+      "decision_type": "general_decision",
+      "summary": "採用純文字 changed-files archive 作為第一版 archive fallback，並在文件中明文化它是當 local git objects retention 不足時的備援路徑。",
+      "plan_refs": [
+        "artifacts/plans/TASK-958.plan.md"
+      ],
+      "research_refs": [],
+      "date": "2026-04-13T14:40:02+08:00",
+      "parse_status": "complete"
+    }
+  ]
+}

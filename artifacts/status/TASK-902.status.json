@@ -12,6 +12,7 @@
   ],
   "available_artifacts": [
     "code",
+    "decision",
     "improvement",
     "plan",
     "research",

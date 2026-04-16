@@ -1,0 +1,11 @@
+{
+  "task_id": "TASK-999",
+  "state": "planned",
+  "current_owner": "Claude",
+  "next_agent": "Claude",
+  "required_artifacts": ["task", "research", "plan", "status"],
+  "available_artifacts": ["decision", "plan", "research", "status", "task"],
+  "missing_artifacts": [],
+  "blocked_reason": "",
+  "last_updated": "2026-04-16T00:00:00+08:00"
+}

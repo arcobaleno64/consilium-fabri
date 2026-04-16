@@ -28,6 +28,9 @@ Workflow template 位於：【填入 artifact-harness repo clone 路徑，或直
 請從該目錄複製完整架構到專案根目錄，然後：
 1. 替換 CLAUDE.md 中的 placeholder（{{PROJECT_NAME}}, {{REPO_NAME}}, {{UPSTREAM_ORG}}）
 2. 若無 fork 模式，移除 CLAUDE.md 的 "Repository boundaries" 區段
+2b. 小任務可用 `python artifacts/scripts/guard_status_validator.py --task-id TASK-900 --auto-classify` 試跑判定流程。
+   當 task 含 `lightweight: true`，或沒有 plan artifact 且仍在 `drafted` / `researched`，guard 會走 lightweight gate。
+   一旦偵測 `premortem:` 或 plan 的 `## Risks` 非空，guard 會自動升級回 full gate。
 3. 更新 repository About/topics profile：
   - 執行 `python artifacts/scripts/update_repository_profile.py --project-name "【專案名稱】" --project-summary "【專案簡述】"`
   - 若需要客製 topics，可加 `--topics "multi-agent,developer-tools,workflow-template,..."`
@@ -92,9 +95,25 @@ TASK-001：【任務目標】
 第一個任務：【描述】
 ```
 
+### 構建你的第一個 Research artifact
+
+若第一個 task 需要 Research，至少要讓 `## Sources` 符合 Sprint 1 A1 的最小格式：
+
+```md
+## Sources
+[1] Example Org. "Primary spec." https://example.com/spec (2026-04-15 retrieved)
+[2] Example Org. "Secondary reference." https://example.com/reference (2026-04-15 retrieved)
+```
+
+重點：
+
+- 每筆都要有編號 `[N]`
+- 必須同時包含 `Author/Org`、`"Title."`、`URL`、`(YYYY-MM-DD retrieved)`
+- 至少 2 筆；缺少 `## Sources` 會被 `guard_status_validator.py` 直接擋下
+
 ### 注意事項
 
 1. **範本路徑**：若 template 已搬移到其他位置，更新路徑即可。
 2. **Gemini API Key**：不要寫死在 prompt 裡。建議用環境變數或在 session 中單獨設定。
 3. **第一個任務**：建議從一個小任務開始（例如 TASK-001: 確認 build 正常），驗證整個流程跑得通後再做大任務。
-4. **Lightweight mode**：極小型任務可在 prompt 中加「此為 lightweight task」，跳過 research 階段。
+4. **Lightweight mode**：極小型任務可搭配 `guard_status_validator.py --auto-classify` 自動判定 lightweight / full gate。

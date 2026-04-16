@@ -29,3 +29,8 @@
 ## Follow Up
 - 保留 `TASK-950` 作為 role boundary live drill 樣本
 - 若未來新增自動化 diff-to-plan guard，更新 `docs/red_team_backlog.md`
+
+## Guard Exception
+- Exception Type: allow-scope-drift
+- Scope Files: BOOTSTRAP_PROMPT.md, docs/artifact_schema.md, docs/orchestration.md, docs/red_team_runbook.md, docs/templates/blocking/TEMPLATE.md, docs/templates/implementer/TEMPLATE.md, docs/templates/parallel/TEMPLATE.md, docs/templates/reviewer/TEMPLATE.md, docs/templates/tester/TEMPLATE.md, docs/templates/verifier/TEMPLATE.md, obsidian/app.json, obsidian/core-plugins.json, temp_test.ps1, template/BOOTSTRAP_PROMPT.md, template/artifacts/scripts/Invoke-CodexAgent.ps1, template/artifacts/scripts/Invoke-GeminiAgent.ps1, template/artifacts/scripts/discover_templates.py, template/artifacts/scripts/guard_status_validator.py, template/artifacts/scripts/run_red_team_suite.py, template/docs/artifact_schema.md, template/docs/orchestration.md, template/docs/red_team_runbook.md, template/docs/templates/blocking/TEMPLATE.md, template/docs/templates/implementer/TEMPLATE.md, template/docs/templates/parallel/TEMPLATE.md, template/docs/templates/reviewer/TEMPLATE.md, template/docs/templates/tester/TEMPLATE.md, template/docs/templates/verifier/TEMPLATE.md, test_e2e.ps1, tmp-red-team/manual-git-test/
+- Justification: 目前工作樹包含跨任務的既有與進行中變更，這些檔案不屬於 TASK-950 的 plan/code 變更範圍；本次僅為 S1 驗證窗口進行受控豁免，避免把跨任務 dirty state 誤判為 TASK-950 scope drift。

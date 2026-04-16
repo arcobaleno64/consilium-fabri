@@ -68,7 +68,7 @@ foreach ($model in $Models) {
         $lastExitCode = 1
         
         try {
-            $procOutput = & $Executable $processArgs 2>&1
+            $procOutput = $null | & $Executable $processArgs 2>&1
             
             $stdOutLines = @()
             $stdErrLines = @()

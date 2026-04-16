@@ -19,6 +19,14 @@
 5. `BOOTSTRAP_PROMPT.md`
 6. `docs/red_team_runbook.md`
 
+## 導覽目錄
+
+- `Lightweight Mode` → `docs/lightweight_mode_rules.md`
+- `Workflow Orchestration` → `docs/orchestration.md`
+- `Artifact Schema` → `docs/artifact_schema.md`
+- `Decision Registry` → `artifacts/status/decision_registry.json`
+- `Red Team Runbook` → `docs/red_team_runbook.md`
+
 ## 同步範圍
 
 - 需同步：入口檔、`docs/*.md`、README、Obsidian 入口、`artifacts/scripts/guard_status_validator.py`、`artifacts/scripts/guard_contract_validator.py`、`artifacts/scripts/run_red_team_suite.py`、template 對應文件。
@@ -35,6 +43,18 @@
 - 紅隊演練入口是 `docs/red_team_runbook.md`，重跑命令是 `python artifacts/scripts/run_red_team_suite.py`；靜態案例現新增邊界版本測試（如 RT-004B）確保防治邏輯合理。
 - Prompt regression 固定入口是 `python artifacts/scripts/prompt_regression_validator.py --root .`，固定測例在 `artifacts/scripts/drills/prompt_regression_cases.json`。
 - 固定 Prompt regression 測例目前涵蓋 artifact-only truth/completion、workflow sync completeness、research blocked preconditions、implementation summary discipline、conflict-to-decision routing、decision schema integrity、external failure STOP、decision-gated scope waiver、historical diff evidence contract、pinned diff evidence integrity、GitHub provider-backed diff evidence 與 archive retention fallback。
+
+## Decision Registry
+
+- registry 檔案位置：`artifacts/status/decision_registry.json`
+- 重新產生命令：`python artifacts/scripts/build_decision_registry.py --root .`
+
+| 欄位 | 說明 |
+|---|---|
+| `task_id` | decision artifact 對應的 task id，來自檔名 |
+| `decision_type` | 優先讀 `## Decision Type` / `Type:`，缺少時 fallback 為 `guard_exception` 或 `general_decision` |
+| `parse_status` | 欄位在 explicit + fallback 後是否完整，值為 `complete` 或 `partial` |
+| `plan_refs` | 與 decision 關聯的 plan artifact 路徑陣列，格式固定為 repo-relative path |
 
 ## GitHub / Template 對應
 

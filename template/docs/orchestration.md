@@ -211,6 +211,23 @@ Codex CLI 不得：
 
 沒有 verify artifact，或 verify artifact 結果非 pass，不得將 status 設為 done。
 
+### 5.1 示範任務流程（Code artifact 節錄）
+
+若示範任務流程需要展示 Code artifact，`## Mapping To Plan` 應符合 Sprint 1 A3 格式：
+
+```md
+## Mapping To Plan
+- plan_item: 1.1, status: done, evidence: "updated BOOTSTRAP_PROMPT.md with Sources example"
+- plan_item: 1.2, status: done, evidence: "synced docs/orchestration.md sample to template copy"
+- plan_item: 1.3, status: skipped, evidence: "not required by plan"
+```
+
+重點：
+
+- 每行都必須包含 `plan_item`、`status`、`evidence`
+- `status` 只能是 `done`、`partial`、`skipped`
+- `evidence` 必須是可快速核對的短描述，而不是 raw log
+
 ## 6. Context Hygiene 規則
 
 為降低上下文壓縮與污染風險，主 thread 只保留：
@@ -382,4 +399,65 @@ Template sync 與 Obsidian sync 由 **Orchestrator（Claude Code）** 負責。G
 - 沒有驗收，就沒有 done
 - agent 可替換，artifact contract 不可破壞
 - 對話可以協助理解，但不能取代檔案狀態
+
+## 12. Decision Waiver
+
+`Decision Waiver` 放在 `artifacts/status/*.status.json` 的 `decision_waivers` 欄位中，單筆格式如下：
+
+```json
+{
+  "gate": "Gate_B",
+  "reason": "temporary waiver reason",
+  "approver": "human approver",
+  "expires": "2026-04-15T23:59:59+08:00"
+}
+```
+
+規則：
+
+- `gate`、`reason`、`approver`、`expires` 四欄缺一不可，否則 `guard_status_validator.py` 必須拒絕。
+- `gate` 只代表特定 Gate 的豁免，不可視為 blanket override。
+- `expires` 必須是 `Asia/Taipei` 的 ISO 8601 `+08:00`；一旦過期，guard 必須輸出 `waiver expired` 並視為失敗。
+- 有效 waiver 只會讓 validator 對指定 gate 的失敗退出碼變為 `0`，並標記 `[WAIVER ACTIVE gate=N]`。
+
+## 13. Cross-Repository Collaboration
+
+本節定義在多倉庫環境中（本地 fork + upstream 原始庫）進行協作時的命名慣例、同步規則、衝突處理策略與 PR 策略。此節補充 `CLAUDE.md` 中 `external/{{REPO_NAME}}/` 與 `external/{{REPO_NAME}}-upstream-pr/` 的工作目錄定義。
+
+### 13.1 Remote 命名慣例
+
+| Remote 名稱 | 指向 | 說明 |
+|---|---|---|
+| `origin` | fork（個人或組織 fork）| 日常推送目標 |
+| `upstream` | 原始庫（上游）| 只讀取、不直接推送 |
+
+所有 agent 必須使用此命名約定；若 remote 設定不符，必須 STOP 並記錄於 decision artifact。
+
+### 13.2 Upstream Pinning
+
+- 每次建立 upstream PR 分支前，必須執行：
+  ```bash
+  git fetch upstream
+  git reset --hard upstream/<default-branch>
+  ```
+- 禁止將本地 feature commit、experiment commit 或 hotfix commit 混入 upstream PR 分支。
+- 若無法確保分支乾淨（例如 git worktree 含未提交變更），必須 STOP，並在 decision artifact 記錄原因。
+- 此規則由 Orchestrator（Claude Code）負責執行；Codex CLI 不得自行決定 upstream PR 分支狀態。
+
+### 13.3 衝突處理策略
+
+| 衝突類型 | 處理策略 | 決策者 |
+|---|---|---|
+| schema 衝突 | 建立 decision artifact，擱置直到明確確認後方可繼續 | task owner |
+| script 衝突 | local 版本優先；upstream PR 分支使用 upstream 版本 | Claude Code |
+| artifact 衝突 | 不得合併；必須分別建立 PR，並各自追蹤 artifact chain | task owner |
+
+衝突必須在推進任何 artifact state transition 之前記錄於 decision artifact。
+
+### 13.4 PR 策略
+
+- 只向 upstream 送符合 upstream 品質標準的變更（通過 upstream 測試、不含專案特定邏輯、無本地 feature code）。
+- 本地 experiments、工具腳本、專案特定 artifacts 絕不進入 upstream PR 分支（`external/{{REPO_NAME}}-upstream-pr/`）。
+- upstream PR 必須可獨立 review，不依賴本地 fork 的任何未合併變更。
+- 送出 upstream PR 前，必須確認 `external/{{REPO_NAME}}-upstream-pr/` 的 commit history 與 upstream 主分支完全一致，除了本次 PR 的變更。
 

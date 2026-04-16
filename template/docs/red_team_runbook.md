@@ -52,14 +52,17 @@ python artifacts/scripts/run_red_team_suite.py --phase static
 | `RT-007` | root / `template/` drift | `guard_contract_validator.py` | contract guard fail |
 | `RT-008` | Obsidian drift | `guard_contract_validator.py` | contract guard fail |
 | `RT-009` | bootstrap 少掉 contract guard | `guard_contract_validator.py` | contract guard fail |
-| `RT-010` | dirty worktree 內有未宣告檔案 | `guard_status_validator.py` | git-backed scope guard 直接 fail |
-| `RT-011` | 已提交 task 的 pinned historical diff 未宣告檔案 | `guard_status_validator.py` | commit-range replay 直接 fail |
-| `RT-012` | `--allow-scope-drift` 但沒有 decision waiver | `guard_status_validator.py` | scope drift 仍 fail |
-| `RT-013` | `--allow-scope-drift` 且有顯式 waiver | `guard_status_validator.py` | validation pass with explicit waiver |
-| `RT-014` | historical diff evidence checksum 被竄改 | `guard_status_validator.py` | evidence integrity 直接 fail |
-| `RT-015` | GitHub provider-backed PR files 含第二頁未宣告檔案 | `guard_status_validator.py` | github-pr replay 直接 fail |
-| `RT-016` | git objects 缺失但 archive fallback 含未宣告檔案 | `guard_status_validator.py` | archive fallback 直接 fail |
-| `RT-017` | archive file hash 被竄改 | `guard_status_validator.py` | archive integrity 直接 fail |
+| `RT-010` | research artifact 缺少 `## Sources` | `guard_status_validator.py` | citation guard 以 `CRITICAL` fail |
+| `RT-011` | code artifact 的 `Mapping To Plan` 混入缺少 `status` 的條目 | `guard_status_validator.py` | 結構警告（WARN）但 validation 仍 pass |
+| `RT-012` | verify checklist 的 structured item 缺少 `reviewer` | `guard_status_validator.py` | checklist schema 警告（WARN）但 validation 仍 pass |
+| `RT-013` | dirty worktree 內有未宣告檔案 | `guard_status_validator.py` | git-backed scope guard 直接 fail |
+| `RT-014` | 已提交 task 的 pinned historical diff 未宣告檔案 | `guard_status_validator.py` | commit-range replay 直接 fail |
+| `RT-015` | `--allow-scope-drift` 但沒有 decision waiver | `guard_status_validator.py` | scope drift 仍 fail |
+| `RT-016` | `--allow-scope-drift` 且有顯式 waiver | `guard_status_validator.py` | validation pass with explicit waiver |
+| `RT-017` | historical diff evidence checksum 被竄改 | `guard_status_validator.py` | evidence integrity 直接 fail |
+| `RT-018` | GitHub provider-backed PR files 含第二頁未宣告檔案 | `guard_status_validator.py` | github-pr replay 直接 fail |
+| `RT-019` | git objects 缺失但 archive fallback 含未宣告檔案 | `guard_status_validator.py` | archive fallback 直接 fail |
+| `RT-020` | archive file hash 被竄改 | `guard_status_validator.py` | archive integrity 直接 fail |
 
 ### Phase 2: Live workflow 演練
 
@@ -145,3 +148,53 @@ python artifacts/scripts/prompt_regression_validator.py --root . --output artifa
 - 靜態 runner 預設使用暫存目錄，不修改 repo tracked files。
 - live drill 只使用既有 `TASK-950`、`TASK-951` 內建樣本，不覆寫其他 task。
 - 若要新增新一輪 live drill，從 `TASK-960` 起編號，並完整建立 task / status / verify / decision / improvement 鏈。
+
+## 7. Extension Guide
+
+本節提供新增紅隊案例的標準流程，確保新案例在分級、命名、分類上與既有案例保持一致。
+
+### 7.1 案例分級原則：Severity × Coverage 矩陣
+
+新案例必須先定位到以下 12 格矩陣的對應位置，才可進行命名與撰寫：
+
+| Severity \ Coverage | schema | gate | sync | reconcile |
+|---|---|---|---|---|
+| **Critical** | schema 必填欄位缺失或格式破壞，導致 guard 完全失效 | gate 轉移被靜默跳過，無任何 audit trail | root/template/Obsidian 三方完全不同步 | artifact 內容與上游來源根本性衝突，無法機讀 |
+| **Major** | schema 欄位值非法但不致使 guard 崩潰 | gate 轉移條件不足但有部分 guard 覆蓋 | root/template 漂移超過允許閾值 | artifact chain 缺少中間節點，可手動補救 |
+| **Minor** | schema 格式警告（WARN），驗證仍 pass | gate 邊界模糊，但正常路徑不受影響 | template 與 root 輕微漂移，不影響契約 | artifact 欄位細微不一致，不影響狀態機 |
+
+撰寫新案例前，必須先確認其落在哪一格。Severity 與 Coverage 都不可留空或模糊描述。
+
+### 7.2 新案例命名規則
+
+命名格式：`RT-{3位數流水號}-{scope縮寫}`
+
+- 流水號從現有最大編號 + 1 開始，不得跳號。
+- scope 縮寫固定使用：`schema`、`gate`、`sync`、`reconcile`。
+- 範例：`RT-021-schema`、`RT-022-gate`、`RT-023-sync`、`RT-024-reconcile`。
+- 命名後，必須在 `## 4. 執行模式 Phase 1` 的案例矩陣中新增一列，並填寫「注入點、預期攔截點、成功條件」。
+
+### 7.3 範例分類
+
+以下三個範例說明如何對應矩陣、命名並描述案例：
+
+#### RT-013-schema（Critical × schema）
+
+- 注入點：移除 research artifact 的 `## Sources` 必填區段
+- 預期攔截點：`guard_status_validator.py` — citation guard
+- 成功條件：guard 輸出 `CRITICAL` 並以非零退出碼失敗
+- 矩陣位置：Critical × schema（必填欄位缺失，guard 必須直接 fail）
+
+#### RT-014-gate（Major × gate）
+
+- 注入點：在 status artifact 中跳過特定 gate transition（例如從 `planned` 直接跳到 `done`，略過 `coding / verifying`）
+- 預期攔截點：`guard_status_validator.py` — workflow state machine 檢查
+- 成功條件：guard 偵測到非法 state transition 並輸出錯誤
+- 矩陣位置：Major × gate（gate 被跳過但仍有 guard 覆蓋，非靜默失效）
+
+#### RT-015-sync（Minor × sync）
+
+- 注入點：`template/docs/orchestration.md` 與 `docs/orchestration.md` 之間存在輕微文字漂移（例如一行遺漏）
+- 預期攔截點：`guard_contract_validator.py` — root/template drift check
+- 成功條件：guard 輸出漂移警告，依嚴重程度決定是否 fail
+- 矩陣位置：Minor × sync（template 輕微漂移，不影響契約正確性）
