@@ -3,25 +3,46 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
-import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Sequence
 
-ROW_PATTERN = re.compile(
-    r"^\|\s*`?(?P<case>[^|`]+)`?\s*\|\s*(?P<phase>[^|]+)\|\s*(?P<expected>[^|]+)\|\s*(?P<outcome>[^|]+)\|\s*(?P<exit>[^|]+)\|\s*`?(?P<evidence>[^|`]+)`?\s*\|\s*(?P<notes>[^|]*)\|\s*$"
-)
 
-
-@dataclass
+@dataclass(init=False)
 class CaseRow:
     case: str
     phase: str
     expected: str
     outcome: str
-    exit_code: str
+    expected_exit_code: str
+    actual_exit_code: str
     evidence: str
     notes: str
+
+    def __init__(
+        self,
+        case: str,
+        phase: str,
+        expected: str,
+        outcome: str,
+        expected_exit_code: str,
+        actual_exit_code: str,
+        evidence: str = "",
+        notes: str = "",
+    ) -> None:
+        self.case = case
+        self.phase = phase
+        self.expected = expected
+        self.outcome = outcome
+        self.expected_exit_code = expected_exit_code
+        if notes == "" and not str(actual_exit_code).isdigit():
+            self.actual_exit_code = expected_exit_code
+            self.evidence = actual_exit_code
+            self.notes = evidence
+        else:
+            self.actual_exit_code = actual_exit_code
+            self.evidence = evidence
+            self.notes = notes
 
     @property
     def case_passed(self) -> bool:
@@ -31,22 +52,32 @@ class CaseRow:
 def parse_report(markdown: str) -> List[CaseRow]:
     rows: List[CaseRow] = []
     for line in markdown.splitlines():
-        match = ROW_PATTERN.match(line.strip())
-        if not match:
+        stripped = line.strip()
+        if not stripped.startswith("|"):
             continue
-        case_value = match.group("case").strip()
-        phase_value = match.group("phase").strip()
+        parts = [part.strip() for part in stripped.split("|")[1:-1]]
+        if len(parts) not in {7, 8}:
+            continue
+        case_value = parts[0].strip("`").strip()
+        phase_value = parts[1].strip()
         if case_value in {"Case", "---"} or phase_value == "---":
             continue
+        if len(parts) == 7:
+            expected, outcome, exit_code, evidence, notes = parts[2:]
+            expected_exit_code = exit_code
+            actual_exit_code = exit_code
+        else:
+            expected, outcome, expected_exit_code, actual_exit_code, evidence, notes = parts[2:]
         rows.append(
             CaseRow(
                 case=case_value,
                 phase=phase_value,
-                expected=match.group("expected").strip(),
-                outcome=match.group("outcome").strip(),
-                exit_code=match.group("exit").strip(),
-                evidence=match.group("evidence").strip(),
-                notes=match.group("notes").strip(),
+                expected=expected.strip(),
+                outcome=outcome.strip(),
+                expected_exit_code=expected_exit_code.strip(),
+                actual_exit_code=actual_exit_code.strip(),
+                evidence=evidence.strip("`").strip(),
+                notes=notes.strip(),
             )
         )
     return rows
@@ -82,7 +113,7 @@ def build_scorecard(rows: Sequence[CaseRow], report_path: Path) -> str:
                 phase=row.phase,
                 expected=row.expected,
                 outcome=row.outcome,
-                exit_code=row.exit_code,
+                exit_code=row.actual_exit_code,
                 baseline=baseline,
                 evidence=row.evidence,
                 notes=row.notes or "None",

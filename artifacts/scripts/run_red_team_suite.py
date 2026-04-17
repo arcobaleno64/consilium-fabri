@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -39,6 +40,7 @@ STATUS_GUARD = REPO_ROOT / "artifacts" / "scripts" / "guard_status_validator.py"
 CONTRACT_GUARD = REPO_ROOT / "artifacts" / "scripts" / "guard_contract_validator.py"
 PROMPT_REGRESSION = REPO_ROOT / "artifacts" / "scripts" / "prompt_regression_validator.py"
 LOCAL_TMP_ROOT = REPO_ROOT / ".codex-red-team"
+GITHUB_API_ALLOWED_HOSTS_ENV = "CONSILIUM_ALLOWED_GITHUB_API_HOSTS"
 
 
 @dataclass
@@ -74,8 +76,23 @@ def load_module(path: Path, module_name: str):
     return module
 
 
-def run_command(args: Sequence[str], cwd: Optional[Path] = None) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(args, cwd=cwd or REPO_ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace")
+MAX_ARTIFACT_FILE_BYTES = 512 * 1024
+MAX_DIFF_EVIDENCE_REPLAY_BYTES = 128 * 1024
+ALLOWED_ENV_OVERRIDES = {GITHUB_API_ALLOWED_HOSTS_ENV}
+
+
+def run_command(args: Sequence[str], cwd: Optional[Path] = None, env: Optional[Dict[str, str]] = None) -> subprocess.CompletedProcess[str]:
+    merged_env = None
+    if env:
+        invalid_keys = sorted(set(env) - ALLOWED_ENV_OVERRIDES)
+        if invalid_keys:
+            raise RuntimeError(f"Unsupported environment override(s): {', '.join(invalid_keys)}")
+        for key, value in env.items():
+            if not isinstance(value, str):
+                raise RuntimeError(f"Environment override '{key}' must be a string")
+        merged_env = os.environ.copy()
+        merged_env.update(env)
+    return subprocess.run(args, cwd=cwd or REPO_ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace", env=merged_env)
 
 
 def run_git_command(repo_root: Path, args: Sequence[str]) -> subprocess.CompletedProcess[str]:
@@ -148,6 +165,21 @@ def github_pr_files_server(repository: str, pull_number: int, pages: Dict[int, L
         server.shutdown()
         thread.join(timeout=5)
         server.server_close()
+
+
+@contextmanager
+def temporary_env(overrides: Dict[str, str]):
+    original_values = {key: os.environ.get(key) for key in overrides}
+    try:
+        for key, value in overrides.items():
+            os.environ[key] = value
+        yield
+    finally:
+        for key, original in original_values.items():
+            if original is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = original
 
 
 def replace_task_id(text: str, source_task_id: str, target_task_id: str) -> str:
@@ -257,13 +289,14 @@ def run_status_case(
     case_id: str = "",
     notes: str = "",
     extra_args: Optional[Sequence[str]] = None,
+    extra_env: Optional[Dict[str, str]] = None,
 ) -> CaseResult:
     args = [sys.executable, str(STATUS_GUARD), "--task-id", task_id, "--artifacts-root", str(artifacts_root)]
     if from_state and to_state:
         args.extend(["--from-state", from_state, "--to-state", to_state])
     if extra_args:
         args.extend(extra_args)
-    result = run_command(args)
+    result = run_command(args, env=extra_env) if extra_env else run_command(args)
     return build_case_result(
         case_id=case_id,
         phase="static" if case_id.startswith("RT-") else "live",
@@ -759,17 +792,25 @@ def case_rt_018() -> CaseResult:
         artifacts_root = copy_task_fixture(temp_root, "TASK-900", "TASK-971")
         initialize_git_fixture(temp_root)
         repository = "octo/workflow"
-        pull_number = "invalid"
+        pull_number = "971"
+        safe_files = [f"docs/provider-safe-{index:03d}.md" for index in range(1, 101)]
+        rogue_file = "docs/provider-rogue-page-2.md"
         pages = {
-            1: [{"filename": "docs/provider-safe.md"}],
-            2: [{"filename": "docs/provider-rogue.md"}],
+            1: [{"filename": path} for path in safe_files],
+            2: [{"filename": rogue_file}],
             3: [],
         }
         with github_pr_files_server(repository, pull_number, pages) as api_base_url:
+            plan_path = artifacts_root / "plans" / "TASK-971.plan.md"
             code_path = artifacts_root / "code" / "TASK-971.code.md"
+            declared_files_block = "".join(f"- `{path}`\n" for path in safe_files)
+            plan_text = plan_path.read_text(encoding="utf-8")
+            plan_text = plan_text.replace("## Files Likely Affected\n", f"## Files Likely Affected\n{declared_files_block}", 1)
+            plan_path.write_text(plan_text, encoding="utf-8")
             code_text = code_path.read_text(encoding="utf-8")
+            code_text = code_text.replace("## Files Changed\n", f"## Files Changed\n{declared_files_block}", 1)
             code_text = re.sub(r"\n## Diff Evidence\s*\n.*?(?=\n## |\Z)", "", code_text, flags=re.DOTALL)
-            snapshot_files = ["docs/provider-safe.md", "docs/provider-rogue.md"]
+            snapshot_files = [*safe_files, rogue_file]
             code_text += (
                 "\n\n## Diff Evidence\n"
                 "- Evidence Type: github-pr\n"
@@ -782,14 +823,15 @@ def case_rt_018() -> CaseResult:
             code_path.write_text(code_text, encoding="utf-8")
             ensure_command_ok(run_git_command(temp_root, ["add", "."]), "git add github-pr evidence")
             ensure_command_ok(run_git_command(temp_root, ["commit", "-q", "-m", "github-pr evidence"]), "git commit github-pr evidence")
-            return run_status_case(
-                "TASK-971",
-                artifacts_root,
-                expected_exit_code=1,
-                expected_output_fragment="PR Number must be a positive integer",
-                title="GitHub provider-backed PR diff reconstruction",
-                case_id="RT-018",
-            )
+            with temporary_env({GITHUB_API_ALLOWED_HOSTS_ENV: "127.0.0.1"}):
+                return run_status_case(
+                    "TASK-971",
+                    artifacts_root,
+                    expected_exit_code=1,
+                    expected_output_fragment="github-pr scope check found diff files not listed",
+                    title="GitHub provider-backed PR second-page scope drift",
+                    case_id="RT-018",
+                )
     finally:
         shutil.rmtree(temp_root, ignore_errors=True)
 
@@ -965,6 +1007,190 @@ def case_rt_023() -> CaseResult:
             title="Expired decision waiver is rejected",
             case_id="RT-023",
         )
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
+def case_rt_024() -> CaseResult:
+    temp_root = prepare_temp_root("RT-024")
+    try:
+        artifacts_root = copy_task_fixture(temp_root, "TASK-900", "TASK-974")
+        initialize_git_fixture(temp_root)
+        repository = "octo/workflow"
+        pull_number = "974"
+        files = ["docs/allowlist-check.md"]
+        pages = {1: [{"filename": path} for path in files], 2: []}
+        with github_pr_files_server(repository, pull_number, pages) as api_base_url:
+            plan_path = artifacts_root / "plans" / "TASK-974.plan.md"
+            code_path = artifacts_root / "code" / "TASK-974.code.md"
+            declared_files_block = "".join(f"- `{path}`\n" for path in files)
+            plan_text = plan_path.read_text(encoding="utf-8")
+            plan_text = plan_text.replace("## Files Likely Affected\n", f"## Files Likely Affected\n{declared_files_block}", 1)
+            plan_path.write_text(plan_text, encoding="utf-8")
+            code_text = code_path.read_text(encoding="utf-8")
+            code_text = code_text.replace("## Files Changed\n", f"## Files Changed\n{declared_files_block}", 1)
+            code_text = re.sub(r"\n## Diff Evidence\s*\n.*?(?=\n## |\Z)", "", code_text, flags=re.DOTALL)
+            code_text += (
+                "\n\n## Diff Evidence\n"
+                "- Evidence Type: github-pr\n"
+                f"- Repository: {repository}\n"
+                f"- PR Number: {pull_number}\n"
+                f"- API Base URL: {api_base_url}\n"
+                f"- Changed Files Snapshot: {', '.join(files)}\n"
+                f"- Snapshot SHA256: {compute_snapshot_sha256(files)}\n"
+            )
+            code_path.write_text(code_text, encoding="utf-8")
+            ensure_command_ok(run_git_command(temp_root, ["add", "."]), "git add github-pr allowlist rejection")
+            ensure_command_ok(run_git_command(temp_root, ["commit", "-q", "-m", "github-pr allowlist rejection"]), "git commit github-pr allowlist rejection")
+            return run_status_case(
+                "TASK-974",
+                artifacts_root,
+                expected_exit_code=1,
+                expected_output_fragment="API Base URL host '127.0.0.1' is not allowed",
+                title="GitHub provider-backed PR rejects non-allowlisted API host",
+                case_id="RT-024",
+            )
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
+def case_rt_025() -> CaseResult:
+    temp_root = prepare_temp_root("RT-025")
+    try:
+        artifacts_root = copy_task_fixture(temp_root, "TASK-900", "TASK-975")
+        initialize_git_fixture(temp_root)
+        repository = "octo/workflow"
+        pull_number = "975"
+        files = ["docs/provider-allowlisted.md", "docs/provider-enterprise.md"]
+        pages = {1: [{"filename": path} for path in files], 2: []}
+        with github_pr_files_server(repository, pull_number, pages) as api_base_url:
+            plan_path = artifacts_root / "plans" / "TASK-975.plan.md"
+            code_path = artifacts_root / "code" / "TASK-975.code.md"
+            declared_files_block = "".join(f"- `{path}`\n" for path in files)
+            plan_text = plan_path.read_text(encoding="utf-8")
+            plan_text = plan_text.replace("## Files Likely Affected\n", f"## Files Likely Affected\n{declared_files_block}", 1)
+            plan_path.write_text(plan_text, encoding="utf-8")
+            code_text = code_path.read_text(encoding="utf-8")
+            code_text = code_text.replace("## Files Changed\n", f"## Files Changed\n{declared_files_block}", 1)
+            code_text = re.sub(r"\n## Diff Evidence\s*\n.*?(?=\n## |\Z)", "", code_text, flags=re.DOTALL)
+            code_text += (
+                "\n\n## Diff Evidence\n"
+                "- Evidence Type: github-pr\n"
+                f"- Repository: {repository}\n"
+                f"- PR Number: {pull_number}\n"
+                f"- API Base URL: {api_base_url}\n"
+                f"- Changed Files Snapshot: {', '.join(files)}\n"
+                f"- Snapshot SHA256: {compute_snapshot_sha256(files)}\n"
+            )
+            code_path.write_text(code_text, encoding="utf-8")
+            ensure_command_ok(run_git_command(temp_root, ["add", "."]), "git add github-pr allowlist success")
+            ensure_command_ok(run_git_command(temp_root, ["commit", "-q", "-m", "github-pr allowlist success"]), "git commit github-pr allowlist success")
+            with temporary_env({GITHUB_API_ALLOWED_HOSTS_ENV: "127.0.0.1"}):
+                return run_status_case(
+                    "TASK-975",
+                    artifacts_root,
+                    expected_exit_code=0,
+                    expected_output_fragment="[OK] Validation passed",
+                    title="GitHub provider-backed PR accepts explicit allowlisted API host",
+                    case_id="RT-025",
+                )
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
+def case_rt_026() -> CaseResult:
+    temp_root = prepare_temp_root("RT-026")
+    try:
+        artifacts_root = copy_task_fixture(temp_root, "TASK-900", "TASK-976")
+        plan_path = artifacts_root / "plans" / "TASK-976.plan.md"
+        oversized_suffix = "x" * (MAX_ARTIFACT_FILE_BYTES + 1)
+        plan_path.write_text(plan_path.read_text(encoding="utf-8") + "\n" + oversized_suffix, encoding="utf-8")
+        return run_status_case(
+            "TASK-976",
+            artifacts_root,
+            expected_exit_code=1,
+            expected_output_fragment="Text file too large",
+            title="Oversized workflow artifact is rejected before parsing",
+            case_id="RT-026",
+        )
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
+def case_rt_027() -> CaseResult:
+    temp_root = prepare_temp_root("RT-027")
+    try:
+        artifacts_root = copy_task_fixture(temp_root, "TASK-900", "TASK-977")
+        initialize_git_fixture(temp_root)
+        archive_rel = "artifacts/evidence/TASK-977.changed-files.txt"
+        archive_path = temp_root / archive_rel
+        ensure_parent(archive_path)
+        snapshot_files = [f"docs/archive-cap-{index:04d}-{'x' * 64}.md" for index in range(1, 1801)]
+        archive_bytes = ("\n".join(snapshot_files) + "\n").encode("utf-8")
+        archive_path.write_bytes(archive_bytes)
+        archive_sha256 = hashlib.sha256(archive_bytes).hexdigest()
+        code_path = artifacts_root / "code" / "TASK-977.code.md"
+        code_text = code_path.read_text(encoding="utf-8")
+        code_text += (
+            "\n\n## Diff Evidence\n"
+            "- Evidence Type: commit-range\n"
+            f"- Base Commit: {'1' * 40}\n"
+            f"- Head Commit: {'2' * 40}\n"
+            "- Diff Command: git diff --name-only <base>..<head>\n"
+            f"- Changed Files Snapshot: {', '.join(snapshot_files)}\n"
+            f"- Snapshot SHA256: {compute_snapshot_sha256(snapshot_files)}\n"
+            f"- Archive Path: {archive_rel}\n"
+            f"- Archive SHA256: {archive_sha256}\n"
+        )
+        code_path.write_text(code_text, encoding="utf-8")
+        ensure_command_ok(run_git_command(temp_root, ["add", "."]), "git add archive replay byte cap evidence")
+        ensure_command_ok(run_git_command(temp_root, ["commit", "-q", "-m", "archive replay byte cap evidence"]), "git commit archive replay byte cap evidence")
+        return run_status_case(
+            "TASK-977",
+            artifacts_root,
+            expected_exit_code=1,
+            expected_output_fragment="exceeds replay byte cap",
+            title="Oversized archive fallback is rejected before parsing",
+            case_id="RT-027",
+        )
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
+def case_rt_028() -> CaseResult:
+    temp_root = prepare_temp_root("RT-028")
+    try:
+        artifacts_root = copy_task_fixture(temp_root, "TASK-900", "TASK-978")
+        initialize_git_fixture(temp_root)
+        repository = "octo/workflow"
+        pull_number = "978"
+        files = [f"docs/provider-cap-{index:03d}-{'x' * 1300}.md" for index in range(1, 101)]
+        pages = {1: [{"filename": path} for path in files], 2: []}
+        with github_pr_files_server(repository, pull_number, pages) as api_base_url:
+            code_path = artifacts_root / "code" / "TASK-978.code.md"
+            code_text = code_path.read_text(encoding="utf-8")
+            code_text = re.sub(r"\n## Diff Evidence\s*\n.*?(?=\n## |\Z)", "", code_text, flags=re.DOTALL)
+            code_text += (
+                "\n\n## Diff Evidence\n"
+                "- Evidence Type: github-pr\n"
+                f"- Repository: {repository}\n"
+                f"- PR Number: {pull_number}\n"
+                f"- API Base URL: {api_base_url}\n"
+                f"- Changed Files Snapshot: {', '.join(files)}\n"
+                f"- Snapshot SHA256: {compute_snapshot_sha256(files)}\n"
+            )
+            code_path.write_text(code_text, encoding="utf-8")
+            ensure_command_ok(run_git_command(temp_root, ["add", "."]), "git add provider replay byte cap evidence")
+            ensure_command_ok(run_git_command(temp_root, ["commit", "-q", "-m", "provider replay byte cap evidence"]), "git commit provider replay byte cap evidence")
+            with temporary_env({GITHUB_API_ALLOWED_HOSTS_ENV: "127.0.0.1"}):
+                return run_status_case(
+                    "TASK-978",
+                    artifacts_root,
+                    expected_exit_code=1,
+                    expected_output_fragment="exceeds replay byte cap",
+                    title="Oversized provider response is rejected before JSON parsing",
+                    case_id="RT-028",
+                )
     finally:
         shutil.rmtree(temp_root, ignore_errors=True)
 
@@ -1189,12 +1415,17 @@ STATIC_CASES: List[CaseDefinition] = [
     CaseDefinition("RT-015", "static", "allow-scope-drift without decision waiver", "fail", 1, "--allow-scope-drift requires a decision artifact with ## Guard Exception", case_rt_015),
     CaseDefinition("RT-016", "static", "allow-scope-drift with explicit decision waiver", "pass", 0, "[OK] Validation passed", case_rt_016),
     CaseDefinition("RT-017", "static", "Historical diff evidence checksum corruption", "fail", 1, "Snapshot SHA256 does not match Changed Files Snapshot", case_rt_017),
-    CaseDefinition("RT-018", "static", "GitHub provider-backed PR diff reconstruction", "fail", 1, "PR Number must be a positive integer", case_rt_018),
+    CaseDefinition("RT-018", "static", "GitHub provider-backed PR second-page scope drift", "fail", 1, "github-pr scope check found diff files not listed", case_rt_018),
     CaseDefinition("RT-019", "static", "Historical diff archive fallback reconstruction", "fail", 1, "commit-range archive fallback found diff files not listed", case_rt_019),
     CaseDefinition("RT-020", "static", "Historical diff archive corruption", "fail", 1, "Archive SHA256 does not match archive file", case_rt_020),
     CaseDefinition("RT-021", "static", "Auto-classify lightweight candidate without plan artifact", "pass", 0, "lightweight candidate", case_rt_021),
     CaseDefinition("RT-022", "static", "Auto-classify escalates lightweight task with premortem", "pass", 0, "[AUTO-UPGRADE]", case_rt_022),
     CaseDefinition("RT-023", "static", "Expired decision waiver is rejected", "fail", 1, "waiver expired", case_rt_023),
+    CaseDefinition("RT-024", "static", "GitHub provider-backed PR rejects non-allowlisted API host", "fail", 1, "API Base URL host '127.0.0.1' is not allowed", case_rt_024),
+    CaseDefinition("RT-025", "static", "GitHub provider-backed PR accepts explicit allowlisted API host", "pass", 0, "[OK] Validation passed", case_rt_025),
+    CaseDefinition("RT-026", "static", "Oversized workflow artifact is rejected before parsing", "fail", 1, "Text file too large", case_rt_026),
+    CaseDefinition("RT-027", "static", "Oversized archive fallback is rejected before parsing", "fail", 1, "exceeds replay byte cap", case_rt_027),
+    CaseDefinition("RT-028", "static", "Oversized provider response is rejected before JSON parsing", "fail", 1, "exceeds replay byte cap", case_rt_028),
 ]
 
 LIVE_CASES: List[CaseDefinition] = [

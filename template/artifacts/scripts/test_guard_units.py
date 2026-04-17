@@ -1224,6 +1224,12 @@ class TestLoadJson:
         with pytest.raises(gsv.GuardError, match="Invalid JSON"):
             gsv.load_json(p)
 
+    def test_too_large(self, tmp_path):
+        p = tmp_path / "data.json"
+        p.write_text('{"key": "' + ('x' * gsv.MAX_ARTIFACT_FILE_BYTES) + '"}', encoding="utf-8")
+        with pytest.raises(gsv.GuardError, match="JSON file too large"):
+            gsv.load_json(p)
+
 
 class TestLoadText:
     def test_valid(self, tmp_path):
@@ -1234,6 +1240,12 @@ class TestLoadText:
     def test_missing(self, tmp_path):
         with pytest.raises(gsv.GuardError, match="Missing text"):
             gsv.load_text(tmp_path / "nope.md")
+
+    def test_too_large(self, tmp_path):
+        p = tmp_path / "file.md"
+        p.write_text('x' * (gsv.MAX_ARTIFACT_FILE_BYTES + 1), encoding="utf-8")
+        with pytest.raises(gsv.GuardError, match="Text file too large"):
+            gsv.load_text(p)
 
 
 class TestWriteJson:
@@ -1280,6 +1292,12 @@ class TestLoadOverrideLog:
         p = tmp_path / "log.json"
         p.write_text("not json", encoding="utf-8")
         with pytest.raises(gsv.GuardError, match="Invalid JSON"):
+            gsv.load_override_log(p)
+
+    def test_too_large(self, tmp_path):
+        p = tmp_path / "log.json"
+        p.write_text("[" + (" " * gsv.MAX_ARTIFACT_FILE_BYTES) + "]", encoding="utf-8")
+        with pytest.raises(gsv.GuardError, match="Override log too large"):
             gsv.load_override_log(p)
 
 
@@ -3465,6 +3483,18 @@ class TestLoadArchiveSnapshot:
         files, rel, err = gsv.load_archive_snapshot(tmp_path, code_path, evidence, {"other.py"})
         assert "does not match Changed Files Snapshot" in err
 
+    def test_archive_exceeds_replay_byte_cap(self, tmp_path):
+        import hashlib
+        archive_bytes = b"a" * (gsv.MAX_DIFF_EVIDENCE_REPLAY_BYTES + 1)
+        archive = tmp_path / "archive.txt"
+        archive.write_bytes(archive_bytes)
+        sha = hashlib.sha256(archive_bytes).hexdigest()
+        code_path = tmp_path / "code.md"
+        evidence = {"archive path": "archive.txt", "archive sha256": sha}
+        files, rel, err = gsv.load_archive_snapshot(tmp_path, code_path, evidence, set())
+        assert err is not None
+        assert "exceeds replay byte cap" in err
+
 
 # ─────────────────────────────────────────────
 # validate_markdown_artifact
@@ -4335,8 +4365,15 @@ class TestNormalizeApiBaseUrl:
         assert url == "https://api.github.com"
         assert err is None
 
-    def test_custom(self):
+    def test_custom_requires_allowlist(self):
         url, err = gsv.normalize_api_base_url("https://custom.api.com/")
+        assert url is None
+        assert "not allowed" in err
+        assert gsv.GITHUB_API_ALLOWED_HOSTS_ENV in err
+
+    def test_custom_allowlisted(self):
+        with patch.dict(os.environ, {gsv.GITHUB_API_ALLOWED_HOSTS_ENV: "custom.api.com"}, clear=False):
+            url, err = gsv.normalize_api_base_url("https://custom.api.com/")
         assert url == "https://custom.api.com"
         assert err is None
 
@@ -5982,6 +6019,14 @@ class TestGsvCollectGithubPrFilesDeeper:
         files, error = gsv.collect_github_pr_files("user/repo", "1", "ftp://invalid")
         assert error is not None
 
+    def test_custom_host_requires_allowlist(self):
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            files, error = gsv.collect_github_pr_files("user/repo", "1", "https://github.example.com/api/v3")
+        assert files == set()
+        assert "not allowed" in error
+        assert gsv.GITHUB_API_ALLOWED_HOSTS_ENV in error
+        mock_urlopen.assert_not_called()
+
     def test_successful_single_page(self):
         payload = [{"filename": "src/main.py"}, {"filename": "README.md"}]
         mock_body = json.dumps(payload).encode("utf-8")
@@ -6004,6 +6049,17 @@ class TestGsvCollectGithubPrFilesDeeper:
             files, error = gsv.collect_github_pr_files("user/repo", "1", "")
         assert error is not None
         assert "invalid JSON" in error
+
+    def test_provider_response_exceeds_replay_byte_cap(self):
+        payload = [{"filename": "docs/" + ("x" * gsv.MAX_DIFF_EVIDENCE_REPLAY_BYTES)}]
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps(payload).encode("utf-8")
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = lambda *a: None
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            files, error = gsv.collect_github_pr_files("user/repo", "1", "")
+        assert files == set()
+        assert "exceeds replay byte cap" in error
 
     def test_non_list_response(self):
         mock_resp = MagicMock()
@@ -7031,8 +7087,14 @@ class TestGsvNormalizeApiBaseUrl:
         assert url == "https://api.github.com"
         assert err is None
 
-    def test_custom_url(self):
+    def test_custom_url_requires_allowlist(self):
         url, err = gsv.normalize_api_base_url("https://github.example.com/api/v3")
+        assert url is None
+        assert "not allowed" in err
+
+    def test_custom_url_allowlisted(self):
+        with patch.dict(os.environ, {gsv.GITHUB_API_ALLOWED_HOSTS_ENV: "github.example.com"}, clear=False):
+            url, err = gsv.normalize_api_base_url("https://github.example.com/api/v3")
         assert url == "https://github.example.com/api/v3"
         assert err is None
 

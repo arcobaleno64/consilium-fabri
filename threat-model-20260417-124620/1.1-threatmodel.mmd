@@ -1,0 +1,46 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'background': '#ffffff', 'primaryColor': '#ffffff', 'lineColor': '#666666' }}}%%
+flowchart LR
+    classDef process fill:#6baed6,stroke:#2171b5,stroke-width:2px,color:#000000
+    classDef external fill:#fdae61,stroke:#d94701,stroke-width:2px,color:#000000
+    classDef datastore fill:#74c476,stroke:#238b45,stroke-width:2px,color:#000000
+    linkStyle default stroke:#666666,stroke-width:2px
+
+    subgraph TB1["Maintainer Endpoint"]
+        Maintainer["Human Maintainer"]:::external
+    end
+
+    subgraph TB2["Local Control Plane"]
+        WorkflowController(("Workflow Controller")):::process
+        AgentDispatch(("Agent Dispatch")):::process
+        GuardValidators(("Guard Validators")):::process
+        RedTeamRunner(("Red Team Runner")):::process
+        PublishAutomation(("Publish Automation")):::process
+    end
+
+    subgraph TB3["Repository Data"]
+        ArtifactStore[("Artifact Store")]:::datastore
+        GitWorktree[("Git Worktree")]:::datastore
+    end
+
+    subgraph TB4["GitHub Service"]
+        GitHubPlatform["GitHub Platform"]:::external
+    end
+
+    Maintainer -->|"DF01 Task instructions and approvals"| WorkflowController
+    WorkflowController -->|"DF02 Dispatch prompt and task context"| AgentDispatch
+    AgentDispatch -->|"DF03 Read and write task artifacts"| ArtifactStore
+    WorkflowController -->|"DF04 Read validation outcomes"| ArtifactStore
+    GuardValidators -->|"DF05 Validate artifact content"| ArtifactStore
+    GuardValidators -->|"DF06 Read repository files and diff evidence"| GitWorktree
+    RedTeamRunner -->|"DF07 Load fixtures and reports"| ArtifactStore
+    RedTeamRunner -->|"DF08 Execute repo helpers"| GitWorktree
+    PublishAutomation -->|"DF09 Read release and wiki inputs"| ArtifactStore
+    PublishAutomation -->|"DF10 Read remotes tags and notes"| GitWorktree
+    GuardValidators <-->|"DF11 HTTPS PR files API replay"| GitHubPlatform
+    PublishAutomation <-->|"DF12 gh API and git remote traffic"| GitHubPlatform
+    Maintainer -->|"DF13 Publish wiki and release commands"| PublishAutomation
+
+    style TB1 fill:none,stroke:#e31a1c,stroke-width:3px,stroke-dasharray: 5 5
+    style TB2 fill:none,stroke:#e31a1c,stroke-width:3px,stroke-dasharray: 5 5
+    style TB3 fill:none,stroke:#e31a1c,stroke-width:3px,stroke-dasharray: 5 5
+    style TB4 fill:none,stroke:#e31a1c,stroke-width:3px,stroke-dasharray: 5 5

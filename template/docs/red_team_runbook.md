@@ -44,11 +44,8 @@ python artifacts/scripts/run_red_team_suite.py --phase static
 | `RT-002` | `Confirmed Facts` 缺 citation | `guard_status_validator.py` | research guard 直接 fail |
 | `RT-003` | `Uncertain Items` 未用 `UNVERIFIED:` | `guard_status_validator.py` | research guard 直接 fail |
 | `RT-004` | high-risk premortem 無 blocking risk | `guard_status_validator.py` | planning / coding gate fail |
-| `RT-004B` | high-risk premortem 恰好 1 blocking risk（邊界）| `guard_status_validator.py` | validation pass（應接受）|
 | `RT-005` | blocked → planned 無 improvement artifact | Gate E | 無法 resume |
-| `RT-005B` | improvement artifact 存在但 Status ≠ applied（邊界）| Gate E | 無法 resume（應 fail）|
 | `RT-006` | blocked → planned improvement 非 `applied` | Gate E | 無法 resume |
-| `RT-006B` | improvement 為 applied 但屬其他 task（邊界）| Gate E | 無法 resume（應 fail）|
 | `RT-007` | root / `template/` drift | `guard_contract_validator.py` | contract guard fail |
 | `RT-008` | Obsidian drift | `guard_contract_validator.py` | contract guard fail |
 | `RT-009` | bootstrap 少掉 contract guard | `guard_contract_validator.py` | contract guard fail |
@@ -63,6 +60,14 @@ python artifacts/scripts/run_red_team_suite.py --phase static
 | `RT-018` | GitHub provider-backed PR files 含第二頁未宣告檔案 | `guard_status_validator.py` | github-pr replay 直接 fail |
 | `RT-019` | git objects 缺失但 archive fallback 含未宣告檔案 | `guard_status_validator.py` | archive fallback 直接 fail |
 | `RT-020` | archive file hash 被竄改 | `guard_status_validator.py` | archive integrity 直接 fail |
+| `RT-021` | `--auto-classify` 將缺 plan 的 sample 視為 lightweight candidate | `guard_status_validator.py` | validation pass 並輸出 lightweight candidate |
+| `RT-022` | lightweight task 宣告 premortem 後被自動升級 | `guard_status_validator.py` | validation pass 並寫入 auto_upgrade_log |
+| `RT-023` | 已過期的 decision waiver | `guard_status_validator.py` | validation fail 並回報 waiver expired |
+| `RT-024` | `github-pr` evidence 指向未 allowlist 的自訂 API host | `guard_status_validator.py` | validation fail 並回報 host not allowed |
+| `RT-025` | `github-pr` evidence 指向顯式 allowlist 的自訂 API host | `guard_status_validator.py` | provider replay 可成功完成並 validation pass |
+| `RT-026` | task / plan / code / verify 其中之一超過 artifact size ceiling | `guard_status_validator.py` | validation fail 並回報 artifact too large |
+| `RT-027` | `commit-range` archive fallback 超過 replay byte cap | `guard_status_validator.py` | validation fail 並回報 replay byte cap |
+| `RT-028` | `github-pr` provider response 超過 replay byte cap | `guard_status_validator.py` | validation fail 並回報 replay byte cap |
 
 ### Phase 2: Live workflow 演練
 
@@ -158,7 +163,7 @@ python artifacts/scripts/prompt_regression_validator.py --root . --output artifa
 新案例必須先定位到以下 12 格矩陣的對應位置，才可進行命名與撰寫：
 
 | Severity \ Coverage | schema | gate | sync | reconcile |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | **Critical** | schema 必填欄位缺失或格式破壞，導致 guard 完全失效 | gate 轉移被靜默跳過，無任何 audit trail | root/template/Obsidian 三方完全不同步 | artifact 內容與上游來源根本性衝突，無法機讀 |
 | **Major** | schema 欄位值非法但不致使 guard 崩潰 | gate 轉移條件不足但有部分 guard 覆蓋 | root/template 漂移超過允許閾值 | artifact chain 缺少中間節點，可手動補救 |
 | **Minor** | schema 格式警告（WARN），驗證仍 pass | gate 邊界模糊，但正常路徑不受影響 | template 與 root 輕微漂移，不影響契約 | artifact 欄位細微不一致，不影響狀態機 |
@@ -171,7 +176,7 @@ python artifacts/scripts/prompt_regression_validator.py --root . --output artifa
 
 - 流水號從現有最大編號 + 1 開始，不得跳號。
 - scope 縮寫固定使用：`schema`、`gate`、`sync`、`reconcile`。
-- 範例：`RT-021-schema`、`RT-022-gate`、`RT-023-sync`、`RT-024-reconcile`。
+- 範例：`RT-029-schema`、`RT-030-gate`、`RT-031-sync`、`RT-032-reconcile`。
 - 命名後，必須在 `## 4. 執行模式 Phase 1` 的案例矩陣中新增一列，並填寫「注入點、預期攔截點、成功條件」。
 
 ### 7.3 範例分類

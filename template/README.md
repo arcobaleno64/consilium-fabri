@@ -118,7 +118,7 @@ Consilium Fabri exists to compress those failure modes into an explicit operatin
 
 ### 7. Clear Guard Boundaries
 - `guard_status_validator.py` validates task / artifact / state rules
-- plan/code scope drift is now a default hard failure: dirty task-owned files are checked against actual git changed files, clean tasks can replay pinned `commit-range` evidence, use an `archive fallback` via `Archive Path` / `Archive SHA256` when git objects are gone, or use `github-pr` evidence against the GitHub PR files API; `Snapshot SHA256` still guards the reconstructed file list, `GITHUB_TOKEN` / `GH_TOKEN` covers private or rate-limited GitHub access, and `--allow-scope-drift` still only downgrades true drift, not corrupted evidence
+- plan/code scope drift is now a default hard failure: dirty task-owned files are checked against actual git changed files, clean tasks can replay pinned `commit-range` evidence, use an `archive fallback` via `Archive Path` / `Archive SHA256` when git objects are gone, or use `github-pr` evidence against the GitHub PR files API; `github-pr` replay defaults to `https://api.github.com`, custom GitHub Enterprise hosts must be allowlisted via `CONSILIUM_ALLOWED_GITHUB_API_HOSTS`, task/status text and JSON artifacts now fail closed on explicit byte ceilings, archive fallback files and provider responses now fail on replay byte caps before parsing, `Snapshot SHA256` still guards the reconstructed file list, `GITHUB_TOKEN` / `GH_TOKEN` covers private or rate-limited GitHub access, and `--allow-scope-drift` still only downgrades true drift, not corrupted evidence
 - `guard_contract_validator.py` validates workflow docs, bootstrap rules, template sync, and Obsidian sync
 - when `CLAUDE.md` / `GEMINI.md` / `CODEX.md` changes, prompt regression cases must be updated together
 - a workflow rule change is incomplete until README, `template/`, and Obsidian entry docs are updated together
@@ -258,6 +258,7 @@ If your repository keeps external integrations as Git submodules, run `git submo
 │       ├── guard_status_validator.py
 │       ├── guard_contract_validator.py
 │       ├── prompt_regression_validator.py
+│       ├── repo_security_scan.py
 │       ├── run_red_team_suite.py
 │       ├── repo_health_dashboard.py
 │       ├── build_decision_registry.py
@@ -276,7 +277,7 @@ If your repository keeps external integrations as Git submodules, run `git submo
 │   ├── dependabot.yml             # Dependabot config (actions + pip)
 │   └── workflows/                 # GitHub Actions CI
 │       ├── workflow-guards.yml    # Main CI pipeline (SHA-pinned actions)
-│       └── security-scan.yml     # pip-audit dependency scan
+│       └── security-scan.yml     # pip-audit + repo-local secret/static scans
 │
 ├── template/                  # Clean template for new projects (sync target)
 └── external/                  # External project integrations
@@ -293,6 +294,8 @@ If your repository keeps external integrations as Git submodules, run `git submo
 | `python artifacts/scripts/guard_contract_validator.py` | Validate root ↔ template ↔ Obsidian sync |
 | `python artifacts/scripts/guard_contract_validator.py --check-readme` | Validate README structure compliance |
 | `python artifacts/scripts/prompt_regression_validator.py --root .` | Run prompt regression test cases |
+| `python artifacts/scripts/repo_security_scan.py --root . secrets` | Run repo-local high-confidence secret scan |
+| `python artifacts/scripts/repo_security_scan.py --root . static` | Run focused static control-plane rules |
 | `python artifacts/scripts/run_red_team_suite.py --phase all` | Run the full red-team exercise suite |
 | `python artifacts/scripts/run_red_team_suite.py --phase prompt` | Run prompt regression via the report pipeline |
 | `python artifacts/scripts/repo_health_dashboard.py` | Generate repository health dashboard |
@@ -309,7 +312,8 @@ If your repository keeps external integrations as Git submodules, run `git submo
 
 - All GitHub Actions in `.github/workflows/` are pinned to full 40-character commit SHAs to prevent tag-mutation supply-chain attacks. Version comments (e.g. `# v4.3.1`) are preserved for Dependabot compatibility.
 - `.github/dependabot.yml` is configured to automatically propose weekly updates for both `github-actions` and `pip` ecosystems.
-- `.github/workflows/security-scan.yml` runs `pip-audit` against `requirements.txt` on every PR, push to master, and manual dispatch, producing both JSON and columnar output.
+- `.github/workflows/security-scan.yml` now runs three low-dependency checks on every PR, push to master, and manual dispatch: `pip-audit`, `python artifacts/scripts/repo_security_scan.py --root . secrets`, and `python artifacts/scripts/repo_security_scan.py --root . static`.
+- `artifacts/scripts/repo_security_scan.py` is intentionally repo-local: the `secrets` mode targets high-confidence credential patterns while filtering placeholders, and the `static` mode guards workflow/script foot-guns such as unpinned actions, `persist-credentials: true`, `pull_request_target`, `shell=True`, `exec` / `eval`, `Invoke-Expression`, and obvious secret logging.
 - Wiki and release publish scripts include mandatory preflight checks: auth probing (`GH_TOKEN` → `GITHUB_TOKEN` → `gh auth`), remote reachability, tag/release existence, and uninitialized wiki detection.
 - All publish scripts support `-WhatIf` for dry-run validation without side effects.
 

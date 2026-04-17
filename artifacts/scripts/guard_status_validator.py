@@ -103,6 +103,11 @@ DIFF_EVIDENCE_SUPPORTED_TYPES = {"commit-range", "github-pr"}
 SCOPE_WAIVER_EXCEPTION_TYPE = "allow-scope-drift"
 GITHUB_API_VERSION = "2022-11-28"
 MAX_GITHUB_PR_FILES_PAGES = 30
+MAX_ARTIFACT_FILE_BYTES = 512 * 1024
+MAX_DIFF_EVIDENCE_REPLAY_BYTES = 128 * 1024
+GITHUB_API_ALLOWED_HOSTS_ENV = "CONSILIUM_ALLOWED_GITHUB_API_HOSTS"
+DEFAULT_GITHUB_API_BASE_URL = "https://api.github.com"
+DEFAULT_GITHUB_API_ALLOWED_HOSTS = {"api.github.com"}
 LEGACY_STATE_ALIASES = {
     "research_ready": "researched",
     "plan_ready": "planned",
@@ -206,20 +211,37 @@ def find_artifact_paths(artifacts_root: Path, task_id: str, artifact_type: str) 
     return [path] if path.exists() else []
 
 
-def load_json(path: Path) -> dict:
+def read_bounded_file(path: Path, *, missing_label: Optional[str], too_large_label: str) -> Optional[bytes]:
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        with path.open("rb") as handle:
+            payload = handle.read(MAX_ARTIFACT_FILE_BYTES + 1)
     except FileNotFoundError as exc:
-        raise GuardError(f"Missing JSON file: {path}") from exc
-    except json.JSONDecodeError as exc:
+        if missing_label is None:
+            return None
+        raise GuardError(f"Missing {missing_label}: {path}") from exc
+    except OSError as exc:
+        raise GuardError(f"Unable to read {path}: {exc}") from exc
+    if len(payload) > MAX_ARTIFACT_FILE_BYTES:
+        raise GuardError(f"{too_large_label}: {path} exceeds size ceiling of {MAX_ARTIFACT_FILE_BYTES} bytes")
+    return payload
+
+
+def load_json(path: Path) -> dict:
+    payload = read_bounded_file(path, missing_label="JSON file", too_large_label="JSON file too large")
+    assert payload is not None
+    try:
+        return json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise GuardError(f"Invalid JSON in {path}: {exc}") from exc
 
 
 def load_text(path: Path) -> str:
+    payload = read_bounded_file(path, missing_label="text file", too_large_label="Text file too large")
+    assert payload is not None
     try:
-        return path.read_text(encoding="utf-8")
-    except FileNotFoundError as exc:
-        raise GuardError(f"Missing text file: {path}") from exc
+        return payload.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise GuardError(f"Invalid UTF-8 in text file {path}: {exc}") from exc
 
 
 def current_taipei_timestamp() -> str:
@@ -245,11 +267,12 @@ def override_log_path(artifacts_root: Path, task_id: str) -> Path:
 
 
 def load_override_log(path: Path) -> List[dict]:
-    if not path.exists():
+    payload_bytes = read_bounded_file(path, missing_label=None, too_large_label="Override log too large")
+    if payload_bytes is None:
         return []
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
+        payload = json.loads(payload_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise GuardError(f"Invalid JSON in {path}: {exc}") from exc
     if not isinstance(payload, list):
         raise GuardError(f"Invalid override log in {path}: expected a JSON array")
@@ -389,12 +412,39 @@ def parse_repository_ref(value: str) -> Tuple[Optional[str], Optional[str], Opti
     return parts[0], parts[1], None
 
 
+def get_allowed_github_api_hosts() -> Set[str]:
+    hosts = set(DEFAULT_GITHUB_API_ALLOWED_HOSTS)
+    raw_value = os.environ.get(GITHUB_API_ALLOWED_HOSTS_ENV, "")
+    for token in raw_value.split(","):
+        candidate = token.strip()
+        if not candidate:
+            continue
+        if "://" not in candidate:
+            candidate = f"https://{candidate}"
+        parsed = urllib.parse.urlparse(candidate)
+        hostname = (parsed.hostname or "").strip().lower()
+        if hostname:
+            hosts.add(hostname)
+    return hosts
+
+
 def normalize_api_base_url(raw_value: str) -> Tuple[Optional[str], Optional[str]]:
-    value = raw_value.strip() or "https://api.github.com"
+    value = raw_value.strip() or DEFAULT_GITHUB_API_BASE_URL
     value = value.rstrip("/")
     parsed = urllib.parse.urlparse(value)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         return None, "API Base URL must be an absolute http(s) URL"
+    hostname = (parsed.hostname or "").strip().lower()
+    if not hostname:
+        return None, "API Base URL must include a hostname"
+    allowed_hosts = get_allowed_github_api_hosts()
+    if hostname not in allowed_hosts:
+        allowed_list = ", ".join(sorted(allowed_hosts))
+        return None, (
+            f"API Base URL host '{hostname}' is not allowed. "
+            f"Allowed hosts: {allowed_list}. "
+            f"Set {GITHUB_API_ALLOWED_HOSTS_ENV} to allow trusted GitHub Enterprise hosts."
+        )
     return value, None
 
 
@@ -424,6 +474,10 @@ def load_archive_snapshot(repo_root: Path, code_path: Path, evidence: Dict[str, 
         return None, None, f"{code_path.name}: Archive Path '{archive_rel}' does not exist"
     except OSError as exc:
         return None, None, f"{code_path.name}: unable to read Archive Path '{archive_rel}': {exc}"
+    if len(archive_bytes) > MAX_DIFF_EVIDENCE_REPLAY_BYTES:
+        return None, None, (
+            f"{code_path.name}: Archive Path '{archive_rel}' exceeds replay byte cap of {MAX_DIFF_EVIDENCE_REPLAY_BYTES} bytes"
+        )
     actual_archive_sha256 = hashlib.sha256(archive_bytes).hexdigest()
     if actual_archive_sha256 != archive_sha256:
         return None, None, (
@@ -486,13 +540,15 @@ def collect_github_pr_files(repository: str, pull_number: str, api_base_url: str
         request = urllib.request.Request(url, headers=headers)
         try:
             with urllib.request.urlopen(request, timeout=30) as response:
-                response_body = response.read()
+                response_body = response.read(MAX_DIFF_EVIDENCE_REPLAY_BYTES + 1)
         except urllib.error.HTTPError as exc:
             detail = summarize_remote_error_detail(exc.read(), exc.reason or "HTTP error")
             auth_hint = " Set GITHUB_TOKEN or GH_TOKEN when accessing private or rate-limited repositories." if exc.code in {401, 403, 404} and not token else ""
             return set(), f"HTTP {exc.code} from {url}: {detail}{auth_hint}"
         except urllib.error.URLError as exc:
             return set(), f"connection error while fetching {url}: {exc.reason}"
+        if len(response_body) > MAX_DIFF_EVIDENCE_REPLAY_BYTES:
+            return set(), f"provider response from {url} exceeds replay byte cap of {MAX_DIFF_EVIDENCE_REPLAY_BYTES} bytes"
         try:
             payload = json.loads(response_body.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
