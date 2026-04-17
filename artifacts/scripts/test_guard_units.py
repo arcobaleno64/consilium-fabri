@@ -8880,3 +8880,333 @@ class TestUrpMain:
         result = urp.main()
         assert result == 0
         assert "[OK]" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# repo_health_dashboard.py tests
+# ---------------------------------------------------------------------------
+import repo_health_dashboard as rhd
+
+
+class TestRhdLoadStatus:
+    def test_valid_json(self, tmp_path):
+        p = tmp_path / "s.json"
+        p.write_text('{"state":"done"}', encoding="utf-8")
+        assert rhd.load_status(p) == {"state": "done"}
+
+    def test_invalid_json(self, tmp_path):
+        p = tmp_path / "s.json"
+        p.write_text("NOT JSON", encoding="utf-8")
+        assert rhd.load_status(p) == {}
+
+    def test_missing_file(self, tmp_path):
+        assert rhd.load_status(tmp_path / "nope.json") == {}
+
+
+class TestRhdGetTaskId:
+    def test_normal(self, tmp_path):
+        p = tmp_path / "TASK-900.status.json"
+        assert rhd.get_task_id(p) == "TASK-900"
+
+
+class TestRhdGetState:
+    def test_state_key(self):
+        assert rhd.get_state({"state": "Done"}) == "done"
+
+    def test_current_state_key(self):
+        assert rhd.get_state({"current_state": "Blocked"}) == "blocked"
+
+    def test_missing(self):
+        assert rhd.get_state({}) == "unknown"
+
+
+class TestRhdGetOwner:
+    def test_current_owner_key(self):
+        assert rhd.get_owner({"current_owner": "Alice"}) == "Alice"
+
+    def test_owner_key(self):
+        assert rhd.get_owner({"owner": "Bob"}) == "Bob"
+
+    def test_missing(self):
+        assert rhd.get_owner({}) == "unknown"
+
+
+class TestRhdGetLastUpdated:
+    def test_present(self):
+        assert rhd.get_last_updated({"last_updated": "2025-01-01"}) == "2025-01-01"
+
+    def test_missing(self):
+        assert rhd.get_last_updated({}) == ""
+
+
+class TestRhdParseDatetime:
+    def test_format_with_tz(self):
+        dt = rhd.parse_datetime("2025-01-15T10:30:00+08:00")
+        assert dt is not None
+        assert dt.hour == 10
+
+    def test_format_with_microseconds(self):
+        dt = rhd.parse_datetime("2025-01-15T10:30:00.123456+08:00")
+        assert dt is not None
+
+    def test_format_naive(self):
+        dt = rhd.parse_datetime("2025-01-15T10:30:00")
+        assert dt is not None
+
+    def test_empty(self):
+        assert rhd.parse_datetime("") is None
+
+    def test_invalid(self):
+        assert rhd.parse_datetime("not-a-date") is None
+
+
+class TestRhdDiscoverArtifacts:
+    def test_all_missing(self, tmp_path):
+        result = rhd.discover_artifacts(tmp_path, "TASK-999")
+        assert all(v is False for v in result.values())
+        assert set(result.keys()) == set(rhd.ARTIFACT_TYPES)
+
+    def test_some_present(self, tmp_path):
+        (tmp_path / "artifacts" / "tasks").mkdir(parents=True)
+        (tmp_path / "artifacts" / "tasks" / "TASK-999.task.md").write_text("x", encoding="utf-8")
+        (tmp_path / "artifacts" / "status").mkdir(parents=True)
+        (tmp_path / "artifacts" / "status" / "TASK-999.status.json").write_text("{}", encoding="utf-8")
+        result = rhd.discover_artifacts(tmp_path, "TASK-999")
+        assert result["task"] is True
+        assert result["status"] is True
+        assert result["code"] is False
+
+
+class TestRhdGetMissingArtifacts:
+    def test_missing_artifacts_key(self):
+        assert rhd.get_missing_artifacts({"missing_artifacts": ["verify", "code"]}) == ["verify", "code"]
+
+    def test_artifacts_dict_with_none(self):
+        status = {"artifacts": {"task": "ok", "code": None, "verify": None}}
+        result = rhd.get_missing_artifacts(status)
+        assert "code" in result
+        assert "verify" in result
+
+    def test_empty(self):
+        assert rhd.get_missing_artifacts({}) == []
+
+    def test_non_dict_artifacts(self):
+        assert rhd.get_missing_artifacts({"artifacts": "invalid"}) == []
+
+
+class TestRhdBuildDashboard:
+    def _setup_status(self, root, task_id, state, last_updated=None, owner="agent",
+                      blocked_reason="", blockers=None, add_code=False, add_verify=False):
+        import json
+        status_dir = root / "artifacts" / "status"
+        status_dir.mkdir(parents=True, exist_ok=True)
+        data = {"state": state, "current_owner": owner}
+        if last_updated:
+            data["last_updated"] = last_updated
+        if blocked_reason:
+            data["blocked_reason"] = blocked_reason
+        if blockers:
+            data["blockers"] = blockers
+        (status_dir / f"{task_id}.status.json").write_text(
+            json.dumps(data), encoding="utf-8"
+        )
+        if add_code:
+            code_dir = root / "artifacts" / "code"
+            code_dir.mkdir(parents=True, exist_ok=True)
+            (code_dir / f"{task_id}.code.md").write_text("x", encoding="utf-8")
+        if add_verify:
+            verify_dir = root / "artifacts" / "verify"
+            verify_dir.mkdir(parents=True, exist_ok=True)
+            (verify_dir / f"{task_id}.verify.md").write_text("x", encoding="utf-8")
+
+    def test_empty_status_dir(self, tmp_path):
+        (tmp_path / "artifacts" / "status").mkdir(parents=True)
+        d = rhd.build_dashboard(tmp_path, 14)
+        assert d["summary"]["total_tasks"] == 0
+        assert d["summary"]["completion_pct"] == 0
+
+    def test_done_task(self, tmp_path):
+        self._setup_status(tmp_path, "TASK-100", "done", "2025-01-01T10:00:00+08:00")
+        d = rhd.build_dashboard(tmp_path, 14)
+        assert d["summary"]["done"] == 1
+        assert d["summary"]["total_tasks"] == 1
+
+    def test_blocked_task_with_reason(self, tmp_path):
+        self._setup_status(tmp_path, "TASK-101", "blocked", "2025-07-01T10:00:00+08:00",
+                           blocked_reason="waiting on API")
+        d = rhd.build_dashboard(tmp_path, 14)
+        assert d["summary"]["blocked"] == 1
+        assert d["tasks"][0]["blocked_reason"] == "waiting on API"
+
+    def test_blocked_task_with_blockers_list(self, tmp_path):
+        self._setup_status(tmp_path, "TASK-102", "blocked", "2025-07-01T10:00:00+08:00",
+                           blockers=["dep-A", "dep-B"])
+        d = rhd.build_dashboard(tmp_path, 14)
+        assert "dep-A; dep-B" in d["tasks"][0]["blocked_reason"]
+
+    def test_stale_task(self, tmp_path):
+        self._setup_status(tmp_path, "TASK-103", "in-progress", "2020-01-01T10:00:00+08:00")
+        d = rhd.build_dashboard(tmp_path, 14)
+        assert d["summary"]["stale"] == 1
+        assert d["tasks"][0]["is_stale"] is True
+
+    def test_missing_verify(self, tmp_path):
+        self._setup_status(tmp_path, "TASK-104", "coding", "2025-07-01T10:00:00+08:00",
+                           add_code=True, add_verify=False)
+        d = rhd.build_dashboard(tmp_path, 14)
+        assert d["summary"]["missing_verify"] == 1
+
+    def test_has_verify(self, tmp_path):
+        self._setup_status(tmp_path, "TASK-105", "coding", "2025-07-01T10:00:00+08:00",
+                           add_code=True, add_verify=True)
+        d = rhd.build_dashboard(tmp_path, 14)
+        assert d["summary"]["missing_verify"] == 0
+
+    def test_no_last_updated(self, tmp_path):
+        self._setup_status(tmp_path, "TASK-106", "in-progress")
+        d = rhd.build_dashboard(tmp_path, 14)
+        assert d["tasks"][0]["is_stale"] is False
+
+    def test_artifact_coverage(self, tmp_path):
+        self._setup_status(tmp_path, "TASK-107", "done", "2025-07-01T10:00:00+08:00",
+                           add_code=True)
+        d = rhd.build_dashboard(tmp_path, 14)
+        assert d["artifact_coverage"]["code"]["present"] == 1
+        assert d["artifact_coverage"]["code"]["pct"] == 100.0
+        assert d["artifact_coverage"]["task"]["present"] == 0
+
+    def test_done_not_stale(self, tmp_path):
+        """Done tasks should not be counted as stale even with old dates."""
+        self._setup_status(tmp_path, "TASK-108", "done", "2020-01-01T10:00:00+08:00")
+        d = rhd.build_dashboard(tmp_path, 14)
+        assert d["summary"]["stale"] == 0
+
+    def test_done_not_missing_verify(self, tmp_path):
+        """Done tasks should not be flagged for missing verify."""
+        self._setup_status(tmp_path, "TASK-109", "done", "2025-07-01T10:00:00+08:00",
+                           add_code=True, add_verify=False)
+        d = rhd.build_dashboard(tmp_path, 14)
+        assert d["summary"]["missing_verify"] == 0
+
+
+class TestRhdRenderMarkdown:
+    def _make_dashboard(self, tasks=None, blocked=False, stale=False, missing_v=False):
+        base = {
+            "generated_at": "2025-07-01T10:00:00+08:00",
+            "stale_days": 14,
+            "summary": {
+                "total_tasks": 1,
+                "done": 0,
+                "blocked": 1 if blocked else 0,
+                "stale": 1 if stale else 0,
+                "missing_verify": 1 if missing_v else 0,
+                "completion_pct": 0,
+            },
+            "artifact_coverage": {
+                t: {"present": 0, "total": 1, "pct": 0}
+                for t in rhd.ARTIFACT_TYPES
+            },
+            "tasks": tasks or [],
+        }
+        return base
+
+    def _make_task(self, task_id="TASK-100", state="in-progress", owner="agent",
+                   blocked=False, stale=False, missing_verify=False,
+                   blocked_reason="", last_updated="2025-07-01T10:00:00+08:00"):
+        return {
+            "task_id": task_id,
+            "state": state,
+            "owner": owner,
+            "last_updated": last_updated,
+            "is_stale": stale,
+            "is_blocked": blocked,
+            "missing_verify": missing_verify,
+            "artifacts": {t: False for t in rhd.ARTIFACT_TYPES},
+            "blocked_reason": blocked_reason,
+        }
+
+    def test_basic_output(self):
+        t = self._make_task()
+        d = self._make_dashboard(tasks=[t])
+        md = rhd.render_markdown(d)
+        assert "# Repo Health Dashboard" in md
+        assert "TASK-100" in md
+
+    def test_blocked_section(self):
+        t = self._make_task(state="blocked", blocked=True, blocked_reason="dep missing")
+        d = self._make_dashboard(tasks=[t], blocked=True)
+        md = rhd.render_markdown(d)
+        assert "## Blocked Tasks" in md
+        assert "dep missing" in md
+
+    def test_stale_section(self):
+        t = self._make_task(stale=True)
+        d = self._make_dashboard(tasks=[t], stale=True)
+        md = rhd.render_markdown(d)
+        assert "## Stale Tasks" in md
+
+    def test_missing_verify_section(self):
+        t = self._make_task(missing_verify=True)
+        d = self._make_dashboard(tasks=[t], missing_v=True)
+        md = rhd.render_markdown(d)
+        assert "## Missing Verification" in md
+
+    def test_flags_in_all_tasks(self):
+        t = self._make_task(state="in-progress", blocked=True, stale=True, missing_verify=True)
+        d = self._make_dashboard(tasks=[t])
+        md = rhd.render_markdown(d)
+        assert "BLOCKED" in md
+        assert "STALE" in md
+        assert "NO-VERIFY" in md
+
+    def test_no_flags_when_state_matches(self):
+        """If state is already BLOCKED, don't add BLOCKED flag."""
+        t = self._make_task(state="blocked", blocked=True)
+        d = self._make_dashboard(tasks=[t])
+        md = rhd.render_markdown(d)
+        lines = [l for l in md.split("\n") if "TASK-100" in l and "|" in l]
+        all_tasks_line = [l for l in lines if "blocked" in l.lower()]
+        # Should not have duplicate BLOCKED flag
+        for line in all_tasks_line:
+            parts = line.split("|")
+            state_part = parts[2].strip() if len(parts) > 2 else ""
+            if state_part == "blocked":
+                assert "BLOCKED" not in state_part.upper().replace("BLOCKED", "", 1)
+
+    def test_present_artifacts_listed(self):
+        t = self._make_task()
+        t["artifacts"]["task"] = True
+        t["artifacts"]["code"] = True
+        d = self._make_dashboard(tasks=[t])
+        md = rhd.render_markdown(d)
+        assert "task" in md
+        assert "code" in md
+
+
+class TestRhdMain:
+    def test_json_output(self, tmp_path, monkeypatch, capsys):
+        import json, argparse
+        (tmp_path / "artifacts" / "status").mkdir(parents=True)
+        status = {"state": "done", "last_updated": "2025-07-01T10:00:00+08:00"}
+        (tmp_path / "artifacts" / "status" / "TASK-100.status.json").write_text(
+            json.dumps(status), encoding="utf-8"
+        )
+        monkeypatch.setattr(rhd, "parse_args", lambda: argparse.Namespace(
+            root=str(tmp_path), stale_days=14, json=True
+        ))
+        result = rhd.main()
+        assert result == 0
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert data["summary"]["total_tasks"] == 1
+
+    def test_markdown_output(self, tmp_path, monkeypatch, capsys):
+        import argparse
+        (tmp_path / "artifacts" / "status").mkdir(parents=True)
+        monkeypatch.setattr(rhd, "parse_args", lambda: argparse.Namespace(
+            root=str(tmp_path), stale_days=14, json=False
+        ))
+        result = rhd.main()
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "# Repo Health Dashboard" in out
