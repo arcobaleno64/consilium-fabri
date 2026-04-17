@@ -2,7 +2,6 @@
 source = artifacts/scripts
 omit =
     artifacts/scripts/test_*.py
-    artifacts/scripts/run_red_team_suite.py
     artifacts/scripts/Invoke-*.ps1
     artifacts/scripts/load_env.ps1
 

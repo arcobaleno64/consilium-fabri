@@ -9210,3 +9210,688 @@ class TestRhdMain:
         assert result == 0
         out = capsys.readouterr().out
         assert "# Repo Health Dashboard" in out
+
+
+# ---------------------------------------------------------------------------
+# run_red_team_suite.py tests — batch 1: utilities & framework
+# ---------------------------------------------------------------------------
+import subprocess
+import run_red_team_suite as rrts
+
+
+class TestRrtsDetectRepoRoot:
+    def test_detects_actual_root(self):
+        root = rrts.detect_repo_root()
+        assert (root / "docs" / "red_team_runbook.md").exists()
+
+
+class TestRrtsLoadModule:
+    def test_loads_contract_guard(self):
+        mod = rrts.load_module(rrts.CONTRACT_GUARD, "test_gcv_load")
+        assert hasattr(mod, "EXACT_SYNC_FILES")
+
+    def test_invalid_path_raises(self):
+        from pathlib import Path as P
+        with pytest.raises((RuntimeError, FileNotFoundError)):
+            rrts.load_module(P("/nonexistent/module.py"), "bad")
+
+
+class TestRrtsRunCommand:
+    def test_basic(self):
+        import sys
+        result = rrts.run_command([sys.executable, "-c", "print('hello')"])
+        assert result.returncode == 0
+        assert "hello" in result.stdout
+
+
+class TestRrtsRunGitCommand:
+    def test_basic(self, tmp_path):
+        # Just run a safe command
+        result = rrts.run_git_command(tmp_path, ["--version"])
+        assert result.returncode == 0
+        assert "git" in result.stdout.lower()
+
+
+class TestRrtsEnsureCommandOk:
+    def test_success(self):
+        result = subprocess.CompletedProcess(args=[], returncode=0, stdout="ok", stderr="")
+        rrts.ensure_command_ok(result, "test")
+
+    def test_failure_stderr(self):
+        result = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="error msg")
+        with pytest.raises(RuntimeError, match="error msg"):
+            rrts.ensure_command_ok(result, "test")
+
+    def test_failure_stdout_fallback(self):
+        result = subprocess.CompletedProcess(args=[], returncode=1, stdout="out msg", stderr="")
+        with pytest.raises(RuntimeError, match="out msg"):
+            rrts.ensure_command_ok(result, "test")
+
+    def test_failure_unknown(self):
+        result = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="")
+        with pytest.raises(RuntimeError, match="unknown command failure"):
+            rrts.ensure_command_ok(result, "test")
+
+
+class TestRrtsInitializeGitFixture:
+    def test_creates_git_repo(self, tmp_path):
+        (tmp_path / "dummy.txt").write_text("x", encoding="utf-8")
+        rrts.initialize_git_fixture(tmp_path)
+        assert (tmp_path / ".git").exists()
+
+
+class TestRrtsGitRevParse:
+    def test_resolves_head(self, tmp_path):
+        (tmp_path / "dummy.txt").write_text("x", encoding="utf-8")
+        rrts.initialize_git_fixture(tmp_path)
+        sha = rrts.git_rev_parse(tmp_path, "HEAD")
+        assert len(sha) == 40
+
+
+class TestRrtsComputeSnapshotSha256:
+    def test_basic(self):
+        result = rrts.compute_snapshot_sha256(["a.md", "b.md"])
+        assert len(result) == 64
+
+    def test_sorted(self):
+        r1 = rrts.compute_snapshot_sha256(["a.md", "b.md"])
+        r2 = rrts.compute_snapshot_sha256(["b.md", "a.md"])
+        assert r1 == r2
+
+    def test_different(self):
+        r1 = rrts.compute_snapshot_sha256(["a.md"])
+        r2 = rrts.compute_snapshot_sha256(["b.md"])
+        assert r1 != r2
+
+
+class TestRrtsReplaceTaskId:
+    def test_basic(self):
+        assert rrts.replace_task_id("TASK-900 data", "TASK-900", "TASK-999") == "TASK-999 data"
+
+
+class TestRrtsEnsureParent:
+    def test_creates_parent(self, tmp_path):
+        target = tmp_path / "sub" / "file.txt"
+        rrts.ensure_parent(target)
+        assert target.parent.exists()
+
+
+class TestRrtsPrepareTemp:
+    def test_creates_unique_dir(self, monkeypatch):
+        import tempfile
+        from pathlib import Path as P
+        temp_base = P(tempfile.mkdtemp())
+        monkeypatch.setattr(rrts, "LOCAL_TMP_ROOT", temp_base)
+        d = rrts.prepare_temp_root("test-case")
+        assert d.exists()
+        assert d.name.startswith("test-case-")
+        import shutil
+        shutil.rmtree(temp_base, ignore_errors=True)
+
+
+class TestRrtsCopyTaskFixture:
+    def test_copies_and_renames(self, tmp_path):
+        arts = rrts.copy_task_fixture(tmp_path, "TASK-900", "TASK-TEST-1")
+        assert arts == tmp_path / "artifacts"
+        # Should have at least one file renamed
+        any_file = list(arts.rglob("TASK-TEST-1*"))
+        assert len(any_file) > 0
+
+    def test_exclude_improvement(self, tmp_path):
+        arts = rrts.copy_task_fixture(tmp_path, "TASK-900", "TASK-TEST-2", include_improvement=False)
+        improvement_files = list((arts / "improvement").rglob("TASK-TEST-2*"))
+        assert len(improvement_files) == 0
+
+
+class TestRrtsContractFixturePaths:
+    def test_returns_paths_with_templates(self):
+        mod = rrts.load_module(rrts.CONTRACT_GUARD, "test_gcv_paths")
+        paths = rrts.contract_fixture_paths(mod)
+        assert isinstance(paths, list)
+        assert any("template/" in p for p in paths)
+
+
+class TestRrtsCopyContractFixture:
+    def test_copies_files(self, tmp_path):
+        rrts.copy_contract_fixture(tmp_path)
+        assert any(tmp_path.rglob("*.md"))
+
+
+class TestRrtsBlockedSampleSource:
+    def test_returns_known_task(self):
+        result = rrts.blocked_sample_source()
+        assert result in ("TASK-901", "TASK-902")
+
+
+class TestRrtsBuildCaseResult:
+    def test_passed(self):
+        result = subprocess.CompletedProcess(args=[], returncode=0, stdout="fragment here", stderr="")
+        cr = rrts.build_case_result(
+            case_id="X", phase="static", title="T", expected="pass",
+            expected_exit_code=0, expected_output_fragment="fragment",
+            result=result, notes="n",
+        )
+        assert cr.passed is True
+        assert cr.notes == "n"
+
+    def test_failed_exit_code(self):
+        result = subprocess.CompletedProcess(args=[], returncode=1, stdout="fragment", stderr="")
+        cr = rrts.build_case_result(
+            case_id="X", phase="static", title="T", expected="fail",
+            expected_exit_code=0, expected_output_fragment="fragment",
+            result=result, notes="",
+        )
+        assert cr.passed is False
+        assert cr.notes == "fragment"  # first line of output when notes=""
+
+    def test_failed_missing_fragment(self):
+        result = subprocess.CompletedProcess(args=[], returncode=0, stdout="no match", stderr="")
+        cr = rrts.build_case_result(
+            case_id="X", phase="static", title="T", expected="pass",
+            expected_exit_code=0, expected_output_fragment="fragment",
+            result=result, notes="",
+        )
+        assert cr.passed is False
+
+    def test_empty_output_notes(self):
+        result = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+        cr = rrts.build_case_result(
+            case_id="X", phase="static", title="T", expected="pass",
+            expected_exit_code=0, expected_output_fragment="",
+            result=result, notes="",
+        )
+        assert cr.notes == ""
+
+
+class TestRrtsCompletedProcessFromOutput:
+    def test_basic(self):
+        cp = rrts.completed_process_from_output(["a", "b"], 42, "out")
+        assert cp.returncode == 42
+        assert cp.stdout == "out"
+        assert cp.stderr == ""
+        assert cp.args == ["a", "b"]
+
+
+class TestRrtsBuildCases:
+    def test_returns_all_phases(self):
+        cases = rrts.build_cases()
+        phases = {c.phase for c in cases}
+        assert "static" in phases
+        assert "live" in phases
+        assert "prompt" in phases
+
+    def test_case_ids_unique(self):
+        cases = rrts.build_cases()
+        ids = [c.case_id for c in cases]
+        assert len(ids) == len(set(ids))
+
+
+class TestRrtsRenderMarkdownReport:
+    def test_basic_report(self):
+        results = [rrts.CaseResult("X-1", "static", "T", "pass", 0, True, 0, "ev", "n")]
+        md = rrts.render_markdown(results)
+        assert "Red Team Suite Report" in md
+        assert "X-1" in md
+
+    def test_failed_case_in_report(self):
+        results = [rrts.CaseResult("F-1", "live", "T", "fail", 1, False, 0, "ev", "n")]
+        md = rrts.render_markdown(results)
+        assert "fail" in md
+
+
+class TestRrtsGithubPrFilesServer:
+    def test_server_returns_data(self):
+        import json as j
+        import urllib.request
+        pages = {1: [{"filename": "test.md"}], 2: []}
+        with rrts.github_pr_files_server("owner/repo", 1, pages) as base_url:
+            url = f"{base_url}/repos/owner/repo/pulls/1/files?page=1"
+            resp = urllib.request.urlopen(url)
+            data = j.loads(resp.read())
+            assert len(data) == 1
+
+    def test_server_404(self):
+        import urllib.request, urllib.error
+        pages = {1: []}
+        with rrts.github_pr_files_server("owner/repo", 1, pages) as base_url:
+            url = f"{base_url}/repos/wrong/path"
+            with pytest.raises(urllib.error.HTTPError) as exc_info:
+                urllib.request.urlopen(url)
+            assert exc_info.value.code == 404
+
+    def test_server_default_page(self):
+        import json as j
+        import urllib.request
+        pages = {1: [{"filename": "default.md"}]}
+        with rrts.github_pr_files_server("o/r", 1, pages) as base_url:
+            url = f"{base_url}/repos/o/r/pulls/1/files"
+            resp = urllib.request.urlopen(url)
+            data = j.loads(resp.read())
+            assert len(data) == 1
+
+    def test_server_invalid_page(self):
+        import json as j
+        import urllib.request
+        pages = {1: [{"filename": "p1.md"}]}
+        with rrts.github_pr_files_server("o/r", 1, pages) as base_url:
+            url = f"{base_url}/repos/o/r/pulls/1/files?page=abc"
+            resp = urllib.request.urlopen(url)
+            data = j.loads(resp.read())
+            assert data == [{"filename": "p1.md"}]  # falls back to page 1
+
+
+class TestRrtsRunStatusCase:
+    def test_basic(self, monkeypatch):
+        fake_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="[OK] Validation passed", stderr="")
+        monkeypatch.setattr(rrts, "run_command", lambda args, cwd=None: fake_result)
+        cr = rrts.run_status_case(
+            "TASK-999", rrts.REPO_ROOT / "artifacts",
+            expected_exit_code=0, expected_output_fragment="[OK]",
+            case_id="test", title="test", expected="pass", notes="n",
+        )
+        assert cr.passed is True
+
+    def test_with_state_transition(self, monkeypatch):
+        fake_result = subprocess.CompletedProcess(args=[], returncode=1, stdout="error", stderr="")
+        monkeypatch.setattr(rrts, "run_command", lambda args, cwd=None: fake_result)
+        cr = rrts.run_status_case(
+            "TASK-999", rrts.REPO_ROOT / "artifacts",
+            expected_exit_code=1, expected_output_fragment="error",
+            from_state="blocked", to_state="planned",
+            case_id="test-st", title="test", notes="n",
+        )
+        assert cr.passed is True
+
+    def test_with_extra_args(self, monkeypatch):
+        captured = {}
+        def capture(args, cwd=None):
+            captured["args"] = args
+            return subprocess.CompletedProcess(args=[], returncode=0, stdout="ok", stderr="")
+        monkeypatch.setattr(rrts, "run_command", capture)
+        rrts.run_status_case(
+            "TASK-999", rrts.REPO_ROOT / "artifacts",
+            expected_exit_code=0, expected_output_fragment="ok",
+            case_id="test-ea", title="test", notes="n",
+            extra_args=["--allow-scope-drift"],
+        )
+        assert "--allow-scope-drift" in captured["args"]
+
+
+class TestRrtsRunContractCase:
+    def test_basic(self, monkeypatch):
+        fake_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="ok", stderr="")
+        monkeypatch.setattr(rrts, "run_command", lambda args, cwd=None: fake_result)
+        cr = rrts.run_contract_case(
+            expected_exit_code=0, expected_output_fragment="ok",
+            mutation=lambda root: None,
+            title="test", case_id="test-cc", notes="n",
+        )
+        assert isinstance(cr, rrts.CaseResult)
+
+
+class TestRrtsRunPromptCase:
+    def test_basic(self, monkeypatch):
+        fake_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="Prompt Regression Report", stderr="")
+        monkeypatch.setattr(rrts, "run_command", lambda args, cwd=None: fake_result)
+        cr = rrts.run_prompt_case("PR-TEST", "test prompt", "test notes")
+        assert cr.passed is True
+        assert cr.case_id == "PR-TEST"
+
+
+class TestRrtsMain:
+    def _make_case(self, case_id, phase, passed=True):
+        return rrts.CaseDefinition(
+            case_id, phase, "test", "pass" if passed else "fail",
+            0 if passed else 1, "ok",
+            lambda p=passed, cid=case_id, ph=phase: rrts.CaseResult(
+                cid, ph, "test", "pass" if p else "fail",
+                0 if p else 1, p, 0 if p else 1, "ok", "n",
+            ),
+        )
+
+    def test_phase_static(self, monkeypatch, capsys):
+        monkeypatch.setattr(rrts, "build_cases", lambda: [
+            self._make_case("T-1", "static"),
+            self._make_case("T-2", "live"),
+        ])
+        result = rrts.main(["--phase", "static"])
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "T-1" in out
+        assert "T-2" not in out
+
+    def test_phase_all(self, monkeypatch, capsys):
+        monkeypatch.setattr(rrts, "build_cases", lambda: [
+            self._make_case("T-1", "static"),
+            self._make_case("T-2", "live"),
+        ])
+        result = rrts.main(["--phase", "all"])
+        assert result == 0
+
+    def test_alias_live(self, monkeypatch, capsys):
+        monkeypatch.setattr(rrts, "build_cases", lambda: [self._make_case("T-1", "live")])
+        result = rrts.main(["--live"])
+        assert result == 0
+
+    def test_alias_prompt(self, monkeypatch, capsys):
+        monkeypatch.setattr(rrts, "build_cases", lambda: [self._make_case("T-1", "prompt")])
+        result = rrts.main(["--prompt"])
+        assert result == 0
+
+    def test_alias_all(self, monkeypatch, capsys):
+        monkeypatch.setattr(rrts, "build_cases", lambda: [self._make_case("T-1", "static")])
+        result = rrts.main(["--all"])
+        assert result == 0
+
+    def test_conflicting_aliases(self, monkeypatch, capsys):
+        monkeypatch.setattr(rrts, "build_cases", lambda: [])
+        result = rrts.main(["--static", "--live"])
+        assert result == 2
+        err = capsys.readouterr().err
+        assert "Only one" in err
+
+    def test_failed_case_returns_1(self, monkeypatch, capsys):
+        monkeypatch.setattr(rrts, "build_cases", lambda: [self._make_case("T-1", "static", passed=False)])
+        result = rrts.main(["--static"])
+        assert result == 1
+
+    def test_output_file(self, monkeypatch, capsys, tmp_path):
+        out_path = tmp_path / "report.md"
+        monkeypatch.setattr(rrts, "build_cases", lambda: [self._make_case("T-1", "static")])
+        result = rrts.main(["--static", "--output", str(out_path)])
+        assert result == 0
+        assert out_path.exists()
+        assert "T-1" in out_path.read_text(encoding="utf-8")
+
+
+
+class TestRrtsCaseRT001to010:
+    """Test static case functions RT-001 through RT-010 with mocked subprocess."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_run(self, monkeypatch):
+        def fake(args, cwd=None):
+            return subprocess.CompletedProcess(
+                args=list(args), returncode=0,
+                stdout="deadbeef" * 5 + "\n[OK] pass\n", stderr="",
+            )
+        monkeypatch.setattr(rrts, "run_command", fake)
+
+    def test_rt_001(self):
+        r = rrts.case_rt_001()
+        assert isinstance(r, rrts.CaseResult) and r.case_id == "RT-001"
+
+    def test_rt_002(self):
+        r = rrts.case_rt_002()
+        assert isinstance(r, rrts.CaseResult) and r.case_id == "RT-002"
+
+    def test_rt_003(self):
+        r = rrts.case_rt_003()
+        assert isinstance(r, rrts.CaseResult) and r.case_id == "RT-003"
+
+    def test_rt_004(self):
+        r = rrts.case_rt_004()
+        assert isinstance(r, rrts.CaseResult) and r.case_id == "RT-004"
+
+    def test_rt_005(self):
+        r = rrts.case_rt_005()
+        assert isinstance(r, rrts.CaseResult) and r.case_id == "RT-005"
+
+    def test_rt_006(self):
+        r = rrts.case_rt_006()
+        assert isinstance(r, rrts.CaseResult) and r.case_id == "RT-006"
+
+    def test_rt_007(self):
+        r = rrts.case_rt_007()
+        assert isinstance(r, rrts.CaseResult) and r.case_id == "RT-007"
+
+    def test_rt_008(self):
+        r = rrts.case_rt_008()
+        assert isinstance(r, rrts.CaseResult) and r.case_id == "RT-008"
+
+    def test_rt_009(self):
+        r = rrts.case_rt_009()
+        assert isinstance(r, rrts.CaseResult) and r.case_id == "RT-009"
+
+    def test_rt_010(self):
+        r = rrts.case_rt_010()
+        assert isinstance(r, rrts.CaseResult) and r.case_id == "RT-010"
+
+
+class TestRrtsCaseRT011to020:
+    """Test static case functions RT-011 through RT-020 with mocked subprocess."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_run(self, monkeypatch):
+        def fake(args, cwd=None):
+            return subprocess.CompletedProcess(
+                args=list(args), returncode=0,
+                stdout="deadbeef" * 5 + "\n[OK] pass\n", stderr="",
+            )
+        monkeypatch.setattr(rrts, "run_command", fake)
+
+    def test_rt_011(self):
+        r = rrts.case_rt_011()
+        assert isinstance(r, rrts.CaseResult) and r.case_id == "RT-011"
+
+    def test_rt_012(self):
+        r = rrts.case_rt_012()
+        assert isinstance(r, rrts.CaseResult) and r.case_id == "RT-012"
+
+    def test_rt_013(self):
+        r = rrts.case_rt_013()
+        assert isinstance(r, rrts.CaseResult) and r.case_id == "RT-013"
+
+    def test_rt_014(self):
+        r = rrts.case_rt_014()
+        assert isinstance(r, rrts.CaseResult) and r.case_id == "RT-014"
+
+    def test_rt_015(self):
+        r = rrts.case_rt_015()
+        assert isinstance(r, rrts.CaseResult) and r.case_id == "RT-015"
+
+    def test_rt_016(self):
+        r = rrts.case_rt_016()
+        assert isinstance(r, rrts.CaseResult) and r.case_id == "RT-016"
+
+    def test_rt_017(self):
+        r = rrts.case_rt_017()
+        assert isinstance(r, rrts.CaseResult) and r.case_id == "RT-017"
+
+    def test_rt_018(self):
+        r = rrts.case_rt_018()
+        assert isinstance(r, rrts.CaseResult) and r.case_id == "RT-018"
+
+    def test_rt_019(self):
+        r = rrts.case_rt_019()
+        assert isinstance(r, rrts.CaseResult) and r.case_id == "RT-019"
+
+    def test_rt_020(self):
+        r = rrts.case_rt_020()
+        assert isinstance(r, rrts.CaseResult) and r.case_id == "RT-020"
+
+
+class TestRrtsCaseRT021to023:
+    """Test static case functions RT-021 through RT-023 with mocked subprocess."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_run(self, monkeypatch):
+        def fake(args, cwd=None):
+            return subprocess.CompletedProcess(
+                args=list(args), returncode=0,
+                stdout="deadbeef" * 5 + "\n[OK] pass\n[AUTO-UPGRADE] done\n", stderr="",
+            )
+        monkeypatch.setattr(rrts, "run_command", fake)
+
+    def test_rt_021(self):
+        r = rrts.case_rt_021()
+        assert isinstance(r, rrts.CaseResult) and r.case_id == "RT-021"
+
+    def test_rt_022(self):
+        r = rrts.case_rt_022()
+        assert isinstance(r, rrts.CaseResult) and r.case_id == "RT-022"
+
+    def test_rt_023(self):
+        r = rrts.case_rt_023()
+        assert isinstance(r, rrts.CaseResult) and r.case_id == "RT-023"
+
+
+class TestRrtsCaseLive:
+    """Test live case functions with mocked subprocess."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_run(self, monkeypatch):
+        def fake(args, cwd=None):
+            return subprocess.CompletedProcess(
+                args=list(args), returncode=0,
+                stdout="[OK] Validation passed\n", stderr="",
+            )
+        monkeypatch.setattr(rrts, "run_command", fake)
+
+    def test_live_950(self):
+        r = rrts.case_live_950()
+        assert isinstance(r, rrts.CaseResult) and r.case_id == "RT-LIVE-950"
+
+    def test_live_951(self):
+        r = rrts.case_live_951()
+        assert isinstance(r, rrts.CaseResult) and r.case_id == "RT-LIVE-951"
+
+
+class TestRrtsCasePrompt:
+    """Test prompt case functions with mocked subprocess."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_run(self, monkeypatch):
+        def fake(args, cwd=None):
+            return subprocess.CompletedProcess(
+                args=list(args), returncode=0,
+                stdout="Prompt Regression Report\n", stderr="",
+            )
+        monkeypatch.setattr(rrts, "run_command", fake)
+
+    def test_pr_001(self):
+        r = rrts.case_pr_001()
+        assert r.case_id == "PR-001"
+
+    def test_pr_002(self):
+        r = rrts.case_pr_002()
+        assert r.case_id == "PR-002"
+
+    def test_pr_003(self):
+        r = rrts.case_pr_003()
+        assert r.case_id == "PR-003"
+
+    def test_pr_004(self):
+        r = rrts.case_pr_004()
+        assert r.case_id == "PR-004"
+
+    def test_pr_005(self):
+        r = rrts.case_pr_005()
+        assert r.case_id == "PR-005"
+
+    def test_pr_006(self):
+        r = rrts.case_pr_006()
+        assert r.case_id == "PR-006"
+
+    def test_pr_007(self):
+        r = rrts.case_pr_007()
+        assert r.case_id == "PR-007"
+
+    def test_pr_008(self):
+        r = rrts.case_pr_008()
+        assert r.case_id == "PR-008"
+
+    def test_pr_009(self):
+        r = rrts.case_pr_009()
+        assert r.case_id == "PR-009"
+
+    def test_pr_010(self):
+        r = rrts.case_pr_010()
+        assert r.case_id == "PR-010"
+
+    def test_pr_011(self):
+        r = rrts.case_pr_011()
+        assert r.case_id == "PR-011"
+
+    def test_pr_012(self):
+        r = rrts.case_pr_012()
+        assert r.case_id == "PR-012"
+
+    def test_pr_013(self):
+        r = rrts.case_pr_013()
+        assert r.case_id == "PR-013"
+
+    def test_pr_014(self):
+        r = rrts.case_pr_014()
+        assert r.case_id == "PR-014"
+
+    def test_pr_015(self):
+        r = rrts.case_pr_015()
+        assert r.case_id == "PR-015"
+
+    def test_pr_016(self):
+        r = rrts.case_pr_016()
+        assert r.case_id == "PR-016"
+
+    def test_pr_017(self):
+        r = rrts.case_pr_017()
+        assert r.case_id == "PR-017"
+
+    def test_pr_018(self):
+        r = rrts.case_pr_018()
+        assert r.case_id == "PR-018"
+
+    def test_pr_019(self):
+        r = rrts.case_pr_019()
+        assert r.case_id == "PR-019"
+
+    def test_pr_020(self):
+        r = rrts.case_pr_020()
+        assert r.case_id == "PR-020"
+
+
+
+class TestRrtsGaps:
+    """Cover the 4 remaining uncovered lines: 33, 71, 175, 214."""
+
+    def test_detect_repo_root_no_match(self, monkeypatch):
+        """Line 33: raise RuntimeError when no repo root found."""
+        from pathlib import Path as P
+        monkeypatch.setattr(rrts, "SCRIPT_PATH", P("/nonexistent/deep/nested/file.py"))
+        with pytest.raises(RuntimeError, match="Unable to detect repository root"):
+            rrts.detect_repo_root()
+
+    def test_load_module_spec_none(self, monkeypatch):
+        """Line 71: raise RuntimeError when spec_from_file_location returns None."""
+        import importlib.util
+        monkeypatch.setattr(importlib.util, "spec_from_file_location", lambda *a, **kw: None)
+        with pytest.raises(RuntimeError, match="Unable to load module"):
+            rrts.load_module(rrts.CONTRACT_GUARD, "test_none_spec")
+
+    def test_copy_task_fixture_skips_dirs(self, tmp_path):
+        """Line 175: continue when source_path.is_dir()."""
+        # Create a directory matching TASK-900 pattern in artifacts
+        dir_path = rrts.REPO_ROOT / "artifacts" / "tasks" / "TASK-900-subdir"
+        created = False
+        try:
+            if not dir_path.exists():
+                dir_path.mkdir(parents=True, exist_ok=True)
+                created = True
+            arts = rrts.copy_task_fixture(tmp_path, "TASK-900", "TASK-DIRTEST")
+            # The directory should not be copied as a file
+            assert not (arts / "tasks" / "TASK-DIRTEST-subdir").is_file()
+        finally:
+            if created and dir_path.exists():
+                dir_path.rmdir()
+
+    def test_blocked_sample_source_fallback(self, monkeypatch):
+        """Line 214: return TASK-901 when TASK-902.task.md doesn't exist."""
+        from pathlib import Path as P
+        original_exists = P.exists
+        def fake_exists(self):
+            if "TASK-902.task.md" in str(self):
+                return False
+            return original_exists(self)
+        monkeypatch.setattr(P, "exists", fake_exists)
+        result = rrts.blocked_sample_source()
+        assert result == "TASK-901"
