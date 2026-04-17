@@ -1,0 +1,22 @@
+{
+  "sprint": "S6",
+  "date": "2026-04-16T00:00:00+08:00",
+  "false_positive_rate_pct": 0.0,
+  "avg_validation_ms": 290.754,
+  "vs_sprint2": {
+    "fp_delta_pct": 0.0,
+    "speed_delta_ms": -47.822
+  },
+  "methodology": "每個 TASK-900/950/951/902 執行 guard_status_validator 3 次取中位數；中位數：TASK-900=284.658、TASK-950=307.176、TASK-951=291.915、TASK-902=279.269；avg_validation_ms 為四個中位數的算術平均",
+  "next_quarter_backlog": [
+    "Decision Registry 深化",
+    "Artifact Lineage 擴充",
+    "Agent 成本策略"
+  ],
+  "coverage_tasks": [
+    "TASK-900",
+    "TASK-950",
+    "TASK-951",
+    "TASK-902"
+  ]
+}

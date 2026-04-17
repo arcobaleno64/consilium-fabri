@@ -22,7 +22,6 @@
 ```text
 drafted
   -> researched
-  -> planned (若任務不需要 research)
   -> blocked
 
 researched
@@ -49,7 +48,7 @@ verifying
   -> blocked
 
 blocked
-  -> 任意前一合法狀態（需先建立 improvement artifact — Gate E）
+  -> 任意前一合法狀態（需先建立 `Status: applied` 的 improvement artifact — Gate E）
 ```
 
 ## 3. 每個狀態的進入條件
@@ -63,11 +62,6 @@ blocked
 ### planned
 - 存在合法 plan artifact
 - 若需要 research，則 research 必須已完成
-- 若任務不需要外部知識，可從 drafted 直接轉移至 planned（略過 researched）
-
-> **Guard 限制**：`guard_status_validator.py` 允許所有任務從 `drafted` 直接轉移至 `planned`，因為 validator 無法機械判斷任務是否需要 research。
-> `docs/orchestration.md §2.4` 的 research 要求仍為強制規則，由 agent 審查與 code review 執行，而非由 validator 執行。
-> 在 research 仍為必要的情況下跳過 `researched` 狀態，屬於工作流程違規。
 
 ### coding
 - plan artifact 存在且 Ready For Coding = yes
@@ -112,6 +106,7 @@ blocked
 - 或 decision log 解決衝突
 - **且**必須建立 improvement artifact（Gate E, PDCA）
   - 記錄根因分析、矯正措施、與系統層級預防措施
+  - improvement artifact 必須為 `Status: applied`
   - `guard_status_validator.py` 在 `blocked → *` 轉移時自動檢查
 
 ## 6. 強制規則
@@ -120,10 +115,10 @@ blocked
 2. 狀態必須與實際 artifacts 一致
 3. 不允許「口頭完成」狀態
 4. 不允許跳過中間狀態
-5. 每份 plan 必須可測試，且必須可對應至 code 與 verification artifacts
-6. 實作不得引入未明確對應至 plan 的變更
+5. Every plan must be testable and mappable to code and verification artifacts
+6. Implementation must not introduce changes not explicitly mapped to plan
 7. verify 必須逐條對應 acceptance criteria
-8. 任何 failure 或 blocked 狀態後，必須先建立 Process Improvement artifact，才可恢復工作流程（Gate E）
+8. After any failure or blocked state, a Process Improvement artifact with `Status: applied` must exist before resuming workflow (Gate E)
 
 ## 7. 設計原則
 
@@ -132,4 +127,3 @@ blocked
 - 任何人都能從 artifacts 重建狀態
 
 如果一個狀態不能用檔案證明存在，那它就不該存在
-

@@ -1,0 +1,19 @@
+[run]
+source = artifacts/scripts
+omit =
+    artifacts/scripts/test_*.py
+    artifacts/scripts/run_red_team_suite.py
+    artifacts/scripts/discover_templates.py
+    artifacts/scripts/update_repository_profile.py
+    artifacts/scripts/repo_health_dashboard.py
+    artifacts/scripts/Invoke-*.ps1
+    artifacts/scripts/load_env.ps1
+
+[report]
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__
+    def main\(
+    parser\.add_argument
+    parser = argparse
+    args = parser\.parse

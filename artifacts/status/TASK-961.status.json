@@ -1,0 +1,17 @@
+{
+  "task_id": "TASK-961",
+  "title": "Template auto-discovery mechanism for orchestrator",
+  "current_state": "done",
+  "owner": "Claude",
+  "last_updated": "2026-04-15T00:00:00+08:00",
+  "artifacts": {
+    "task": "artifacts/tasks/TASK-961.task.md",
+    "research": "artifacts/research/TASK-961.research.md",
+    "plan": "artifacts/plans/TASK-961.plan.md",
+    "code": "artifacts/code/TASK-961.code.md",
+    "verify": "artifacts/verify/TASK-961.verify.md",
+    "decision": null
+  },
+  "next_action": "None — task complete.",
+  "blockers": []
+}

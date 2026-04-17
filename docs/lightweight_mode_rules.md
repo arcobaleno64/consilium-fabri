@@ -44,9 +44,7 @@
 
 ```text
 1. Claude 建立 task（state: drafted）
-2. Claude 建立簡化 plan（state: planned）
-   -> 可從 drafted 直接轉移至 planned，略過 researched
-   -> guard_status_validator.py 支援 drafted -> planned 合法轉移
+2. Claude 完成必要 research 後建立簡化 plan（state: researched -> planned）
 3. Implementer 修改（state: coding）
 4. 產出 code artifact（state: testing 或 verifying）
 5. Claude 更新 status 至 done
@@ -55,7 +53,7 @@
 狀態路徑範例：
 
 ```text
-drafted -> planned -> coding -> verifying -> done
+drafted -> researched -> planned -> coding -> verifying -> done
 ```
 
 ## 6. 強制限制

@@ -1,0 +1,17 @@
+{
+  "task_id": "TASK-959",
+  "title": "Evaluate Hermes Agent skill framework for Consilium Fabri enhancement",
+  "current_state": "research_ready",
+  "owner": "Claude",
+  "last_updated": "2026-04-14T23:00:00+08:00",
+  "artifacts": {
+    "task": "artifacts/tasks/TASK-959.task.md",
+    "research": "artifacts/research/TASK-959.research.md",
+    "plan": null,
+    "code": null,
+    "verify": null,
+    "decision": null
+  },
+  "next_action": "Review research findings and decide whether to proceed to planning for follow-up TASKs",
+  "blockers": []
+}

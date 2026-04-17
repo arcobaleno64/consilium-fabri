@@ -22,3 +22,18 @@ __pycache__/
 .env
 *.key
 credentials.*
+
+# Red-team & workflow temp directories
+.codex-red-team/
+.tmp-red-team/
+template/.tmp-red-team/
+
+# Virtual environment
+.venv/
+
+# Test artifacts
+temp_test.ps1
+test_e2e.ps1
+.coverage
+coverage-report/
+.pytest_cache/
