@@ -388,6 +388,26 @@ class TestParseReport:
         assert rows[0].case_passed is True
         assert rows[1].case_passed is False
 
+    def test_ignores_malformed_row(self):
+        markdown = textwrap.dedent("""\
+            | only | three | columns |
+            | `RT-001` | static | pass | pass | 0 | ok | None |
+        """)
+        rows = ars.parse_report(markdown)
+        assert len(rows) == 1
+        assert rows[0].case == "RT-001"
+
+    def test_parse_new_schema_rows(self):
+        markdown = textwrap.dedent("""\
+            | Case | Phase | Expected | Outcome | Expected Exit | Actual Exit | Evidence | Notes |
+            |---|---|---|---|---:|---:|---|---|
+            | `RT-028` | static | fail | pass | 1 | 1 | `exceeds replay byte cap` | None |
+        """)
+        rows = ars.parse_report(markdown)
+        assert len(rows) == 1
+        assert rows[0].expected_exit_code == "1"
+        assert rows[0].actual_exit_code == "1"
+
     def test_auto_score(self):
         from aggregate_red_team_scorecard import CaseRow
 
@@ -1247,6 +1267,12 @@ class TestLoadText:
         with pytest.raises(gsv.GuardError, match="Text file too large"):
             gsv.load_text(p)
 
+    def test_invalid_utf8(self, tmp_path):
+        p = tmp_path / "bad.md"
+        p.write_bytes(b"\xff")
+        with pytest.raises(gsv.GuardError, match="Invalid UTF-8"):
+            gsv.load_text(p)
+
 
 class TestWriteJson:
     def test_roundtrip(self, tmp_path):
@@ -1299,6 +1325,22 @@ class TestLoadOverrideLog:
         p.write_text("[" + (" " * gsv.MAX_ARTIFACT_FILE_BYTES) + "]", encoding="utf-8")
         with pytest.raises(gsv.GuardError, match="Override log too large"):
             gsv.load_override_log(p)
+
+
+class TestReadBoundedFile:
+    def test_missing_optional_returns_none(self, tmp_path):
+        assert gsv.read_bounded_file(tmp_path / "missing.json", missing_label=None, too_large_label="Too large") is None
+
+    def test_oserror_is_wrapped(self, tmp_path, monkeypatch):
+        target = tmp_path / "value.json"
+        target.write_text("{}", encoding="utf-8")
+
+        def boom(*args, **kwargs):
+            raise OSError("boom")
+
+        monkeypatch.setattr(Path, "open", boom)
+        with pytest.raises(gsv.GuardError, match="Unable to read"):
+            gsv.read_bounded_file(target, missing_label="JSON file", too_large_label="Too large")
 
 
 # ─────────────────────────────────────────────
@@ -4376,6 +4418,11 @@ class TestNormalizeApiBaseUrl:
             url, err = gsv.normalize_api_base_url("https://custom.api.com/")
         assert url == "https://custom.api.com"
         assert err is None
+
+    def test_missing_hostname(self):
+        url, err = gsv.normalize_api_base_url("https://:443")
+        assert url is None
+        assert "must include a hostname" in err
 
 
 # ─────────────────────────────────────────────
@@ -9305,6 +9352,29 @@ class TestRrtsRunCommand:
         assert result.returncode == 0
         assert "hello" in result.stdout
 
+    def test_rejects_unapproved_env_override(self):
+        with pytest.raises(RuntimeError, match="Unsupported environment override"):
+            rrts.run_command([sys.executable, "-c", "print('x')"], env={"PATH": "forbidden"})
+
+    def test_rejects_non_string_env_value(self):
+        with pytest.raises(RuntimeError, match="must be a string"):
+            rrts.run_command([sys.executable, "-c", "print('x')"], env={rrts.GITHUB_API_ALLOWED_HOSTS_ENV: 1})
+
+    def test_allows_approved_env_override(self, monkeypatch):
+        captured = {}
+
+        def fake_subprocess_run(args, **kwargs):
+            captured["env"] = kwargs.get("env")
+            return subprocess.CompletedProcess(args=args, returncode=0, stdout="ok", stderr="")
+
+        monkeypatch.setattr(subprocess, "run", fake_subprocess_run)
+        result = rrts.run_command(
+            [sys.executable, "-c", "print('x')"],
+            env={rrts.GITHUB_API_ALLOWED_HOSTS_ENV: "127.0.0.1"},
+        )
+        assert result.returncode == 0
+        assert captured["env"][rrts.GITHUB_API_ALLOWED_HOSTS_ENV] == "127.0.0.1"
+
 
 class TestRrtsRunGitCommand:
     def test_basic(self, tmp_path):
@@ -9578,6 +9648,30 @@ class TestRrtsRunStatusCase:
         )
         assert "--allow-scope-drift" in captured["args"]
 
+    def test_with_extra_env(self, monkeypatch):
+        captured = {}
+
+        def capture(args, cwd=None, env=None):
+            captured["env"] = env
+            return subprocess.CompletedProcess(args=[], returncode=0, stdout="ok", stderr="")
+
+        monkeypatch.setattr(rrts, "run_command", capture)
+        rrts.run_status_case(
+            "TASK-999", rrts.REPO_ROOT / "artifacts",
+            expected_exit_code=0, expected_output_fragment="ok",
+            case_id="test-env", title="test", notes="n",
+            extra_env={rrts.GITHUB_API_ALLOWED_HOSTS_ENV: "127.0.0.1"},
+        )
+        assert captured["env"][rrts.GITHUB_API_ALLOWED_HOSTS_ENV] == "127.0.0.1"
+
+
+class TestRrtsTemporaryEnv:
+    def test_restores_existing_value(self, monkeypatch):
+        monkeypatch.setenv(rrts.GITHUB_API_ALLOWED_HOSTS_ENV, "old-host")
+        with rrts.temporary_env({rrts.GITHUB_API_ALLOWED_HOSTS_ENV: "new-host"}):
+            assert os.environ[rrts.GITHUB_API_ALLOWED_HOSTS_ENV] == "new-host"
+        assert os.environ[rrts.GITHUB_API_ALLOWED_HOSTS_ENV] == "old-host"
+
 
 class TestRrtsRunContractCase:
     def test_basic(self, monkeypatch):
@@ -9796,6 +9890,47 @@ class TestRrtsCaseRT021to023:
     def test_rt_023(self):
         r = rrts.case_rt_023()
         assert isinstance(r, rrts.CaseResult) and r.case_id == "RT-023"
+
+
+class TestRrtsCaseRT024to028:
+    """Test static case functions RT-024 through RT-028 with mocked subprocess."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_run(self, monkeypatch):
+        def fake(args, cwd=None, env=None):
+            return subprocess.CompletedProcess(
+                args=list(args),
+                returncode=0,
+                stdout="\n".join([
+                    "[OK] Validation passed",
+                    "API Base URL host '127.0.0.1' is not allowed",
+                    "Text file too large",
+                    "exceeds replay byte cap",
+                ]),
+                stderr="",
+            )
+
+        monkeypatch.setattr(rrts, "run_command", fake)
+
+    def test_rt_024(self):
+        r = rrts.case_rt_024()
+        assert isinstance(r, rrts.CaseResult) and r.case_id == "RT-024"
+
+    def test_rt_025(self):
+        r = rrts.case_rt_025()
+        assert isinstance(r, rrts.CaseResult) and r.case_id == "RT-025"
+
+    def test_rt_026(self):
+        r = rrts.case_rt_026()
+        assert isinstance(r, rrts.CaseResult) and r.case_id == "RT-026"
+
+    def test_rt_027(self):
+        r = rrts.case_rt_027()
+        assert isinstance(r, rrts.CaseResult) and r.case_id == "RT-027"
+
+    def test_rt_028(self):
+        r = rrts.case_rt_028()
+        assert isinstance(r, rrts.CaseResult) and r.case_id == "RT-028"
 
 
 class TestRrtsCaseLive:
