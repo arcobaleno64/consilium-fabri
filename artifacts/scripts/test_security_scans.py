@@ -89,7 +89,8 @@ class TestSecretScan:
         assert findings == []
 
     def test_detects_private_key_block(self, tmp_path: Path):
-        _write(tmp_path / "artifacts" / "scripts" / "key.txt", "-----BEGIN PRIVATE KEY-----\nabc\n")
+        private_key_block = "-----BEGIN " + "PRIVATE KEY-----\nabc\n"
+        _write(tmp_path / "artifacts" / "scripts" / "key.txt", private_key_block)
         findings = rss.scan_secrets(tmp_path)
         assert len(findings) == 1
         assert any(f.rule_id == "private-key-block" for f in findings)
