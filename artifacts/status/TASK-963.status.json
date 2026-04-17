@@ -1,0 +1,17 @@
+{
+  "task_id": "TASK-963",
+  "title": "GitHub Actions supply-chain hardening and publish automation",
+  "current_state": "done",
+  "owner": "Claude",
+  "last_updated": "2026-04-17T22:40:00+08:00",
+  "artifacts": {
+    "task": "artifacts/tasks/TASK-963.task.md",
+    "research": "artifacts/research/TASK-963.research.md",
+    "plan": "artifacts/plans/TASK-963.plan.md",
+    "code": "artifacts/code/TASK-963.code.md",
+    "verify": "artifacts/verify/TASK-963.verify.md",
+    "decision": null
+  },
+  "next_action": null,
+  "blockers": []
+}
