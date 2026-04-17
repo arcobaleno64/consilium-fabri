@@ -35,7 +35,7 @@ jobs:
       - name: Run pip-audit
         run: |
           echo "::group::pip-audit JSON output"
-          python -m pip-audit -r requirements.txt --format=json --output=pip-audit-report.json || true
+          python -m pip_audit -r requirements.txt --format=json --output=pip-audit-report.json || true
           cat pip-audit-report.json
           echo "::endgroup::"
-          python -m pip-audit -r requirements.txt --format=columns
+          python -m pip_audit -r requirements.txt --format=columns
