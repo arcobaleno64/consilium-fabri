@@ -19,6 +19,8 @@ Review the consilium-fabri repository architecture and fix the identified gap: t
 - `template/docs/workflow_state_machine.md` — template sync
 - `template/docs/lightweight_mode_rules.md` — template sync
 - `template/artifacts/scripts/guard_status_validator.py` — template sync
+- `artifacts/tasks/TASK-001.task.md` — create task artifact for this review
+- `artifacts/plans/TASK-001.plan.md` — create and refine the execution plan artifact
 
 ## Proposed Changes
 
@@ -50,6 +52,13 @@ R2
 - Detection: Diff between `docs/` and `template/docs/` shows divergence
 - Mitigation: Sync is performed atomically in the same commit as the docs changes
 - Severity: non-blocking
+
+R3
+- Risk: Allowing `drafted -> planned` globally in validator can be misused to skip required research for tasks that do need external knowledge
+- Trigger: Contributor transitions directly from `drafted` to `planned` without research artifact while task actually depends on external references
+- Detection: PR review shows no research artifact for a task with externally sourced claims; task narrative conflicts with `docs/orchestration.md §2.4`
+- Mitigation: Explicitly document validator limitation and keep research requirement enforced by process/review gate; reject misuse in PR review and require research artifact before approval
+- Severity: blocking
 
 ## Validation Strategy
 
