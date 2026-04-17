@@ -298,9 +298,6 @@ def check_memory_bank_quality(root: Path) -> List[str]:
                         if fence_depth:
                             has_content = True
                             break
-                        continue
-                    if fence_depth:
-                        continue
                     if re.match(r"^#{1,3}\s+", lines[j]):
                         break
                     if stripped and not stripped.startswith("<!--"):
