@@ -261,6 +261,9 @@ If your repository keeps external integrations as Git submodules, run `git submo
 │       ├── run_red_team_suite.py
 │       ├── repo_health_dashboard.py
 │       ├── build_decision_registry.py
+│       ├── github_publish_common.ps1  # Shared auth/preflight helpers
+│       ├── push-wiki.ps1              # Wiki publish with preflight
+│       ├── publish-release.ps1        # Release publish with preflight
 │       └── drills/            # Prompt regression test cases
 │
 ├── .github/
@@ -270,7 +273,10 @@ If your repository keeps external integrations as Git submodules, run `git submo
 │   ├── prompts/                   # Prompt and skill files
 │   ├── agents/                    # Agent definition files
 │   ├── skills/                    # Skill metadata
+│   ├── dependabot.yml             # Dependabot config (actions + pip)
 │   └── workflows/                 # GitHub Actions CI
+│       ├── workflow-guards.yml    # Main CI pipeline (SHA-pinned actions)
+│       └── security-scan.yml     # pip-audit dependency scan
 │
 ├── template/                  # Clean template for new projects (sync target)
 └── external/                  # External project integrations
@@ -292,6 +298,20 @@ If your repository keeps external integrations as Git submodules, run `git submo
 | `python artifacts/scripts/repo_health_dashboard.py` | Generate repository health dashboard |
 | `python artifacts/scripts/build_decision_registry.py --root .` | Rebuild the decision registry |
 | `python artifacts/scripts/update_repository_profile.py` | Update GitHub repository profile |
+| `pwsh artifacts/scripts/push-wiki.ps1` | Push wiki/ to GitHub Wiki (with preflight) |
+| `pwsh artifacts/scripts/push-wiki.ps1 -WhatIf` | Run wiki preflight only (no push) |
+| `pwsh artifacts/scripts/publish-release.ps1 -Tag v0.4.0` | Create a GitHub Release (with preflight) |
+| `pwsh artifacts/scripts/publish-release.ps1 -Tag v0.4.0 -WhatIf` | Run release preflight only |
+
+---
+
+## Security And Supply-Chain Hardening
+
+- All GitHub Actions in `.github/workflows/` are pinned to full 40-character commit SHAs to prevent tag-mutation supply-chain attacks. Version comments (e.g. `# v4.3.1`) are preserved for Dependabot compatibility.
+- `.github/dependabot.yml` is configured to automatically propose weekly updates for both `github-actions` and `pip` ecosystems.
+- `.github/workflows/security-scan.yml` runs `pip-audit` against `requirements.txt` on every PR, push to master, and manual dispatch, producing both JSON and columnar output.
+- Wiki and release publish scripts include mandatory preflight checks: auth probing (`GH_TOKEN` → `GITHUB_TOKEN` → `gh auth`), remote reachability, tag/release existence, and uninitialized wiki detection.
+- All publish scripts support `-WhatIf` for dry-run validation without side effects.
 
 ---
 

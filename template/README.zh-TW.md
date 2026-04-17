@@ -191,7 +191,7 @@ Done
 git clone https://github.com/arcobaleno64/consilium-fabri.git my-project
 cd my-project
 
-# 1.5. 有使用 submodule 時先初始化外部整合
+# 1.5. 初始化以 submodule 追蹤的外部整合
 git submodule update --init --recursive
 
 # 2. 替換 CLAUDE.md 中的 placeholder（無 fork 則移除 fork 區段）
@@ -261,6 +261,9 @@ python artifacts/scripts/run_red_team_suite.py --phase all
 │       ├── run_red_team_suite.py
 │       ├── repo_health_dashboard.py
 │       ├── build_decision_registry.py
+│       ├── github_publish_common.ps1  # 共用 auth/preflight 輔助函式
+│       ├── push-wiki.ps1              # Wiki 發布（含 preflight）
+│       ├── publish-release.ps1        # Release 發布（含 preflight）
 │       └── drills/            # Prompt regression 測例
 │
 ├── .github/
@@ -270,7 +273,10 @@ python artifacts/scripts/run_red_team_suite.py --phase all
 │   ├── prompts/                   # Prompt 與 skill 檔案
 │   ├── agents/                    # Agent 定義檔
 │   ├── skills/                    # Skill 詮釋資料
+│   ├── dependabot.yml             # Dependabot 設定（actions + pip）
 │   └── workflows/                 # GitHub Actions CI
+│       ├── workflow-guards.yml    # 主 CI pipeline（SHA pinned actions）
+│       └── security-scan.yml     # pip-audit 相依掃描
 │
 ├── template/                  # 新專案用的乾淨範本（同步目標）
 └── external/                  # 外部專案整合
@@ -292,6 +298,20 @@ python artifacts/scripts/run_red_team_suite.py --phase all
 | `python artifacts/scripts/repo_health_dashboard.py` | 產生儲存庫健康儀表板 |
 | `python artifacts/scripts/build_decision_registry.py --root .` | 重建決策登錄冊 |
 | `python artifacts/scripts/update_repository_profile.py` | 更新 GitHub 儲存庫 profile |
+| `pwsh artifacts/scripts/push-wiki.ps1` | 推送 wiki/ 到 GitHub Wiki（含 preflight） |
+| `pwsh artifacts/scripts/push-wiki.ps1 -WhatIf` | 僅執行 wiki preflight（不推送） |
+| `pwsh artifacts/scripts/publish-release.ps1 -Tag v0.4.0` | 建立 GitHub Release（含 preflight） |
+| `pwsh artifacts/scripts/publish-release.ps1 -Tag v0.4.0 -WhatIf` | 僅執行 release preflight |
+
+---
+
+## 安全與供應鏈強化
+
+- `.github/workflows/` 內的所有 GitHub Actions 已改為完整 40 字元 commit SHA pin，防止 tag 被竄改的供應鏈攻擊。版本註解（如 `# v4.3.1`）保留以供 Dependabot 辨識。
+- `.github/dependabot.yml` 設定為每週自動提案更新 `github-actions` 與 `pip` 兩個 ecosystem。
+- `.github/workflows/security-scan.yml` 於每次 PR、push to master 與手動觸發時執行 `pip-audit`，掃描 `requirements.txt` 並產出 JSON 與表格格式報告。
+- Wiki 與 release 發布腳本包含強制 preflight 檢查：auth 探測（`GH_TOKEN` → `GITHUB_TOKEN` → `gh auth`）、遠端可達性、tag/release 狀態、wiki 未初始化偵測。
+- 所有發布腳本支援 `-WhatIf` 進行不產生副作用的 dry-run 驗證。
 
 ---
 
