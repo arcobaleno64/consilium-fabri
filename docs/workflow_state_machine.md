@@ -65,6 +65,10 @@ blocked
 - 若需要 research，則 research 必須已完成
 - 若任務不需要外部知識，可從 drafted 直接轉移至 planned（略過 researched）
 
+> **Guard 限制**：`guard_status_validator.py` 允許所有任務從 `drafted` 直接轉移至 `planned`，因為 validator 無法機械判斷任務是否需要 research。
+> `docs/orchestration.md §2.4` 的 research 要求仍為強制規則，由 agent 審查與 code review 執行，而非由 validator 執行。
+> 在 research 仍為必要的情況下跳過 `researched` 狀態，屬於工作流程違規。
+
 ### coding
 - plan artifact 存在且 Ready For Coding = yes
 

@@ -49,6 +49,16 @@ STATE_ORDER = [
 VALID_STATES: Set[str] = set(STATE_ORDER)
 
 # Legal transitions based on the workflow state machine.
+#
+# NOTE: "drafted" -> "planned" is intentionally allowed globally here.
+# The validator cannot mechanically distinguish research-required tasks from
+# research-free tasks (that determination requires semantic understanding of
+# the task content). The workflow rules in docs/orchestration.md §2.4 still
+# REQUIRE a research artifact for any task involving external APIs, third-party
+# packages, version differences, specifications, or unfamiliar tooling. That
+# rule is enforced by convention and human/agent review, not by this guard.
+# Bypassing research when it is required is a workflow violation even if the
+# validator does not block the transition.
 LEGAL_TRANSITIONS: Dict[str, Set[str]] = {
     "drafted": {"researched", "planned", "blocked"},
     "researched": {"planned", "blocked"},
