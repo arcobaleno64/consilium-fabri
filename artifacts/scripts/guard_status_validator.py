@@ -301,8 +301,6 @@ def normalize_path_token(token: str) -> str:
     value = value.replace("\\", "/")
     if re.match(r"^[A-Za-z]:/", value):
         value = value[2:]
-    if value.startswith("./"):
-        value = value[2:]
     if value.startswith("a/") or value.startswith("b/"):
         value = value[2:]
     return value
