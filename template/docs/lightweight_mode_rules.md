@@ -20,14 +20,19 @@
 - task artifact
 - code artifact
 - status artifact
+- verify artifact（若任務需要進入 `done` 狀態）
 
-## 3. 可省略內容
+## 3. 可省略或精簡內容
 
-在 lightweight mode 中可省略：
+在 lightweight mode 中可省略或精簡：
 
 - research artifact（若不需查資料）
 - test artifact（若已有既有測試覆蓋）
-- verify artifact（低風險時）
+- verify artifact 的詳細內容（低風險時可使用最精簡格式，但 **verify artifact 本身不可省略**）
+
+> **重要**：`guard_status_validator.py` 對 `done` 狀態強制要求 verify artifact 存在且 Pass Fail Result = pass。
+> 若省略 verify artifact，任務將無法透過 validator 合法轉移至 `done`。
+> 「可精簡」是指 verify artifact 的內容可以簡短，而不是整份文件不存在。
 
 ## 4. 不可省略
 
@@ -38,11 +43,17 @@
 ## 5. 流程
 
 ```text
-1. Claude 建立 task
-2. Claude 建立簡化 plan（可合併在 task）
-3. Implementer 修改
-4. 產出 code artifact
-5. Claude 更新 status
+1. Claude 建立 task（state: drafted）
+2. Claude 建立簡化 plan（state: planned；若不需 research 可直接從 drafted 跳至 planned）
+3. Implementer 修改（state: coding）
+4. 產出 code artifact（state: verifying）
+5. Claude 更新 status 至 done
+```
+
+狀態路徑範例：
+
+```text
+drafted -> planned -> coding -> verifying -> done
 ```
 
 ## 6. 強制限制

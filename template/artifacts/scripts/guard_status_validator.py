@@ -22,7 +22,7 @@ TAIPEI_TZ = timezone(timedelta(hours=8))
 STATE_ORDER = ["drafted", "researched", "planned", "coding", "testing", "verifying", "done", "blocked"]
 VALID_STATES: Set[str] = set(STATE_ORDER)
 LEGAL_TRANSITIONS: Dict[str, Set[str]] = {
-    "drafted": {"researched", "blocked"},
+    "drafted": {"researched", "planned", "blocked"},  # planned: lightweight mode (no research needed)
     "researched": {"planned", "blocked"},
     "planned": {"coding", "blocked"},
     "coding": {"testing", "verifying", "blocked"},
