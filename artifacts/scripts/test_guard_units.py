@@ -4498,3 +4498,1267 @@ class TestExtractTaskTitle:
 
     def test_none_path(self):
         assert gsv.extract_task_title(None) == ""
+
+
+# ═════════════════════════════════════════════
+# Phase 3: 90%+ coverage expansion
+# ═════════════════════════════════════════════
+
+
+# ─────────────────────────────────────────────
+# build_decision_registry — extract_decision_type
+# ─────────────────────────────────────────────
+
+class TestBdrExtractDecisionType:
+    def test_from_section(self):
+        text = "## Metadata\nstuff\n## Decision Type\nworkflow_change\n## Issue\nstuff\n"
+        sections = bdr.parse_sections(text)
+        assert bdr.extract_decision_type(text, sections) == "workflow_change"
+
+    def test_from_type_line(self):
+        text = "## Metadata\nstuff\n## Issue\nstuff\n- Type: design_choice\n"
+        sections = bdr.parse_sections(text)
+        assert bdr.extract_decision_type(text, sections) == "design_choice"
+
+    def test_guard_exception_fallback(self):
+        text = "## Metadata\nstuff\n## Guard Exception\nAllow drift\n"
+        sections = bdr.parse_sections(text)
+        assert bdr.extract_decision_type(text, sections) == "guard_exception"
+
+    def test_general_decision_fallback(self):
+        text = "## Metadata\nstuff\n"
+        sections = bdr.parse_sections(text)
+        assert bdr.extract_decision_type(text, sections) == "general_decision"
+
+
+class TestBdrExtractSummary:
+    def test_from_summary_section(self):
+        text = "## Summary\nThis is the summary.\n\nMore detail.\n"
+        sections = bdr.parse_sections(text)
+        assert bdr.extract_summary(sections) == "This is the summary."
+
+    def test_from_chosen_option(self):
+        text = "## Chosen Option\nOption A selected.\n"
+        sections = bdr.parse_sections(text)
+        assert bdr.extract_summary(sections) == "Option A selected."
+
+    def test_from_issue(self):
+        text = "## Issue\nSomething broke.\n"
+        sections = bdr.parse_sections(text)
+        assert bdr.extract_summary(sections) == "Something broke."
+
+    def test_empty_sections(self):
+        assert bdr.extract_summary({}) == ""
+
+    def test_truncation(self):
+        text = "## Summary\n" + "x" * 300 + "\n"
+        sections = bdr.parse_sections(text)
+        assert len(bdr.extract_summary(sections)) <= 200
+
+
+class TestBdrExtractFieldTokens:
+    def test_single_line_affects(self):
+        text = "- Affects: TASK-001, TASK-002\n"
+        result = bdr.extract_field_tokens(text, "affects")
+        assert "TASK-001" in result
+        assert "TASK-002" in result
+
+    def test_multiline_affects(self):
+        text = "- Affects: TASK-001\n  TASK-002\n  TASK-003\n\nSomething else\n"
+        result = bdr.extract_field_tokens(text, "affects")
+        assert "TASK-001" in result
+        assert "TASK-002" in result
+
+    def test_stops_at_section(self):
+        text = "- Affects: TASK-001\n## Next Section\nmore stuff\n"
+        result = bdr.extract_field_tokens(text, "affects")
+        assert result == ["TASK-001"]
+
+    def test_stops_at_new_field(self):
+        text = "- Affects: TASK-001\n- Related Research: something\n"
+        result = bdr.extract_field_tokens(text, "affects")
+        assert result == ["TASK-001"]
+
+    def test_related_research(self):
+        text = "- Related Research: TASK-050\n"
+        result = bdr.extract_field_tokens(text, "related_research")
+        assert "TASK-050" in result
+
+
+class TestBdrNormalizeRef:
+    def test_artifacts_path(self):
+        assert bdr.normalize_ref("artifacts/plans/TASK-001.plan.md", "plans") == "artifacts/plans/TASK-001.plan.md"
+
+    def test_dir_relative_path(self):
+        assert bdr.normalize_ref("plans/TASK-001.plan.md", "plans") == "artifacts/plans/TASK-001.plan.md"
+
+    def test_task_id_only_plans(self):
+        assert bdr.normalize_ref("TASK-001", "plans") == "artifacts/plans/TASK-001.plan.md"
+
+    def test_task_id_only_research(self):
+        assert bdr.normalize_ref("TASK-001", "research") == "artifacts/research/TASK-001.research.md"
+
+    def test_basename_md(self):
+        assert bdr.normalize_ref("TASK-001.plan.md", "plans") == "artifacts/plans/TASK-001.plan.md"
+
+    def test_empty_string(self):
+        assert bdr.normalize_ref("", "plans") == ""
+
+    def test_passthrough(self):
+        assert bdr.normalize_ref("some/random/path.txt", "plans") == "some/random/path.txt"
+
+    def test_backslash_normalized(self):
+        result = bdr.normalize_ref("artifacts\\plans\\TASK-001.plan.md", "plans")
+        assert result == "artifacts/plans/TASK-001.plan.md"
+
+
+class TestBdrBuildEntry:
+    def test_complete_decision(self, tmp_path):
+        root = tmp_path
+        d = root / "artifacts" / "decisions"
+        d.mkdir(parents=True)
+        (root / "artifacts" / "plans").mkdir(parents=True)
+        (root / "artifacts" / "plans" / "TASK-001.plan.md").write_text("plan", encoding="utf-8")
+        content = textwrap.dedent("""\
+            # Decision Log: TASK-001
+            ## Metadata
+            - Artifact Type: decision
+            - Task ID: TASK-001
+            - Owner: Claude
+            - Status: done
+            - Last Updated: 2026-01-15T10:00:00+08:00
+            ## Issue
+            Something needed deciding
+            ## Chosen Option
+            We chose option A
+            ## Reasoning
+            It was the best
+            - Affects: TASK-001
+            - Related Research: TASK-001
+        """)
+        (d / "TASK-001.decision.md").write_text(content, encoding="utf-8")
+        entry = bdr.build_entry(root, d / "TASK-001.decision.md")
+        assert entry.task_id == "TASK-001"
+        assert entry.summary
+        assert entry.date == "2026-01-15T10:00:00+08:00"
+        assert entry.parse_status == "complete"
+
+    def test_partial_decision(self, tmp_path):
+        root = tmp_path
+        d = root / "artifacts" / "decisions"
+        d.mkdir(parents=True)
+        content = textwrap.dedent("""\
+            # Decision Log: TASK-002
+            ## Metadata
+            - Artifact Type: decision
+            - Task ID: TASK-002
+        """)
+        (d / "TASK-002.decision.md").write_text(content, encoding="utf-8")
+        entry = bdr.build_entry(root, d / "TASK-002.decision.md")
+        assert entry.parse_status == "partial"
+
+
+class TestBdrBuildRegistry:
+    def test_empty_dir(self, tmp_path):
+        d = tmp_path / "artifacts" / "decisions"
+        d.mkdir(parents=True)
+        result = bdr.build_registry(tmp_path)
+        assert result["total"] == 0
+        assert result["entries"] == []
+
+    def test_with_entries(self, tmp_path):
+        d = tmp_path / "artifacts" / "decisions"
+        d.mkdir(parents=True)
+        content = textwrap.dedent("""\
+            # Decision Log: TASK-001
+            ## Metadata
+            - Last Updated: 2026-01-15T10:00:00+08:00
+            ## Issue
+            Something
+        """)
+        (d / "TASK-001.decision.md").write_text(content, encoding="utf-8")
+        result = bdr.build_registry(tmp_path)
+        assert result["total"] == 1
+
+
+class TestBdrFallbackSameTaskRef:
+    def test_exists(self, tmp_path):
+        (tmp_path / "artifacts" / "plans").mkdir(parents=True)
+        (tmp_path / "artifacts" / "plans" / "TASK-001.plan.md").write_text("x", encoding="utf-8")
+        refs = bdr.fallback_same_task_ref(tmp_path, "plans", "TASK-001")
+        assert refs == ["artifacts/plans/TASK-001.plan.md"]
+
+    def test_not_exists(self, tmp_path):
+        (tmp_path / "artifacts" / "plans").mkdir(parents=True)
+        refs = bdr.fallback_same_task_ref(tmp_path, "plans", "TASK-999")
+        assert refs == []
+
+
+class TestBdrHelpers:
+    def test_normalize_newlines(self):
+        assert bdr.normalize_newlines("a\r\nb\r\n") == "a\nb\n"
+
+    def test_first_paragraph_empty(self):
+        assert bdr.first_paragraph("") == ""
+        assert bdr.first_paragraph(None) == ""
+
+    def test_first_paragraph_multi(self):
+        assert bdr.first_paragraph("first paragraph\n\nsecond paragraph") == "first paragraph"
+
+    def test_collapse_whitespace(self):
+        assert bdr.collapse_whitespace("  a   b  c  ") == "a b c"
+
+    def test_extract_task_id_valid(self):
+        assert bdr.extract_task_id(Path("TASK-001.decision.md")) == "TASK-001"
+
+    def test_extract_task_id_invalid(self):
+        with pytest.raises(ValueError, match="Unsupported"):
+            bdr.extract_task_id(Path("invalid.md"))
+
+    def test_extract_metadata_date(self):
+        assert bdr.extract_metadata_date("- Last Updated: 2026-01-15T10:00:00+08:00\n") == "2026-01-15T10:00:00+08:00"
+
+    def test_extract_metadata_date_missing(self):
+        assert bdr.extract_metadata_date("no date here") == ""
+
+    def test_clean_ref_token_strips(self):
+        assert bdr.clean_ref_token("  `TASK-001`  ") == "TASK-001"
+        assert bdr.clean_ref_token("- `TASK-002`") == "TASK-002"
+        assert bdr.clean_ref_token("* TASK-003") == "TASK-003"
+
+    def test_split_ref_tokens(self):
+        result = bdr.split_ref_tokens(["TASK-001, TASK-002", "TASK-003"])
+        assert result == ["TASK-001", "TASK-002", "TASK-003"]
+
+    def test_dedupe_preserving_order(self):
+        assert bdr.dedupe_preserving_order(["a", "b", "a", "c"]) == ["a", "b", "c"]
+
+    def test_normalize_refs(self):
+        result = bdr.normalize_refs(["TASK-001", "TASK-002"], "plans")
+        assert "artifacts/plans/TASK-001.plan.md" in result
+        assert "artifacts/plans/TASK-002.plan.md" in result
+
+
+# ─────────────────────────────────────────────
+# validate_context_stack — unit tests
+# ─────────────────────────────────────────────
+
+class TestVcsEstimateTokens:
+    def test_ascii(self):
+        tokens = vcs.estimate_tokens("hello world foo bar")
+        assert tokens >= 4
+
+    def test_cjk(self):
+        tokens = vcs.estimate_tokens("你好世界")
+        assert tokens >= 4  # 4 chars × 1.5
+
+    def test_mixed(self):
+        tokens = vcs.estimate_tokens("hello 你好 world")
+        assert tokens >= 4
+
+
+class TestVcsExtractFrontmatterName:
+    def test_valid(self):
+        text = "---\nname: my-prompt\ndescription: test\n---\n# Content"
+        assert vcs.extract_frontmatter_name(text) == "my-prompt"
+
+    def test_no_frontmatter(self):
+        assert vcs.extract_frontmatter_name("# No frontmatter") is None
+
+    def test_no_name(self):
+        text = "---\ndescription: test\n---\n# Content"
+        assert vcs.extract_frontmatter_name(text) is None
+
+
+class TestVcsExtractHeadings:
+    def test_basic(self):
+        text = "# H1\n## H2\n### H3\nContent\n"
+        result = vcs.extract_headings(text)
+        assert "H1" in result
+        assert "H2" in result
+        assert "H3" in result
+
+
+class TestVcsCheckMemoryBankExistence:
+    def test_no_dir(self, tmp_path):
+        errors = vcs.check_memory_bank_existence(tmp_path)
+        assert any("Directory missing" in e for e in errors)
+
+    def test_missing_file(self, tmp_path):
+        mb = tmp_path / ".github" / "memory-bank"
+        mb.mkdir(parents=True)
+        errors = vcs.check_memory_bank_existence(tmp_path)
+        assert any("Missing" in e for e in errors)
+
+    def test_empty_file(self, tmp_path):
+        mb = tmp_path / ".github" / "memory-bank"
+        mb.mkdir(parents=True)
+        for fname in vcs.MEMORY_BANK_EXPECTED_FILES:
+            (mb / fname).write_text("", encoding="utf-8")
+        errors = vcs.check_memory_bank_existence(tmp_path)
+        assert any("Empty file" in e for e in errors)
+
+    def test_all_present(self, tmp_path):
+        mb = tmp_path / ".github" / "memory-bank"
+        mb.mkdir(parents=True)
+        for fname in vcs.MEMORY_BANK_EXPECTED_FILES:
+            (mb / fname).write_text("# Content\nSome text\n", encoding="utf-8")
+        errors = vcs.check_memory_bank_existence(tmp_path)
+        assert not errors
+
+
+class TestVcsCheckCrossReferences:
+    def test_no_dir(self, tmp_path):
+        errors = vcs.check_cross_references(tmp_path)
+        assert not errors
+
+    def test_broken_ref(self, tmp_path):
+        mb = tmp_path / ".github" / "memory-bank"
+        mb.mkdir(parents=True)
+        (mb / "test.md").write_text("see `docs/nonexistent.md`", encoding="utf-8")
+        errors = vcs.check_cross_references(tmp_path)
+        assert any("Broken xref" in e for e in errors)
+
+    def test_valid_ref(self, tmp_path):
+        mb = tmp_path / ".github" / "memory-bank"
+        mb.mkdir(parents=True)
+        (tmp_path / "docs").mkdir()
+        (tmp_path / "docs" / "existing.md").write_text("x", encoding="utf-8")
+        (mb / "test.md").write_text("see `docs/existing.md`", encoding="utf-8")
+        errors = vcs.check_cross_references(tmp_path)
+        assert not errors
+
+
+class TestVcsCheckFrontmatter:
+    def test_malformed(self, tmp_path):
+        pd = tmp_path / ".github" / "prompts"
+        pd.mkdir(parents=True)
+        (pd / "bad.md").write_text("---\nname: test\nno closing", encoding="utf-8")
+        errors, names = vcs.check_frontmatter(tmp_path)
+        assert any("Malformed" in e for e in errors)
+
+    def test_valid_prompt(self, tmp_path):
+        pd = tmp_path / ".github" / "prompts"
+        pd.mkdir(parents=True)
+        (pd / "good.md").write_text("---\nname: my-prompt\n---\n# Content", encoding="utf-8")
+        errors, names = vcs.check_frontmatter(tmp_path)
+        assert "my-prompt" in names["prompt"]
+
+    def test_skill_missing_frontmatter(self, tmp_path):
+        sd = tmp_path / ".github" / "skills" / "test-skill"
+        sd.mkdir(parents=True)
+        (sd / "SKILL.md").write_text("# No frontmatter\nContent", encoding="utf-8")
+        errors, names = vcs.check_frontmatter(tmp_path)
+        assert any("Missing or malformed" in e for e in errors)
+
+    def test_valid_skill(self, tmp_path):
+        sd = tmp_path / ".github" / "skills" / "test-skill"
+        sd.mkdir(parents=True)
+        (sd / "SKILL.md").write_text("---\nname: test-skill\n---\n# Content", encoding="utf-8")
+        errors, names = vcs.check_frontmatter(tmp_path)
+        assert "test-skill" in names["skill"]
+
+
+class TestVcsCheckNameUniqueness:
+    def test_no_duplicates(self):
+        names = {"prompt": ["a", "b"], "skill": ["c", "d"]}
+        assert not vcs.check_name_uniqueness(names)
+
+    def test_duplicate_prompt(self):
+        names = {"prompt": ["a", "a"], "skill": []}
+        errors = vcs.check_name_uniqueness(names)
+        assert any("Duplicate prompt" in e for e in errors)
+
+    def test_duplicate_skill(self):
+        names = {"prompt": [], "skill": ["x", "x"]}
+        errors = vcs.check_name_uniqueness(names)
+        assert any("Duplicate skill" in e for e in errors)
+
+    def test_collision(self):
+        names = {"prompt": ["shared"], "skill": ["shared"]}
+        errors = vcs.check_name_uniqueness(names)
+        assert any("collision" in e for e in errors)
+
+
+class TestVcsCheckCopilotInstructionsSize:
+    def test_missing(self, tmp_path):
+        errors = vcs.check_copilot_instructions_size(tmp_path)
+        assert any("Missing" in e for e in errors)
+
+    def test_within_limit(self, tmp_path):
+        ci = tmp_path / ".github" / "copilot-instructions.md"
+        ci.parent.mkdir(parents=True)
+        ci.write_text("Short content\n", encoding="utf-8")
+        errors = vcs.check_copilot_instructions_size(tmp_path)
+        assert not errors
+
+    def test_over_limit(self, tmp_path):
+        ci = tmp_path / ".github" / "copilot-instructions.md"
+        ci.parent.mkdir(parents=True)
+        ci.write_text("word " * 3000, encoding="utf-8")
+        errors = vcs.check_copilot_instructions_size(tmp_path)
+        assert any("tokens" in e for e in errors)
+
+
+class TestVcsCheckTemplateSync:
+    def test_no_template(self, tmp_path):
+        errors = vcs.check_template_sync(tmp_path)
+        assert not errors
+
+    def test_missing_template_dir(self, tmp_path):
+        (tmp_path / ".github" / "memory-bank").mkdir(parents=True)
+        (tmp_path / ".github" / "memory-bank" / "test.md").write_text("x", encoding="utf-8")
+        tg = tmp_path / "template" / ".github"
+        tg.mkdir(parents=True)
+        errors = vcs.check_template_sync(tmp_path)
+        assert any("Missing template dir" in e for e in errors)
+
+    def test_missing_file(self, tmp_path):
+        (tmp_path / ".github" / "memory-bank").mkdir(parents=True)
+        (tmp_path / ".github" / "memory-bank" / "test.md").write_text("x", encoding="utf-8")
+        tmb = tmp_path / "template" / ".github" / "memory-bank"
+        tmb.mkdir(parents=True)
+        errors = vcs.check_template_sync(tmp_path)
+        assert any("missing: test.md" in e for e in errors)
+
+    def test_copilot_instructions_missing(self, tmp_path):
+        (tmp_path / ".github").mkdir(parents=True)
+        (tmp_path / ".github" / "copilot-instructions.md").write_text("x", encoding="utf-8")
+        (tmp_path / "template" / ".github").mkdir(parents=True)
+        errors = vcs.check_template_sync(tmp_path)
+        assert any("copilot-instructions.md missing" in e for e in errors)
+
+
+class TestVcsCheckMemoryBankQuality:
+    def test_no_dir(self, tmp_path):
+        errors = vcs.check_memory_bank_quality(tmp_path)
+        assert not errors
+
+    def test_missing_heading(self, tmp_path):
+        mb = tmp_path / ".github" / "memory-bank"
+        mb.mkdir(parents=True)
+        (mb / "artifact-rules.md").write_text("# Rules\n## Random\nContent\n", encoding="utf-8")
+        errors = vcs.check_memory_bank_quality(tmp_path)
+        assert any("missing required heading" in e for e in errors)
+
+    def test_orphan_section(self, tmp_path):
+        mb = tmp_path / ".github" / "memory-bank"
+        mb.mkdir(parents=True)
+        content = "# Rules\n## Task\ncontent\n## Empty Section\n## Code\ncontent\n"
+        (mb / "artifact-rules.md").write_text(content, encoding="utf-8")
+        errors = vcs.check_memory_bank_quality(tmp_path)
+        assert any("orphan section" in e for e in errors)
+
+    def test_long_file_warning(self, tmp_path):
+        mb = tmp_path / ".github" / "memory-bank"
+        mb.mkdir(parents=True)
+        lines = ["# Rules\n## Task\ncontent\n## Plan\ncontent\n## Code\ncontent\n## Verify\ncontent\n"]
+        lines.extend(["x\n"] * 130)
+        (mb / "artifact-rules.md").write_text("".join(lines), encoding="utf-8")
+        errors = vcs.check_memory_bank_quality(tmp_path)
+        assert any("lines" in e for e in errors)
+
+
+# ─────────────────────────────────────────────
+# prompt_regression_validator — deeper branches
+# ─────────────────────────────────────────────
+
+class TestPrvAssertionEdgeCases:
+    def test_missing_file_field(self, tmp_path):
+        case = {"id": "TC-01", "title": "T", "assertions": [{"must_contain_all": ["x"]}]}
+        result = prv.evaluate_case(case, tmp_path, {})
+        assert not result.passed
+        assert any("missing file" in f.message for f in result.failures)
+
+    def test_all_of_any_invalid_type(self, tmp_path):
+        (tmp_path / "t.md").write_text("content", encoding="utf-8")
+        case = {"id": "TC-01", "title": "T", "assertions": [{"file": "t.md", "all_of_any": "bad"}]}
+        result = prv.evaluate_case(case, tmp_path, {})
+        assert not result.passed
+
+    def test_all_of_any_empty_group(self, tmp_path):
+        (tmp_path / "t.md").write_text("content", encoding="utf-8")
+        case = {"id": "TC-01", "title": "T", "assertions": [{"file": "t.md", "all_of_any": [[]]}]}
+        result = prv.evaluate_case(case, tmp_path, {})
+        assert not result.passed
+
+    def test_must_contain_all_invalid_type(self, tmp_path):
+        (tmp_path / "t.md").write_text("content", encoding="utf-8")
+        case = {"id": "TC-01", "title": "T", "assertions": [{"file": "t.md", "must_contain_all": "bad"}]}
+        result = prv.evaluate_case(case, tmp_path, {})
+        assert not result.passed
+
+    def test_must_not_contain_any_invalid_type(self, tmp_path):
+        (tmp_path / "t.md").write_text("content", encoding="utf-8")
+        case = {"id": "TC-01", "title": "T", "assertions": [{"file": "t.md", "must_not_contain_any": "bad"}]}
+        result = prv.evaluate_case(case, tmp_path, {})
+        assert not result.passed
+
+    def test_near_invalid_type(self, tmp_path):
+        (tmp_path / "t.md").write_text("content", encoding="utf-8")
+        case = {"id": "TC-01", "title": "T", "assertions": [{"file": "t.md", "near": "bad"}]}
+        result = prv.evaluate_case(case, tmp_path, {})
+        assert not result.passed
+
+    def test_near_too_few_terms(self, tmp_path):
+        (tmp_path / "t.md").write_text("content", encoding="utf-8")
+        case = {
+            "id": "TC-01", "title": "T",
+            "assertions": [{"file": "t.md", "near": [{"terms": ["one"], "max_chars": 50}]}],
+        }
+        result = prv.evaluate_case(case, tmp_path, {})
+        assert not result.passed
+
+
+class TestPrvRenderReportDeeper:
+    def test_multiple_results(self):
+        r1 = prv.CaseResult("TC-01", "Pass", True, [])
+        failure = prv.AssertionFailure("a.md", "missing X", "check X")
+        r2 = prv.CaseResult("TC-02", "Fail", False, [failure])
+        report = prv.render_report([r1, r2])
+        assert "TC-01" in report
+        assert "TC-02" in report
+        assert "missing X" in report
+        assert "## Failure Details" in report
+
+
+# ─────────────────────────────────────────────
+# guard_status_validator — deeper coverage
+# ─────────────────────────────────────────────
+
+class TestGsvValidateStatusSchema:
+    def test_modern_valid(self, tmp_path):
+        status = _make_full_status("TASK-001", "drafted")
+        result = gsv.validate_status_schema(status, "TASK-001")
+        assert not result.errors
+
+    def test_task_id_mismatch(self):
+        status = _make_full_status("TASK-001", "drafted")
+        result = gsv.validate_status_schema(status, "TASK-002")
+        assert any("mismatch" in e for e in result.errors)
+
+    def test_invalid_state(self):
+        status = _make_full_status("TASK-001", "nonexistent")
+        result = gsv.validate_status_schema(status, "TASK-001")
+        assert any("Invalid state" in e for e in result.errors)
+
+
+class TestGsvValidateArtifactPresenceDeeper:
+    def test_coding_missing_plan_warning(self, tmp_path):
+        task_id = "TASK-001"
+        _build_task_artifact(tmp_path, task_id)
+        _build_code_artifact(tmp_path, task_id)
+        status = _make_full_status(task_id, "coding",
+            required_artifacts=["task", "plan", "code", "status"],
+            available_artifacts=["task", "code", "status"],
+            missing_artifacts=["plan"])
+        _write_status(tmp_path, task_id, status)
+        result = gsv.validate_artifact_presence(tmp_path, task_id, "coding", status)
+        assert any("Missing required" in e for e in result.errors)
+
+    def test_plan_not_ready_for_coding(self, tmp_path):
+        task_id = "TASK-001"
+        _build_task_artifact(tmp_path, task_id)
+        _build_plan_artifact(tmp_path, task_id, ready="no")
+        _build_code_artifact(tmp_path, task_id)
+        status = _make_full_status(task_id, "coding",
+            required_artifacts=["task", "plan", "code", "status"],
+            available_artifacts=["task", "plan", "code", "status"],
+            missing_artifacts=[])
+        _write_status(tmp_path, task_id, status)
+        result = gsv.validate_artifact_presence(tmp_path, task_id, "coding", status)
+        assert any("Ready For Coding" in e for e in result.errors)
+
+
+class TestGsvValidateResearchArtifact:
+    def test_missing_sources(self, tmp_path):
+        task_id = "TASK-001"
+        d = tmp_path / "artifacts" / "research"
+        d.mkdir(parents=True)
+        content = textwrap.dedent("""\
+            # Research: TASK-001
+            ## Metadata
+            - Artifact Type: research
+            - Task ID: TASK-001
+            - Owner: Claude
+            - Status: ready
+            - Last Updated: 2026-01-15T10:00:00+08:00
+            ## Research Questions
+            Q1
+            ## Confirmed Facts
+            - Fact 1 https://example.com/source
+            ## Constraints For Implementation
+            Constraint 1
+        """)
+        p = d / "TASK-001.research.md"
+        p.write_text(content, encoding="utf-8")
+        _write_status(tmp_path / "artifacts", task_id, _make_full_status(task_id))
+        result = gsv.validate_research_artifact(task_id, content, p)
+        assert isinstance(result, gsv.ValidationResult)
+
+    def test_valid_sources(self, tmp_path):
+        task_id = "TASK-001"
+        d = tmp_path / "artifacts" / "research"
+        d.mkdir(parents=True)
+        content = textwrap.dedent("""\
+            # Research: TASK-001
+            ## Metadata
+            - Artifact Type: research
+            - Task ID: TASK-001
+            - Owner: Claude
+            - Status: ready
+            - Last Updated: 2026-01-15T10:00:00+08:00
+            ## Research Questions
+            Q1
+            ## Confirmed Facts
+            - Fact 1 https://example.com/source
+            ## Constraints For Implementation
+            Constraint 1
+            ## Sources
+            [1] Author. "Title." https://example.com (2026-01-15 retrieved)
+            [2] Author2. "Title2." https://example2.com (2026-01-14 retrieved)
+        """)
+        p = d / "TASK-001.research.md"
+        p.write_text(content, encoding="utf-8")
+        _write_status(tmp_path / "artifacts", task_id, _make_full_status(task_id))
+        result = gsv.validate_research_artifact(task_id, content, p)
+        assert not result.errors
+
+
+class TestGsvCollectGithubPrFiles:
+    def test_invalid_repo_ref(self):
+        files, error = gsv.collect_github_pr_files("invalid", "1", "")
+        assert error is not None
+        assert files == set()
+
+    def test_http_error(self):
+        from unittest.mock import MagicMock
+        mock_resp = MagicMock()
+        mock_resp.status = 404
+        mock_resp.read.return_value = b"Not found"
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = lambda *a: None
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            files, error = gsv.collect_github_pr_files("user/repo", "1", "")
+            assert error is not None
+
+    def test_url_error(self):
+        from urllib.error import URLError
+        with patch("urllib.request.urlopen", side_effect=URLError("connection refused")):
+            files, error = gsv.collect_github_pr_files("user/repo", "1", "")
+            assert error is not None
+
+
+class TestGsvWriteTransitionGateE:
+    def test_done_with_improvement(self, tmp_path):
+        task_id = "TASK-001"
+        _build_task_artifact(tmp_path, task_id)
+        _build_plan_artifact(tmp_path, task_id)
+        _build_code_artifact(tmp_path, task_id)
+        _build_verify_artifact(tmp_path, task_id, result="pass")
+        # Create improvement artifact with Status: applied
+        imp_dir = tmp_path / "improvement"
+        imp_dir.mkdir(parents=True)
+        imp_content = textwrap.dedent(f"""\
+            # Improvement: {task_id}
+            ## Metadata
+            - Artifact Type: improvement
+            - Task ID: {task_id}
+            - Owner: Claude
+            - Status: applied
+            - Last Updated: {_ts()}
+            ## Root Cause
+            Test
+            ## Corrective Actions
+            Fix things
+        """)
+        (imp_dir / f"{task_id}.improvement.md").write_text(imp_content, encoding="utf-8")
+        status = _make_full_status(task_id, "verifying",
+            required_artifacts=["task", "code", "verify", "status"],
+            available_artifacts=["task", "plan", "code", "verify", "improvement", "status"],
+            missing_artifacts=[])
+        _write_status(tmp_path, task_id, status)
+        result = gsv.write_transition(tmp_path, task_id, "verifying", "done")
+        if not result.errors:
+            status_path = gsv.artifact_path(tmp_path, task_id, "status")
+            updated = json.loads(status_path.read_text(encoding="utf-8"))
+            assert updated.get("Gate_E_passed") is True
+
+
+class TestGsvValidatePremortemDeeper:
+    def test_plan_with_insufficient_risks(self, tmp_path):
+        p = _build_plan_artifact(tmp_path, "TASK-001", risk_count=2)
+        task = _build_task_artifact(tmp_path, "TASK-001")
+        result = gsv.validate_premortem(p, task)
+        assert any("at least" in e for e in result.errors)
+
+    def test_plan_with_no_risks_section(self, tmp_path):
+        d = tmp_path / "plans"
+        d.mkdir(parents=True)
+        content = textwrap.dedent("""\
+            # Plan: TASK-001
+            ## Metadata
+            - Artifact Type: plan
+            - Task ID: TASK-001
+            - Owner: Claude
+            - Status: approved
+            - Last Updated: 2026-01-15T10:00:00+08:00
+            ## Scope
+            Test
+        """)
+        p = d / "TASK-001.plan.md"
+        p.write_text(content, encoding="utf-8")
+        result = gsv.validate_premortem(p, None)
+        assert any("Risks" in e for e in result.errors)
+
+
+# ─────────────────────────────────────────────
+# Phase 3b: closing the 90% gap
+# ─────────────────────────────────────────────
+
+class TestGsvParseTaipeiDatetime:
+    def test_valid(self):
+        result = gsv.parse_taipei_datetime("2026-01-15T10:00:00+08:00")
+        assert result is not None
+
+    def test_invalid_format(self):
+        assert gsv.parse_taipei_datetime("not-a-date") is None
+
+    def test_value_error_branch(self):
+        # Matches the pattern but fails fromisoformat
+        assert gsv.parse_taipei_datetime("9999-99-99T00:00:00+08:00") is None
+
+
+class TestGsvNormalizePathToken:
+    def test_drive_letter(self):
+        assert gsv.normalize_path_token("C:/Users/test") == "/Users/test"
+
+    def test_dot_slash(self):
+        # normalize_path_token strips "./" → value becomes "/src/main.py" after strip
+        result = gsv.normalize_path_token("./src/main.py")
+        assert "src/main.py" in result
+
+    def test_git_diff_prefix(self):
+        assert gsv.normalize_path_token("a/src/main.py") == "src/main.py"
+        assert gsv.normalize_path_token("b/src/main.py") == "src/main.py"
+
+    def test_backtick_strip(self):
+        assert gsv.normalize_path_token("`src/main.py`") == "src/main.py"
+
+
+class TestGsvResolveValidationMode:
+    def test_auto_classify_false(self, tmp_path):
+        result = gsv.resolve_validation_mode(tmp_path, "TASK-001", False)
+        assert result.validation_mode == gsv.AUTO_CLASSIFY_FULL
+
+    def test_lightweight_no_plan(self, tmp_path):
+        task_id = "TASK-001"
+        _build_task_artifact(tmp_path, task_id)
+        _write_status(tmp_path, task_id, _make_full_status(task_id, "drafted"))
+        result = gsv.resolve_validation_mode(tmp_path, task_id, True)
+        assert result.validation_mode == gsv.AUTO_CLASSIFY_LIGHTWEIGHT
+
+    def test_upgrade_with_premortem_flag(self, tmp_path):
+        task_id = "TASK-001"
+        task_dir = tmp_path / "tasks"
+        task_dir.mkdir(parents=True)
+        content = textwrap.dedent(f"""\
+            # Task: {task_id}
+            ## Metadata
+            - Artifact Type: task
+            - Task ID: {task_id}
+            - Owner: Claude
+            - Status: drafted
+            - Last Updated: {_ts()}
+            ## Objective
+            Test
+            ## Inline Flags
+            - premortem: true
+        """)
+        (task_dir / f"{task_id}.task.md").write_text(content, encoding="utf-8")
+        _write_status(tmp_path, task_id, _make_full_status(task_id, "drafted"))
+        result = gsv.resolve_validation_mode(tmp_path, task_id, True)
+        assert result.validation_mode == gsv.AUTO_CLASSIFY_FULL
+        assert any("AUTO-UPGRADE" in w for w in result.warnings)
+
+    def test_upgrade_with_plan_risks(self, tmp_path):
+        task_id = "TASK-001"
+        _build_task_artifact(tmp_path, task_id)
+        plan_dir = tmp_path / "plans"
+        plan_dir.mkdir(parents=True)
+        plan_content = textwrap.dedent(f"""\
+            # Plan: {task_id}
+            ## Metadata
+            - Artifact Type: plan
+            - Task ID: {task_id}
+            - Owner: Claude
+            - Status: approved
+            - Last Updated: {_ts()}
+            ## Risks
+            R1: Something bad might happen
+            - Trigger: event
+            - Detection: monitoring
+            - Mitigation: fix
+            - Severity: blocking
+        """)
+        (plan_dir / f"{task_id}.plan.md").write_text(plan_content, encoding="utf-8")
+        status = _make_full_status(task_id, "drafted")
+        _write_status(tmp_path, task_id, status)
+        result = gsv.resolve_validation_mode(tmp_path, task_id, True)
+        assert result.validation_mode == gsv.AUTO_CLASSIFY_FULL
+
+
+class TestGsvLegacyStatusSchema:
+    def test_valid_legacy(self):
+        status = {
+            "task_id": "TASK-001",
+            "current_state": "drafted",
+            "owner": "Claude",
+            "last_updated": _ts(),
+        }
+        result = gsv.validate_status_schema(status, "TASK-001")
+        assert not result.errors
+
+    def test_missing_owner(self):
+        status = {
+            "task_id": "TASK-001",
+            "current_state": "drafted",
+            "owner": "",
+            "last_updated": _ts(),
+        }
+        result = gsv.validate_status_schema(status, "TASK-001")
+        assert any("owner" in e for e in result.errors)
+
+    def test_blocked_no_blockers(self):
+        status = {
+            "task_id": "TASK-001",
+            "current_state": "blocked",
+            "owner": "Claude",
+            "last_updated": _ts(),
+        }
+        result = gsv.validate_status_schema(status, "TASK-001")
+        assert any("blockers" in e for e in result.errors)
+
+    def test_blocked_with_blockers(self):
+        status = {
+            "task_id": "TASK-001",
+            "current_state": "blocked",
+            "owner": "Claude",
+            "last_updated": _ts(),
+            "blockers": ["dependency not ready"],
+        }
+        result = gsv.validate_status_schema(status, "TASK-001")
+        assert not any("blockers" in e for e in result.errors)
+
+    def test_non_blocked_with_blockers_warns(self):
+        status = {
+            "task_id": "TASK-001",
+            "current_state": "drafted",
+            "owner": "Claude",
+            "last_updated": _ts(),
+            "blockers": ["leftover blocker"],
+        }
+        result = gsv.validate_status_schema(status, "TASK-001")
+        assert any("blockers" in w for w in result.warnings)
+
+    def test_bad_artifacts_type(self):
+        status = {
+            "task_id": "TASK-001",
+            "current_state": "drafted",
+            "owner": "Claude",
+            "last_updated": _ts(),
+            "artifacts": "not-a-dict",
+        }
+        result = gsv.validate_status_schema(status, "TASK-001")
+        assert any("artifacts" in e for e in result.errors)
+
+
+class TestGsvModernStatusSchemaDeeper:
+    def test_unknown_artifact_in_lists(self):
+        status = _make_full_status("TASK-001", "drafted")
+        status["required_artifacts"] = ["task", "status", "nonexistent_type"]
+        result = gsv.validate_status_schema(status, "TASK-001")
+        assert any("unknown artifacts" in e for e in result.errors)
+
+    def test_non_list_required_artifacts(self):
+        status = _make_full_status("TASK-001", "drafted")
+        status["required_artifacts"] = "not-a-list"
+        result = gsv.validate_status_schema(status, "TASK-001")
+        assert any("must be a list" in e for e in result.errors)
+
+    def test_blocked_no_reason(self):
+        status = _make_full_status("TASK-001", "blocked")
+        status["blocked_reason"] = ""
+        result = gsv.validate_status_schema(status, "TASK-001")
+        assert any("blocked_reason" in e for e in result.errors)
+
+    def test_non_blocked_with_reason_warns(self):
+        status = _make_full_status("TASK-001", "drafted")
+        status["blocked_reason"] = "old reason"
+        result = gsv.validate_status_schema(status, "TASK-001")
+        assert any("blocked_reason" in w for w in result.warnings)
+
+
+class TestGsvValidateTransitionGateE:
+    def test_blocked_to_planned_missing_improvement(self, tmp_path):
+        task_id = "TASK-001"
+        _build_task_artifact(tmp_path, task_id)
+        _write_status(tmp_path, task_id, _make_full_status(task_id, "blocked"))
+        result = gsv.validate_transition("blocked", "planned", tmp_path, task_id)
+        assert any("improvement artifact" in e for e in result.errors)
+
+    def test_blocked_to_planned_improvement_not_applied(self, tmp_path):
+        task_id = "TASK-001"
+        _build_task_artifact(tmp_path, task_id)
+        imp_dir = tmp_path / "improvement"
+        imp_dir.mkdir(parents=True)
+        imp_content = textwrap.dedent(f"""\
+            # Improvement: {task_id}
+            ## Metadata
+            - Artifact Type: improvement
+            - Task ID: {task_id}
+            - Owner: Claude
+            - Status: drafted
+            - Last Updated: {_ts()}
+            ## 1. Source Task
+            - Source Task: {task_id}
+            - Trigger Type: failure
+            ## 2. Root Cause
+            Stuff
+            ## 5. Preventive Action (System Level)
+            Stuff
+            ## 6. Validation
+            Stuff
+            ## 8. Final Rule
+            Stuff
+            ## 9. Status
+            drafted
+        """)
+        (imp_dir / f"{task_id}.improvement.md").write_text(imp_content, encoding="utf-8")
+        _write_status(tmp_path, task_id, _make_full_status(task_id, "blocked"))
+        result = gsv.validate_transition("blocked", "planned", tmp_path, task_id)
+        assert any("Status: applied" in e for e in result.errors)
+
+
+class TestGsvAppendAutoUpgradeLog:
+    def test_writes_log(self, tmp_path):
+        status_dir = tmp_path / "status"
+        status_dir.mkdir(parents=True)
+        status_path = status_dir / "TASK-001.status.json"
+        status = _make_full_status("TASK-001", "drafted")
+        gsv.write_json(status_path, status)
+        gsv.append_auto_upgrade_log(status_path, status, "test reason")
+        updated = json.loads(status_path.read_text(encoding="utf-8"))
+        assert "auto_upgrade_log" in updated
+        assert len(updated["auto_upgrade_log"]) == 1
+        assert updated["auto_upgrade_log"][0]["reason"] == "test reason"
+
+
+class TestGsvResolveWorkspaceRelativePath:
+    def test_empty(self, tmp_path):
+        _, _, error = gsv.resolve_workspace_relative_path(tmp_path, "")
+        assert error is not None
+
+    def test_traversal(self, tmp_path):
+        _, _, error = gsv.resolve_workspace_relative_path(tmp_path, "../outside")
+        assert error is not None
+
+    def test_valid(self, tmp_path):
+        (tmp_path / "test.txt").write_text("x", encoding="utf-8")
+        rel, resolved, error = gsv.resolve_workspace_relative_path(tmp_path, "test.txt")
+        assert error is None
+        assert rel == "test.txt"
+
+    def test_absolute_path(self, tmp_path):
+        _, _, error = gsv.resolve_workspace_relative_path(tmp_path, "/etc/passwd")
+        assert error is not None
+
+
+class TestGsvParseRepositoryRef:
+    def test_valid(self):
+        owner, repo, error = gsv.parse_repository_ref("owner/repo")
+        assert owner == "owner"
+        assert repo == "repo"
+        assert error is None
+
+    def test_invalid(self):
+        _, _, error = gsv.parse_repository_ref("no-slash")
+        assert error is not None
+
+    def test_dotdot(self):
+        _, _, error = gsv.parse_repository_ref("../foo")
+        assert error is not None
+
+
+class TestGsvNormalizeApiBaseUrl:
+    def test_default(self):
+        url, error = gsv.normalize_api_base_url("")
+        assert url == "https://api.github.com"
+        assert error is None
+
+    def test_custom(self):
+        url, error = gsv.normalize_api_base_url("https://github.example.com/api/v3/")
+        assert url == "https://github.example.com/api/v3"
+        assert error is None
+
+    def test_invalid(self):
+        _, error = gsv.normalize_api_base_url("ftp://invalid")
+        assert error is not None
+
+
+class TestGsvStatusUsesLegacySchema:
+    def test_legacy(self):
+        assert gsv.status_uses_legacy_schema({"current_state": "drafted"})
+
+    def test_modern(self):
+        assert not gsv.status_uses_legacy_schema({"state": "drafted"})
+
+
+class TestGsvClassifyDecisionWaiverGate:
+    def test_missing_research(self):
+        error = "Missing required artifacts for state 'researched': 'research'"
+        assert gsv.classify_decision_waiver_gate(error) == "Gate_A"
+
+    def test_plan_not_ready(self):
+        error = "Plan artifact is not Ready For Coding = yes: TASK-001.plan.md"
+        assert gsv.classify_decision_waiver_gate(error) == "Gate_B"
+
+    def test_gate_e(self):
+        error = "Gate E (PDCA): resuming from blocked requires an improvement artifact"
+        assert gsv.classify_decision_waiver_gate(error) == "Gate_E"
+
+    def test_verify(self):
+        error = "done state requires verify artifact with Pass Fail Result = pass"
+        assert gsv.classify_decision_waiver_gate(error) == "Gate_D"
+
+    def test_waiver_expired(self):
+        assert gsv.classify_decision_waiver_gate("waiver expired blah") is None
+
+    def test_target_state(self):
+        assert gsv.classify_decision_waiver_gate("Target state 'done' ...") == "__META__"
+
+
+# ─────────────────────────────────────────────
+# Phase 3c: final push to 90%
+# ─────────────────────────────────────────────
+
+class TestGsvResearchArtifactEdgeCases:
+    def _setup_research(self, tmp_path, task_id, content):
+        d = tmp_path / "artifacts" / "research"
+        d.mkdir(parents=True)
+        p = d / f"{task_id}.research.md"
+        p.write_text(content, encoding="utf-8")
+        _write_status(tmp_path / "artifacts", task_id, _make_full_status(task_id))
+        return p
+
+    def test_recommendation_forbidden(self, tmp_path):
+        content = textwrap.dedent("""\
+            # Research: TASK-001
+            ## Metadata
+            - Artifact Type: research
+            - Task ID: TASK-001
+            - Owner: Claude
+            - Status: ready
+            - Last Updated: 2026-01-15T10:00:00+08:00
+            ## Research Questions
+            Q1
+            ## Confirmed Facts
+            - Fact 1 https://example.com/source
+            ## Constraints For Implementation
+            Constraint 1
+            ## Recommendation
+            Do X
+            ## Sources
+            [1] Author. "Title." https://example.com (2026-01-15 retrieved)
+            [2] Author2. "Title2." https://example2.com (2026-01-15 retrieved)
+        """)
+        p = self._setup_research(tmp_path, "TASK-001", content)
+        result = gsv.validate_research_artifact("TASK-001", content, p)
+        assert any("Recommendation" in e for e in result.errors)
+
+    def test_empty_confirmed_facts(self, tmp_path):
+        content = textwrap.dedent("""\
+            # Research: TASK-001
+            ## Metadata
+            - Artifact Type: research
+            - Task ID: TASK-001
+            - Owner: Claude
+            - Status: ready
+            - Last Updated: 2026-01-15T10:00:00+08:00
+            ## Research Questions
+            Q1
+            ## Confirmed Facts
+            ## Constraints For Implementation
+            Constraint 1
+            ## Sources
+            [1] Author. "Title." https://example.com (2026-01-15 retrieved)
+            [2] Author2. "Title2." https://example2.com (2026-01-15 retrieved)
+        """)
+        p = self._setup_research(tmp_path, "TASK-001", content)
+        result = gsv.validate_research_artifact("TASK-001", content, p)
+        assert any("Confirmed Facts" in e for e in result.errors)
+
+    def test_unverified_in_confirmed_facts(self, tmp_path):
+        content = textwrap.dedent("""\
+            # Research: TASK-001
+            ## Metadata
+            - Artifact Type: research
+            - Task ID: TASK-001
+            - Owner: Claude
+            - Status: ready
+            - Last Updated: 2026-01-15T10:00:00+08:00
+            ## Research Questions
+            Q1
+            ## Confirmed Facts
+            - UNVERIFIED: Something not confirmed https://example.com
+            ## Constraints For Implementation
+            Constraint 1
+            ## Sources
+            [1] Author. "Title." https://example.com (2026-01-15 retrieved)
+            [2] Author2. "Title2." https://example2.com (2026-01-15 retrieved)
+        """)
+        p = self._setup_research(tmp_path, "TASK-001", content)
+        result = gsv.validate_research_artifact("TASK-001", content, p)
+        assert any("UNVERIFIED" in e for e in result.errors)
+
+    def test_uncertain_items_without_prefix(self, tmp_path):
+        content = textwrap.dedent("""\
+            # Research: TASK-001
+            ## Metadata
+            - Artifact Type: research
+            - Task ID: TASK-001
+            - Owner: Claude
+            - Status: ready
+            - Last Updated: 2026-01-15T10:00:00+08:00
+            ## Research Questions
+            Q1
+            ## Confirmed Facts
+            - Fact 1 https://example.com
+            ## Uncertain Items
+            - Missing the prefix
+            ## Constraints For Implementation
+            Constraint 1
+            ## Sources
+            [1] Author. "Title." https://example.com (2026-01-15 retrieved)
+            [2] Author2. "Title2." https://example2.com (2026-01-15 retrieved)
+        """)
+        p = self._setup_research(tmp_path, "TASK-001", content)
+        result = gsv.validate_research_artifact("TASK-001", content, p)
+        assert any("UNVERIFIED:" in e for e in result.errors)
+
+    def test_empty_constraints(self, tmp_path):
+        content = textwrap.dedent("""\
+            # Research: TASK-001
+            ## Metadata
+            - Artifact Type: research
+            - Task ID: TASK-001
+            - Owner: Claude
+            - Status: ready
+            - Last Updated: 2026-01-15T10:00:00+08:00
+            ## Research Questions
+            Q1
+            ## Confirmed Facts
+            - Fact 1 https://example.com
+            ## Constraints For Implementation
+            None
+            ## Sources
+            [1] Author. "Title." https://example.com (2026-01-15 retrieved)
+            [2] Author2. "Title2." https://example2.com (2026-01-15 retrieved)
+        """)
+        p = self._setup_research(tmp_path, "TASK-001", content)
+        result = gsv.validate_research_artifact("TASK-001", content, p)
+        assert any("Constraints" in e for e in result.errors)
+
+    def test_mixed_github_sources(self, tmp_path):
+        content = textwrap.dedent("""\
+            # Research: TASK-001
+            ## Metadata
+            - Artifact Type: research
+            - Task ID: TASK-001
+            - Owner: Claude
+            - Status: ready
+            - Last Updated: 2026-01-15T10:00:00+08:00
+            ## Research Questions
+            Q1
+            ## Confirmed Facts
+            - Fact 1 https://github.com/owner1/myrepo
+            - Fact 2 https://github.com/owner2/myrepo
+            ## Constraints For Implementation
+            Constraint 1
+            ## Sources
+            [1] Author. "Title." https://github.com/owner1/myrepo (2026-01-15 retrieved)
+            [2] Author2. "Title2." https://github.com/owner2/myrepo (2026-01-15 retrieved)
+        """)
+        p = self._setup_research(tmp_path, "TASK-001", content)
+        result = gsv.validate_research_artifact("TASK-001", content, p)
+        assert any("mixed truth source" in w for w in result.warnings)
+
+
+class TestGsvValidateResearchCitations:
+    def _write_research(self, tmp_path, task_id, sources_text):
+        d = tmp_path / "artifacts" / "research"
+        d.mkdir(parents=True)
+        content = textwrap.dedent(f"""\
+            # Research: {task_id}
+            ## Sources
+            {sources_text}
+        """)
+        p = d / f"{task_id}.research.md"
+        p.write_text(content, encoding="utf-8")
+        return p
+
+    def test_no_sources_section(self, tmp_path):
+        task_id = "TASK-001"
+        d = tmp_path / "artifacts" / "research"
+        d.mkdir(parents=True)
+        content = "# Research\n## Metadata\nstuff\n"
+        p = d / f"{task_id}.research.md"
+        p.write_text(content, encoding="utf-8")
+        findings = gsv.validate_research_citations(task_id, p)
+        assert any(f.severity == "CRITICAL" for f in findings)
+
+    def test_sources_is_none(self, tmp_path):
+        task_id = "TASK-001"
+        p = self._write_research(tmp_path, task_id, "None")
+        findings = gsv.validate_research_citations(task_id, p)
+        assert any(f.severity == "CRITICAL" for f in findings)
+
+    def test_only_one_source(self, tmp_path):
+        task_id = "TASK-001"
+        p = self._write_research(tmp_path, task_id,
+            '[1] Author. "Title." https://example.com (2026-01-15 retrieved)')
+        findings = gsv.validate_research_citations(task_id, p)
+        assert any("at least 2" in f.message for f in findings)
+
+    def test_url_only_line_with_partial_date(self, tmp_path):
+        task_id = "TASK-001"
+        sources = '[1] Author. "T." https://a.com (2026-01-15 retrieved)\nhttps://bare.com (2026-01 retrieved)'
+        p = self._write_research(tmp_path, task_id, sources)
+        findings = gsv.validate_research_citations(task_id, p)
+        assert any(f.severity == "MINOR" for f in findings)
+
+    def test_url_only_line_without_date(self, tmp_path):
+        task_id = "TASK-001"
+        sources = '[1] Author. "T." https://a.com (2026-01-15 retrieved)\nhttps://bare.com'
+        p = self._write_research(tmp_path, task_id, sources)
+        findings = gsv.validate_research_citations(task_id, p)
+        assert any("MAJOR" == f.severity for f in findings)
+
+    def test_non_matching_line(self, tmp_path):
+        task_id = "TASK-001"
+        sources = '[1] Author. "T." https://a.com (2026-01-15 retrieved)\njust plain text'
+        p = self._write_research(tmp_path, task_id, sources)
+        findings = gsv.validate_research_citations(task_id, p)
+        assert any("MAJOR" == f.severity for f in findings)
+
+
+class TestGsvDetectMixedGithubSources:
+    def test_no_mixed(self):
+        text = "https://github.com/owner1/repo1\nhttps://github.com/owner1/repo1"
+        assert gsv.detect_mixed_github_sources(text) == []
+
+    def test_mixed(self):
+        text = "https://github.com/owner1/myrepo\nhttps://github.com/owner2/myrepo"
+        mixed = gsv.detect_mixed_github_sources(text)
+        assert len(mixed) == 1
+        assert "myrepo" in mixed[0]
