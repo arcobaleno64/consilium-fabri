@@ -182,7 +182,7 @@
 | # | 風險 | 嚴重度 | 說明 |
 |---|---|---|---|
 | ~~R1~~ | ~~template/skills 同步大幅落後~~ | ~~High~~ | ✅ **v2.1 已修復**：37 個 reference files 已同步至 `template/.github/skills/`，`validate_context_stack.py` 全數通過 |
-| R2 | **wiki Context-System 頁面空殼** | Medium | wiki `_Sidebar.md` 引用 `[[Context-System]]`，`wiki/Context-System.md` 存在但內容未經驗證是否對齊 `validate_context_stack.py` 的實際檢查項目。 |
+| ~~R2~~ | ~~wiki Context-System 頁面空殼~~ | ~~Medium~~ | ✅ **v2.1 已修復**：新增 7 項檢查清單、Skills & Agents 層、正式驗證腳本路徑 |
 | R3 | **單一 owner 風險** | Medium | 全部 18 task 的 owner 都是 Claude，無人類 reviewer 或第二 agent 參與。對真實多人團隊的可轉移性尚未被驗證。 |
 | ~~R4~~ | ~~TASK-001 孤兒~~ | ~~Low~~ | ✅ **v2.1 已解決**：PR #1 關閉未合併，TASK-001 artifacts 不存在於 master，dashboard 未回報 |
 | R5 | **Coverage threshold 偏低** | Low | CI 強制 coverage ≥45%，對生產 toolchain 而言仍有提升空間（建議 60%+）。 |
@@ -245,7 +245,7 @@
 |---|---|---|---|
 | ~~3~~ | ~~實作 TASK-963（supply-chain hardening：pin actions、pip-audit、release automation）~~ | ~~R6~~ | ✅ 已完成（TASK-963 done，CI security-scan 全綠） |
 | 4 | 提升 unit test coverage threshold 至 60% | R5 | 回歸保護強化 |
-| 5 | 審查 wiki `Context-System.md` 內容是否對齊 `validate_context_stack.py` 的 7 項檢查 | R2 | 文件一致性 |
+| 5 | ~~審查 wiki `Context-System.md` 內容是否對齊 `validate_context_stack.py` 的 7 項檢查~~ | ~~R2~~ | ✅ 已完成（新增 7 項檢查清單 + Skills & Agents 層） |
 
 ### 中期規劃（Low Priority）
 

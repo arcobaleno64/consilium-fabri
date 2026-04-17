@@ -41,6 +41,12 @@ Layer 5: docs/                             (詳細規範，按需載入)
 | `project-facts.md` | 技術棧、部署、環境資訊 |
 | `README.md` | 知識庫使用說明 |
 
+### Layer 3.5 — 可組合能力（Skills & Agents）
+
+`.github/skills/` 包含 9 個可組合的專業能力模組（如 security-review、quality-playbook、code-tour、agent-governance 等），可依任務需求自動載入。
+
+`.github/agents/` 包含 2 個自訂 agent 定義（Autonomous Executor、Readonly Process Auditor），提供可重用的 agent 人格與工具邊界。
+
 ### Layer 4 — 任務導向 Prompt
 
 `.github/prompts/` 包含：
@@ -82,8 +88,28 @@ Layer 5: docs/                             (詳細規範，按需載入)
 
 ## 驗證
 
+正式驗證腳本（CI 中使用）：
+
+```bash
+python artifacts/scripts/validate_context_stack.py
+```
+
+此腳本執行 7 項檢查：
+
+| # | 檢查項目 | 說明 |
+|---|---|---|
+| 1 | Memory Bank existence | `.github/memory-bank/` 必要檔案是否存在 |
+| 2 | Cross-references | 各層文件間的交叉引用是否有效 |
+| 3 | Copilot instructions size | `.github/copilot-instructions.md` 是否在合理大小範圍 |
+| 4 | Template sync | `template/` 下的上下文檔案是否與 root 同步 |
+| 5 | Frontmatter validity | Skills / Prompts 的 YAML frontmatter 格式是否正確 |
+| 6 | Name uniqueness | Skills / Prompts 名稱是否唯一（無重複） |
+| 7 | Memory Bank quality | 知識庫文件是否有實質內容（無空殼段落） |
+
+Legacy wrapper（向後相容）：
+
 ```bash
 python validate_mvp_context.py
 ```
 
-驗證上下文管理系統的檔案結構完整性。
+此 wrapper 會自動轉呼叫 `validate_context_stack.py`。
