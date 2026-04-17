@@ -3,7 +3,6 @@ source = artifacts/scripts
 omit =
     artifacts/scripts/test_*.py
     artifacts/scripts/run_red_team_suite.py
-    artifacts/scripts/repo_health_dashboard.py
     artifacts/scripts/Invoke-*.ps1
     artifacts/scripts/load_env.ps1
 
@@ -15,3 +14,4 @@ exclude_lines =
     parser\.add_argument
     parser = argparse
     args = parser\.parse
+    return parser\.parse
