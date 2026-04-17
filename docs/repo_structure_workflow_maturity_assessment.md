@@ -1,6 +1,6 @@
 # Repo 結構與工作流成熟度評估
 
-> **版本**: v2.0 | **評估日期**: 2026-04-17 | **評估基準**: v0.3.1 (commit `64180d4`)
+> **版本**: v2.1 | **評估日期**: 2026-04-17 | **評估基準**: commit `1a473c9`
 
 ## 評估範圍
 
@@ -15,12 +15,13 @@
 **自動化驗證（即時執行）**：
 - `artifacts/scripts/guard_status_validator.py` — 狀態守衛
 - `artifacts/scripts/guard_contract_validator.py` — 合約守衛 ✅ PASS
-- `artifacts/scripts/validate_context_stack.py` — 上下文堆疊守衛 ⚠ 24 errors（template/skills 同步缺口）
+- `artifacts/scripts/validate_context_stack.py` — 上下文堆疊守衛 ✅ PASS（v2.0 時曾有 24 errors，已全數修復）
 - `artifacts/scripts/repo_health_dashboard.py` — Repo Health Dashboard（即時 JSON）
 - `.github/workflows/workflow-guards.yml` — CI pipeline（10 步驟）
+- `.github/workflows/security-scan.yml` — pip-audit 依賴掃描（v2.1 新增）
 
 **執行痕跡**：
-- 18 個 task（含 TASK-001 至 TASK-999）、54 commits、2 release tags（v0.3.0、v0.3.1）
+- 18 個 task（含 TASK-001 至 TASK-999）、58 commits、2 release tags（v0.3.0、v0.3.1）
 - 9 個 GitHub Skills、2 個 custom agents、9 頁 wiki
 
 ## 一、Repo 結構概覽
@@ -33,7 +34,7 @@
 | `docs/` | orchestration、schema、state machine、premortem、red team、lightweight mode（13 檔） | 流程規範與制度文件 |
 | `docs/templates/` | `implementer/`、`tester/`、`verifier/`、`reviewer/`、`parallel/`、`blocking/` | subagent 任務模板 |
 | `artifacts/` | `tasks/`(19)、`research/`(10)、`plans/`(15)、`code/`(13)、`verify/`(13)、`status/`(21)、`decisions/`(11)、`improvement/`(3)、`scripts/`(18)、`red_team/`(1) | 流程執行痕跡與自動化腳本 |
-| `.github/` | `workflows/`(1)、`agents/`(2)、`skills/`(9)、`prompts/`(5)、`memory-bank/`(5)、`copilot-instructions.md` | CI、agent 定義、上下文系統 |
+| `.github/` | `workflows/`(2)、`agents/`(2)、`skills/`(9)、`prompts/`(5)、`memory-bank/`(5)、`copilot-instructions.md`、`dependabot.yml` | CI、agent 定義、上下文系統、依賴更新 |
 | `template/` | root 的 scaffold 鏡像（文件 + 骨架 artifacts） | 新專案 bootstrap 範本 |
 | `wiki/` | 9 頁 GitHub Wiki 內容 | 對外文件 |
 | `external/` | `hermes-agent/`（git submodule，大型 Python/CLI 專案） | 外部依賴 |
@@ -60,27 +61,30 @@
 | Gate 驗證 | `guard_status_validator.py`（動態掃描全部 task） | ✅ | CI 自動檢查每一個 TASK-*.status.json |
 | Contract drift 防護 | `guard_contract_validator.py` | ✅ | root / template 核心文件同步守衛 |
 | Prompt regression | `prompt_regression_validator.py` + `drills/prompt_regression_cases.json` | ✅ | Prompt 視為可回歸測試的資產 |
-| 上下文堆疊 | `validate_context_stack.py`（7 項檢查） | ⚠ | memory-bank、cross-ref、frontmatter、名稱唯一性均 OK，但 template/skills 同步落後（24 errors） |
+| 上下文堆疊 | `validate_context_stack.py`（7 項檢查） | ✅ | v2.0 曾有 24 errors（template/skills 同步缺口），v2.1 已全數修復 |
 | Red-team | `run_red_team_suite.py`（23 static + 2 live + 20 prompt） | ✅ | 完整演練機制含 scorecard |
 | Repo Health Dashboard | `repo_health_dashboard.py`（`--json` / `--stale-days`） | ✅ | 即時全域 task coverage、stale、blocked aging |
 | Lightweight mode | `docs/lightweight_mode_rules.md` | ✅ | 效率與治理平衡 |
 | Template discovery | `discover_templates.py`、`docs/templates/` | ✅ | 模板可發現化 |
 | Custom agents | `.github/agents/`（Autonomous Executor、Readonly Process Auditor） | ✅ NEW | 可重用的 agent 人格定義 |
 | GitHub Skills | `.github/skills/`（9 個 skill） | ✅ NEW | 可組合的專業能力模組 |
-| Wiki | `wiki/`（9 頁）+ `push-wiki.ps1` | ✅ NEW | 對外文件化，含自動推送機制 |
+| Wiki | `wiki/`（9 頁）+ `push-wiki.ps1` | ✅ NEW | 對外文件化，含自動推送機制（v2.1 改用 preflight + dynamic URL） |
+| Supply-chain hardening | `dependabot.yml`、`security-scan.yml`、SHA-pinned actions | ✅ NEW | Dependabot 自動 PR、pip-audit CI 掃描、Actions SHA pin（v6.0.2/v6.2.0）|
+| Release automation | `publish-release.ps1`、`github_publish_common.ps1` | ✅ NEW | gh CLI 發佈腳本含 preflight 檢查，與 push-wiki.ps1 共用認證模組 |
+| Lightweight mode | `docs/lightweight_mode_rules.md` | ✅ | v2.1 新增 drafted→planned 轉移、釐清 verify artifact 不可省略 |
 | KPI 追蹤 | `kpi_sprint2.json`、`kpi_sprint6.json` | ✅ NEW | 跨 sprint 效能與品質指標 |
 | Decision Registry | `build_decision_registry.py` → `decision_registry.json` | ✅ | 決策可追溯 |
 
-### 即時 Dashboard 摘要（2026-04-17T11:29:28+08:00）
+### 即時 Dashboard 摘要（2026-04-17T12:01:16+08:00）
 
 | 指標 | 數值 |
 |---|---|
 | 總 Task 數 | 18 |
-| 完成率 | 72.2%（13 done） |
+| 完成率 | 77.8%（14 done） |
 | Blocked | 1（TASK-901，已歸檔） |
 | Stale（>14 天） | 0 |
 | 缺 Verify（有 code 但無 verify） | 0 |
-| 進行中（researched / planned / research_ready） | 4（TASK-959, 962, 963, 999） |
+| 進行中（researched / planned / research_ready） | 3（TASK-959, 962, 999） |
 
 ### Artifact Coverage（即時）
 
@@ -89,8 +93,8 @@
 | task | 100% | — |
 | status | 100% | — |
 | plan | 83.3% | TASK-959, 962 未進入 planning |
-| code | 72.2% | 正常——未到 coding 階段的 task 不需要 |
-| verify | 72.2% | 與 code 1:1 對應，符合預期 |
+| code | 77.8% | 正常——未到 coding 階段的 task 不需要 |
+| verify | 77.8% | 與 code 1:1 對應，符合預期 |
 | research | 55.6% | 部分 lightweight task 可跳過 research |
 | decision | 55.6% | 非必要 artifact，僅在有重大決策時產生 |
 | improvement | 16.7% | 僅在 Gate E 失敗或主動改善時產生 |
@@ -127,9 +131,9 @@
 |---|---:|---:|---|
 | 流程定義完整度 | 5 | 5 | Intake 到 Closure、blocked 與 Gate E 都有制度 |
 | Artifact schema 完整度 | 5 | 5 | 8 類 artifact、欄位、狀態與品質要求完整 |
-| 自動化驗證 | 4.5 | 5 | 新增 context stack validator（7 項檢查）、CI 10 步驟全涵蓋 |
-| 實際採用程度 | 4 | 4.5 | 18 tasks × 多 artifact type = 100+ artifacts，橫跨 54 commits |
-| CI 整合廣度 | 4.5 | 5 | 10 步驟：unit test → contract → prompt regression → status guard（動態全域） → red team → context stack → health dashboard |
+| 自動化驗證 | 4.5 | 5 | 新增 context stack validator（7 項檢查）、CI 10+1 步驟全涵蓋（v2.1 新增 security-scan workflow） |
+| 實際採用程度 | 4 | 4.5 | 18 tasks × 多 artifact type = 100+ artifacts，橫跨 58 commits |
+| CI 整合廣度 | 4.5 | 5 | 2 個 workflow：workflow-guards（10 步驟）+ security-scan（pip-audit）。Actions SHA-pinned + Dependabot 自動 bump |
 | 治理閉環能力 | 4 | 4.5 | blocked → improvement → resume 的 PDCA + decision registry + KPI sprint tracking |
 | 持續優化能力 | 4.5 | 5 | red-team/backlog/prompt regression + repo health dashboard + KPI sprint 追蹤（S2→S6 效能改善 -47.8ms） |
 | 上下文管理 | — | 4 | NEW：分層式上下文（memory-bank / prompts / skills / agents），validator 自動檢查完整性與 cross-ref |
@@ -177,12 +181,12 @@
 
 | # | 風險 | 嚴重度 | 說明 |
 |---|---|---|---|
-| R1 | **template/skills 同步大幅落後** | High | `validate_context_stack.py` 報 24 errors：root `.github/skills/` 新增的 reference files（constitution.md、vuln-categories.md 等）未同步到 `template/.github/skills/`。contract guard 只檢查核心文件（EXACT_SYNC_FILES），skills 子目錄不在其檢查範圍。 |
+| ~~R1~~ | ~~template/skills 同步大幅落後~~ | ~~High~~ | ✅ **v2.1 已修復**：37 個 reference files 已同步至 `template/.github/skills/`，`validate_context_stack.py` 全數通過 |
 | R2 | **wiki Context-System 頁面空殼** | Medium | wiki `_Sidebar.md` 引用 `[[Context-System]]`，`wiki/Context-System.md` 存在但內容未經驗證是否對齊 `validate_context_stack.py` 的實際檢查項目。 |
 | R3 | **單一 owner 風險** | Medium | 全部 18 task 的 owner 都是 Claude，無人類 reviewer 或第二 agent 參與。對真實多人團隊的可轉移性尚未被驗證。 |
 | R4 | **TASK-001 孤兒** | Low | `artifacts/tasks/TASK-001.task.md` 存在但未出現在 `repo_health_dashboard.py` 的掃描結果中（因缺少 `TASK-001.status.json`），屬於 artifact 不完整的孤兒。 |
 | R5 | **Coverage threshold 偏低** | Low | CI 強制 coverage ≥45%，對生產 toolchain 而言仍有提升空間（建議 60%+）。 |
-| R6 | **外部依賴管理** | Low | `external/hermes-agent/` 為 git submodule，但 TASK-963（supply-chain hardening）尚未實作。Actions pin、pip-audit 等強化項目仍在 planned 狀態。 |
+| ~~R6~~ | ~~外部依賴管理~~ | ~~Low~~ | ✅ **v2.1 已修復**：TASK-963 已完成 supply-chain hardening — Actions SHA pin（checkout v6.0.2、setup-python v6.2.0）、`dependabot.yml` 自動 PR、`security-scan.yml` pip-audit CI 掃描 |
 
 ### 已解決風險（v1.x → v2.0 期間）
 
@@ -198,12 +202,12 @@
 
 ### 總結評級
 
-| 維度 | v1.0 | v1.2 | v2.0 | 趨勢 |
-|---|---:|---:|---:|---|
-| Repo 結構成熟度 | 4.0 | 4.0 | **4.3** | ↑ 上下文層 + wiki + agents |
-| 工作流成熟度 | 4.0 | 4.5 | **4.7** | ↑ CI 10 步驟 + context stack validator + KPI tracking |
-| Code Review 綜合 | 4.0 | 4.5 | 4.5 | → 維持（見§八） |
-| **綜合** | **4.0** | **4.3** | **4.5** | **Level 4.5 / Managed → Optimizing** |
+| 維度 | v1.0 | v1.2 | v2.0 | v2.1 | 趨勢 |
+|---|---:|---:|---:|---:|---|
+| Repo 結構成熟度 | 4.0 | 4.0 | **4.3** | **4.5** | ↑ supply-chain + template/skills 全同步 |
+| 工作流成熟度 | 4.0 | 4.5 | **4.7** | **4.8** | ↑ 2 workflow CI + dependabot + drafted→planned |
+| Code Review 綜合 | 4.0 | 4.5 | 4.5 | 4.5 | → 維持（見§八） |
+| **綜合** | **4.0** | **4.3** | **4.5** | **4.6** | **Level 4.5+ / Managed → Optimizing** |
 
 ### 判斷摘要
 
@@ -220,10 +224,10 @@
 - ✅ 真實採用痕跡（18 tasks、54 commits、2 releases）
 
 **尚缺的 Level 5 要素**：
-- ⬜ template/skills 同步自動化（目前手動，已有 24 項落差）
+- ✅ ~~template/skills 同步自動化~~ — v2.1 已完成（37 檔同步 + validator 全 PASS）
+- ✅ ~~Supply-chain hardening~~ — TASK-963 done（SHA pin + dependabot + pip-audit + release scripts）
 - ⬜ 多 owner / 多人協作驗證
 - ⬜ Coverage target 從 45% → 60%+
-- ⬜ Supply-chain hardening（TASK-963 planned 但未實作）
 - ⬜ Contributor onboarding automation
 
 ## 七、建議優先事項
@@ -232,14 +236,14 @@
 
 | # | 行動 | 對應風險 | 預期效果 |
 |---|---|---|---|
-| 1 | 同步 `template/.github/skills/` 與 root，或在 contract guard 中將 skills reference files 納入同步檢查 | R1 | 消除 24 項 context stack errors，CI 恢復綠燈 |
+| ~~1~~ | ~~同步 `template/.github/skills/` 與 root~~ | ~~R1~~ | ✅ 已完成（37 檔同步，validator 全 PASS） |
 | 2 | 補建 `TASK-001.status.json` 或將 TASK-001 歸檔移除 | R4 | 消除孤兒 artifact |
 
 ### 短期改善（Medium Priority）
 
 | # | 行動 | 對應風險 | 預期效果 |
 |---|---|---|---|
-| 3 | 實作 TASK-963（supply-chain hardening：pin actions、pip-audit、release automation） | R6 | 供應鏈安全強化 |
+| ~~3~~ | ~~實作 TASK-963（supply-chain hardening：pin actions、pip-audit、release automation）~~ | ~~R6~~ | ✅ 已完成（TASK-963 done，CI security-scan 全綠） |
 | 4 | 提升 unit test coverage threshold 至 60% | R5 | 回歸保護強化 |
 | 5 | 審查 wiki `Context-System.md` 內容是否對齊 `validate_context_stack.py` 的 7 項檢查 | R2 | 文件一致性 |
 
@@ -277,7 +281,9 @@
 | `Invoke-CodexAgent.ps1` | ~120 | Codex CLI resilient wrapper |
 | `Invoke-GeminiAgent.ps1` | ~120 | Gemini CLI resilient wrapper |
 | `load_env.ps1` | ~12 | `.env` 載入 |
-| `push-wiki.ps1` | ~60 | wiki 推送 |
+| `push-wiki.ps1` | ~80 | wiki 推送（v2.1 改用 preflight + dynamic URL） |
+| `github_publish_common.ps1` | ~100 | 共用認證 / preflight helper（v2.1 新增） |
+| `publish-release.ps1` | ~100 | GitHub Release 發佈腳本（v2.1 新增） |
 
 ### 8.1 代碼品質
 
@@ -391,11 +397,29 @@
 | 2 | 持續提升 unit test coverage（目前 ≥45%，目標 60%+） | 強化回歸保護 |
 | 3 | PowerShell wrapper 加入 `-ErrorAction Stop` | 捕獲非 terminating error |
 | 4 | ~~制定 `template/` 同步責任邊界說明~~ ✅ 已完成 | `docs/orchestration.md` §9.6 Tier 1–5 定義 |
-| 5 | 將 `validate_context_stack.py` 的 template/skills 檢查結果降為 warning 或修正同步 | 消除 24 項 false-positive errors |
+| 5 | ~~將 `validate_context_stack.py` 的 template/skills 檢查結果降為 warning 或修正同步~~ ✅ 已完成 | 37 檔同步，errors 24→0 |
 
 ---
 
-## 九、v1.x → v2.0 變更摘要
+## 九、v2.0 → v2.1 變更摘要（本次 session）
+
+### v2.1 新增/修復能力
+
+| 能力 | 來源 | 影響 |
+|---|---|---|
+| Supply-chain hardening | TASK-963: `dependabot.yml`、`security-scan.yml`、SHA pin | 自動化依賴更新 + pip-audit CI 掃描 |
+| Release automation | `publish-release.ps1`、`github_publish_common.ps1` | gh CLI 發佈腳本含 preflight 與 -WhatIf |
+| Wiki preflight 改造 | `push-wiki.ps1` 重寫 + `github_publish_common.ps1` 共用 | Dynamic URL、5 階段 preflight、不再硬編碼 repo URL |
+| Dependabot auto-bump | `actions/checkout` v4.3.1→v6.0.2、`setup-python` v5.6.0→v6.2.0 | Dependabot PR #3/#4 自動建立並合併 |
+| template/skills 同步修復 | 37 個 reference files 同步至 `template/.github/skills/` | context stack errors 24→0 |
+| drafted→planned 轉移 | `guard_status_validator.py` + `workflow_state_machine.md` + `lightweight_mode_rules.md` | Lightweight mode 現可直接 drafted→planned |
+| Verify artifact 釐清 | `lightweight_mode_rules.md` | 釐清 verify artifact 不可省略（內容可精簡，文件不可缺） |
+| CI pip-audit 修正 | `security-scan.yml`：`pip-audit` → `pip_audit` 模組名 | Security Scan workflow 修復 |
+| 孤兒 gitlink 清理 | `.claude/worktrees/` 移除 + `.gitignore` 防護 | CI checkout 修復 |
+
+---
+
+## 十、v1.x → v2.0 變更摘要
 
 ### 新增能力
 
@@ -411,20 +435,26 @@
 
 ### 量化變化
 
-| 指標 | v1.2 (2025-07) | v2.0 (2026-04) | 變化 |
-|---|---:|---:|---|
-| Total Tasks | ~5 | 18 | +260% |
-| Total Commits | ~20 | 54 | +170% |
-| CI Steps | 7 | 10 | +3（context stack、health dashboard、unit test 擴充） |
-| Python Scripts | ~10 | 14 | +4（validate_context_stack、repo_health_dashboard、workflow_constants、push-wiki） |
-| Skills | 0 | 9 | NEW |
-| Wiki Pages | 0 | 9 | NEW |
-| Custom Agents | 0 | 2 | NEW |
-| Release Tags | 0 | 2 | v0.3.0、v0.3.1 |
+| 指標 | v1.2 (2025-07) | v2.0 (2026-04) | v2.1 (2026-04) | 變化（v2.0→v2.1） |
+|---|---:|---:|---:|---|
+| Total Tasks | ~5 | 18 | 18 | → |
+| Done Tasks | ~3 | 13 | 14 | +1（TASK-963） |
+| Total Commits | ~20 | 54 | 58 | +4 |
+| CI Workflows | 1 | 1 | 2 | +1（security-scan.yml） |
+| CI Steps（workflow-guards） | 7 | 10 | 10 | → |
+| Python Scripts | ~10 | 14 | 14 | → |
+| PowerShell Scripts | ~3 | ~5 | 7 | +2（github_publish_common、publish-release） |
+| Skills | 0 | 9 | 9 | → |
+| Wiki Pages | 0 | 9 | 9 | → |
+| Custom Agents | 0 | 2 | 2 | → |
+| Release Tags | 0 | 2 | 2 | → |
+| Context Stack Errors | — | 24 | 0 | -24（template/skills 同步修復） |
+| Actions checkout | — | v4.3.1 | v6.0.2 | Dependabot auto-bump |
+| Actions setup-python | — | v5.6.0 | v6.2.0 | Dependabot auto-bump |
 
 ---
 
-## 十、修訂紀錄
+## 十一、修訂紀錄
 
 | 日期 | 版本 | 變更摘要 |
 |---|---|---|
@@ -432,3 +462,4 @@
 | 2025-07-17 | v1.1 | 反映 session 改進成果：.gitignore 補齊、CI 動態掃描、共用常數提取、requirements.txt、255 項 unit test、repo health dashboard。工作流 4→4.5、可維護性 3.5→4.5、綜合 4→4.5（Level 4+ 接近 Level 5） |
 | 2025-07-17 | v1.2 | 對齊 BOOTSTRAP_PROMPT.md 與 subagent_roles.md 的 Gemini 認證方式（GEMINI_API_KEY → OAuth）；新增 orchestration.md §9.6 同步責任邊界（Tier 1–5）。§5 風險 5/5 已解決或緩解，§7 建議 5/5 已完成 |
 | 2026-04-17 | v2.0 | 全面重新評估。新增上下文系統（memory-bank / prompts / skills / agents）、wiki 9 頁、KPI sprint tracking、custom agents、validate_context_stack.py。Task 數 5→18、commits 20→54、CI steps 7→10。發現 template/skills 同步落後（24 errors）。綜合 4.3→4.5（Level 4.5 Managed → Optimizing） |
+| 2026-04-17 | v2.1 | 反映 session 內所有修復成果。template/skills 同步修復（37 檔，R1 ✅）；TASK-963 supply-chain hardening 完成（SHA pin v6.0.2/v6.2.0 + dependabot + pip-audit CI + release scripts，R6 ✅）；CI pip-audit 模組名修正；Dependabot PR #3/#4 合併；PR #1 關閉（不完整）並手動實作 drafted→planned 轉移 + lightweight mode 文件釐清。Done 13→14、commits 54→58、CI workflows 1→2、context stack errors 24→0。綜合 4.5→4.6 |
