@@ -8565,3 +8565,34 @@ class TestGsvHistoricalDriftCommitRangeBranch:
         # in the archive fallback path. But line 782 IS reachable in the normal diff path
         # (scope_label = "commit-range scope check") via the test_diff_changed_mismatch above.
         pass  # This specific sub-case is unreachable via archive fallback
+
+
+
+# -- Phase 8: parse_args coverage for 4 modules --
+
+
+class TestParseArgsCoverage:
+    """Cover parse_args return lines for ars, bdr, prv, vsd."""
+
+    def test_ars_parse_args(self, tmp_path):
+        report = tmp_path / "report.md"
+        report.write_text("# Report\n", encoding="utf-8")
+        args = ars.parse_args(["--report", str(report)])
+        assert args.report == str(report)
+
+    def test_bdr_parse_args(self, monkeypatch):
+        monkeypatch.setattr(sys, "argv", ["bdr", "--root", "/tmp"])
+        args = bdr.parse_args()
+        assert args.root == "/tmp"
+
+    def test_prv_parse_args(self, tmp_path):
+        cases = tmp_path / "cases.json"
+        cases.write_text("[]", encoding="utf-8")
+        args = prv.parse_args(["--root", str(tmp_path), "--cases", str(cases)])
+        assert args.root == str(tmp_path)
+
+    def test_vsd_parse_args(self, tmp_path):
+        sc = tmp_path / "scorecard.md"
+        sc.write_text("# Scorecard\n", encoding="utf-8")
+        args = vsd.parse_args(["--scorecard", str(sc)])
+        assert args.scorecard == str(sc)
