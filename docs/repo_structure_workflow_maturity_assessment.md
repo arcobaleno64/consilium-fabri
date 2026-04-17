@@ -184,7 +184,7 @@
 | ~~R1~~ | ~~template/skills 同步大幅落後~~ | ~~High~~ | ✅ **v2.1 已修復**：37 個 reference files 已同步至 `template/.github/skills/`，`validate_context_stack.py` 全數通過 |
 | R2 | **wiki Context-System 頁面空殼** | Medium | wiki `_Sidebar.md` 引用 `[[Context-System]]`，`wiki/Context-System.md` 存在但內容未經驗證是否對齊 `validate_context_stack.py` 的實際檢查項目。 |
 | R3 | **單一 owner 風險** | Medium | 全部 18 task 的 owner 都是 Claude，無人類 reviewer 或第二 agent 參與。對真實多人團隊的可轉移性尚未被驗證。 |
-| R4 | **TASK-001 孤兒** | Low | `artifacts/tasks/TASK-001.task.md` 存在但未出現在 `repo_health_dashboard.py` 的掃描結果中（因缺少 `TASK-001.status.json`），屬於 artifact 不完整的孤兒。 |
+| ~~R4~~ | ~~TASK-001 孤兒~~ | ~~Low~~ | ✅ **v2.1 已解決**：PR #1 關閉未合併，TASK-001 artifacts 不存在於 master，dashboard 未回報 |
 | R5 | **Coverage threshold 偏低** | Low | CI 強制 coverage ≥45%，對生產 toolchain 而言仍有提升空間（建議 60%+）。 |
 | ~~R6~~ | ~~外部依賴管理~~ | ~~Low~~ | ✅ **v2.1 已修復**：TASK-963 已完成 supply-chain hardening — Actions SHA pin（checkout v6.0.2、setup-python v6.2.0）、`dependabot.yml` 自動 PR、`security-scan.yml` pip-audit CI 掃描 |
 
@@ -237,7 +237,7 @@
 | # | 行動 | 對應風險 | 預期效果 |
 |---|---|---|---|
 | ~~1~~ | ~~同步 `template/.github/skills/` 與 root~~ | ~~R1~~ | ✅ 已完成（37 檔同步，validator 全 PASS） |
-| 2 | 補建 `TASK-001.status.json` 或將 TASK-001 歸檔移除 | R4 | 消除孤兒 artifact |
+| ~~2~~ | ~~補建 `TASK-001.status.json` 或將 TASK-001 歸檔移除~~ | ~~R4~~ | ✅ 已解決（PR #1 關閉，artifacts 不存在於 master） |
 
 ### 短期改善（Medium Priority）
 
