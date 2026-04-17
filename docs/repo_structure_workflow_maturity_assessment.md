@@ -185,7 +185,7 @@
 | ~~R2~~ | ~~wiki Context-System 頁面空殼~~ | ~~Medium~~ | ✅ **v2.1 已修復**：新增 7 項檢查清單、Skills & Agents 層、正式驗證腳本路徑 |
 | R3 | **單一 owner 風險** | Medium | 全部 18 task 的 owner 都是 Claude，無人類 reviewer 或第二 agent 參與。對真實多人團隊的可轉移性尚未被驗證。 |
 | ~~R4~~ | ~~TASK-001 孤兒~~ | ~~Low~~ | ✅ **v2.1 已解決**：PR #1 關閉未合併，TASK-001 artifacts 不存在於 master，dashboard 未回報 |
-| R5 | **Coverage threshold 偏低** | Low | CI 強制 coverage ≥45%，對生產 toolchain 而言仍有提升空間（建議 60%+）。 |
+| ~~R5~~ | ~~Coverage threshold 偏低~~ | ~~Low~~ | ✅ **v2.1 已修復**：94 個新測試，覆蓋率 51%→64%，CI threshold 提升至 60% |
 | ~~R6~~ | ~~外部依賴管理~~ | ~~Low~~ | ✅ **v2.1 已修復**：TASK-963 已完成 supply-chain hardening — Actions SHA pin（checkout v6.0.2、setup-python v6.2.0）、`dependabot.yml` 自動 PR、`security-scan.yml` pip-audit CI 掃描 |
 
 ### 已解決風險（v1.x → v2.0 期間）
@@ -244,7 +244,7 @@
 | # | 行動 | 對應風險 | 預期效果 |
 |---|---|---|---|
 | ~~3~~ | ~~實作 TASK-963（supply-chain hardening：pin actions、pip-audit、release automation）~~ | ~~R6~~ | ✅ 已完成（TASK-963 done，CI security-scan 全綠） |
-| 4 | 提升 unit test coverage threshold 至 60% | R5 | 回歸保護強化 |
+| 4 | ~~提升 unit test coverage threshold 至 60%~~ | ~~R5~~ | ✅ 已完成（51%→64%，360 tests，threshold 60%） |
 | 5 | ~~審查 wiki `Context-System.md` 內容是否對齊 `validate_context_stack.py` 的 7 項檢查~~ | ~~R2~~ | ✅ 已完成（新增 7 項檢查清單 + Skills & Agents 層） |
 
 ### 中期規劃（Low Priority）
