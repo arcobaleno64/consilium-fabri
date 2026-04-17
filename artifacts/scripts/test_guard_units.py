@@ -8741,3 +8741,142 @@ class TestDtMain:
         dt.main()
         out = capsys.readouterr().out
         assert "No matching" in out
+
+
+
+# ── update_repository_profile tests ──
+
+
+import update_repository_profile as urp
+
+
+class TestUrpParseTopics:
+    def test_basic(self):
+        result = urp.parse_topics("a, b, c")
+        assert result == ["a", "b", "c"]
+
+    def test_dedup(self):
+        result = urp.parse_topics("a, b, a")
+        assert result == ["a", "b"]
+
+    def test_empty_tokens(self):
+        result = urp.parse_topics(",, a,,")
+        assert result == ["a"]
+
+    def test_case_normalize(self):
+        result = urp.parse_topics("ABC, Def")
+        assert result == ["abc", "def"]
+
+
+class TestUrpNormalizeTopics:
+    def test_adds_required(self):
+        from workflow_constants import REQUIRED_TOPICS
+        # Use 6 topics that overlap with required + 2 extra = 8 total, within 6-12
+        base = list(REQUIRED_TOPICS)[:4] + ["extra-one", "extra-two"]
+        result = urp.normalize_topics(base)
+        for req in REQUIRED_TOPICS:
+            assert req in result
+
+    def test_invalid_pattern(self):
+        with pytest.raises(ValueError, match="Invalid topic"):
+            urp.normalize_topics(["valid-topic"] * 5 + ["INVALID TOPIC!"])
+
+    def test_too_few_after_normalization(self, monkeypatch):
+        """With 6 required topics, minimum is always 6. Patch to test < 6 path."""
+        monkeypatch.setattr(urp, "REQUIRED_TOPICS", set())
+        with pytest.raises(ValueError, match="6-12 entries"):
+            urp.normalize_topics(["a"])
+
+    def test_too_many(self):
+        topics = [f"topic-{i}" for i in range(13)]
+        with pytest.raises(ValueError, match="6-12 entries"):
+            urp.normalize_topics(topics)
+
+    def test_dedup_and_empty(self):
+        topics = ["a", "a", "", "b", "c", "d", "e", "f"]
+        result = urp.normalize_topics(topics)
+        assert len(set(result)) == len(result)
+
+
+class TestUrpUpdateProfile:
+    def _valid_about_args(self):
+        # Ensure about is 80-200 chars
+        name = "MyProject"
+        summary = "A" * 75  # name + " - " + summary = 9 + 3 + 75 = 87 chars
+        return name, summary
+
+    def test_creates_new_profile(self, tmp_path):
+        from workflow_constants import REQUIRED_TOPICS
+        profile_path = tmp_path / ".github" / "repository-profile.json"
+        name, summary = self._valid_about_args()
+        topics = ",".join(list(REQUIRED_TOPICS)[:4] + ["extra-one", "extra-two"])
+        urp.update_profile(profile_path, name, summary, topics)
+        assert profile_path.exists()
+        import json
+        data = json.loads(profile_path.read_text(encoding="utf-8"))
+        assert "about" in data
+        assert "topics" in data
+
+    def test_updates_existing(self, tmp_path):
+        import json
+        profile_path = tmp_path / "profile.json"
+        profile_path.write_text(json.dumps({"about": "old", "topics": ["existing"]}), encoding="utf-8")
+        name, summary = self._valid_about_args()
+        from workflow_constants import REQUIRED_TOPICS
+        topics = ",".join(list(REQUIRED_TOPICS)[:4] + ["extra-one", "extra-two"])
+        urp.update_profile(profile_path, name, summary, topics)
+        data = json.loads(profile_path.read_text(encoding="utf-8"))
+        assert data["about"] != "old"
+
+    def test_about_too_short(self, tmp_path):
+        profile_path = tmp_path / "profile.json"
+        from workflow_constants import REQUIRED_TOPICS
+        topics = ",".join(list(REQUIRED_TOPICS)[:4] + ["extra-one", "extra-two"])
+        with pytest.raises(ValueError, match="80-200 chars"):
+            urp.update_profile(profile_path, "X", "Y", topics)
+
+    def test_about_too_long(self, tmp_path):
+        profile_path = tmp_path / "profile.json"
+        from workflow_constants import REQUIRED_TOPICS
+        topics = ",".join(list(REQUIRED_TOPICS)[:4] + ["extra-one", "extra-two"])
+        with pytest.raises(ValueError, match="80-200 chars"):
+            urp.update_profile(profile_path, "X", "Y" * 300, topics)
+
+    def test_uses_existing_topics_when_none(self, tmp_path):
+        import json
+        from workflow_constants import REQUIRED_TOPICS
+        profile_path = tmp_path / "profile.json"
+        existing_topics = list(REQUIRED_TOPICS)[:4] + ["extra-one", "extra-two"]
+        profile_path.write_text(json.dumps({"topics": existing_topics}), encoding="utf-8")
+        name, summary = self._valid_about_args()
+        urp.update_profile(profile_path, name, summary, None)
+        data = json.loads(profile_path.read_text(encoding="utf-8"))
+        for t in existing_topics:
+            assert t in data["topics"]
+
+    def test_non_list_existing_topics(self, tmp_path):
+        import json
+        profile_path = tmp_path / "profile.json"
+        profile_path.write_text(json.dumps({"topics": "not-a-list"}), encoding="utf-8")
+        name, summary = self._valid_about_args()
+        from workflow_constants import REQUIRED_TOPICS
+        topics = ",".join(list(REQUIRED_TOPICS)[:4] + ["extra-one", "extra-two"])
+        urp.update_profile(profile_path, name, summary, topics)
+        data = json.loads(profile_path.read_text(encoding="utf-8"))
+        assert isinstance(data["topics"], list)
+
+
+class TestUrpMain:
+    def test_main_success(self, tmp_path, monkeypatch, capsys):
+        profile_path = tmp_path / "profile.json"
+        name = "MyProject"
+        summary = "A" * 75
+        from workflow_constants import REQUIRED_TOPICS
+        topics = ",".join(list(REQUIRED_TOPICS)[:4] + ["extra-one", "extra-two"])
+        monkeypatch.setattr(sys, "argv", [
+            "urp", "--project-name", name, "--project-summary", summary,
+            "--topics", topics, "--profile-path", str(profile_path),
+        ])
+        result = urp.main()
+        assert result == 0
+        assert "[OK]" in capsys.readouterr().out
