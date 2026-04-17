@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import textwrap
 from datetime import datetime, timedelta, timezone
@@ -7344,3 +7345,543 @@ class TestGsvWriteTransitionTargetPresenceFails:
         result = gsv.write_transition(tmp_path, "TASK-001", "done", "blocked")
         assert not result.ok
         assert any("Target state" in e for e in result.errors)
+
+
+# ── Phase 5: Coverage push toward 97% ──────────────────────────────
+
+
+class TestGsvParseRepositoryRefDotSegments:
+    """Cover line 390 — dot/dotdot owner/repo segments."""
+    def test_dot_owner(self):
+        _owner, _repo, err = gsv.parse_repository_ref("./myrepo")
+        assert err == "Repository owner/repo segments must be concrete names"
+
+    def test_dotdot_repo(self):
+        _owner, _repo, err = gsv.parse_repository_ref("owner/..")
+        assert err == "Repository owner/repo segments must be concrete names"
+
+    def test_dot_repo(self):
+        _owner, _repo, err = gsv.parse_repository_ref("owner/.")
+        assert err == "Repository owner/repo segments must be concrete names"
+
+    def test_dotdot_owner(self):
+        _owner, _repo, err = gsv.parse_repository_ref("../repo")
+        assert err == "Repository owner/repo segments must be concrete names"
+
+
+class TestGsvResolveWorkspacePathEscape:
+    """Cover lines 380-381 — resolved path escapes repository root."""
+    def test_path_escape_via_resolve(self, tmp_path):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        original_resolve = Path.resolve
+        call_count = [0]
+        def patched_resolve(self_path, strict=False):
+            call_count[0] += 1
+            if call_count[0] == 2:
+                return Path("/outside/repo/dir")
+            return original_resolve(self_path, strict=strict) if strict else original_resolve(self_path)
+        with unittest.mock.patch.object(Path, "resolve", patched_resolve):
+            _rel, _resolved, err = gsv.resolve_workspace_relative_path(repo, "some/path")
+        assert err == "path escapes repository root"
+
+
+class TestGsvLoadArchiveSnapshotBranches:
+    """Cover lines 422, 427-428, 437-438, 441, 449, 451 — load_archive_snapshot error paths."""
+
+    def _make_evidence(self, archive_path, archive_sha256):
+        return {"archive path": archive_path, "archive sha256": archive_sha256}
+
+    def test_archive_path_not_found(self, tmp_path):
+        """Line 427-428: FileNotFoundError when reading archive."""
+        evidence = self._make_evidence(
+            "nonexistent_archive.txt",
+            "a" * 64,
+        )
+        _files, _rel, err = gsv.load_archive_snapshot(tmp_path, Path("TASK-001.code.md"), evidence, set())
+        assert err is not None
+        assert "does not exist" in err
+
+    def test_archive_os_error(self, tmp_path):
+        """Line 429-430: OSError on read."""
+        archive = tmp_path / "archive.txt"
+        archive.mkdir()  # directory, not file — read_bytes raises
+        evidence = self._make_evidence("archive.txt", "a" * 64)
+        _files, _rel, err = gsv.load_archive_snapshot(tmp_path, Path("TASK-001.code.md"), evidence, set())
+        assert err is not None
+        assert "unable to read" in err or "does not exist" in err or "denied" in err.lower() or "Is a directory" in err or "Error" in err
+
+    def test_archive_sha256_mismatch(self, tmp_path):
+        """Line 432-433: SHA256 doesn't match."""
+        archive = tmp_path / "archive.txt"
+        archive.write_text("src/main.py\n", encoding="utf-8")
+        evidence = self._make_evidence("archive.txt", "b" * 64)
+        _files, _rel, err = gsv.load_archive_snapshot(tmp_path, Path("TASK-001.code.md"), evidence, {"src/main.py"})
+        assert err is not None
+        assert "SHA256 does not match" in err
+
+    def test_archive_non_utf8(self, tmp_path):
+        """Lines 437-438: UnicodeDecodeError."""
+        archive = tmp_path / "archive.bin"
+        content = b"\x80\x81\x82\x83"
+        archive.write_bytes(content)
+        import hashlib
+        sha = hashlib.sha256(content).hexdigest()
+        evidence = self._make_evidence("archive.bin", sha)
+        _files, _rel, err = gsv.load_archive_snapshot(tmp_path, Path("TASK-001.code.md"), evidence, set())
+        assert err is not None
+        assert "UTF-8" in err
+
+    def test_archive_blank_line(self, tmp_path):
+        """Line 449: blank line in archive."""
+        import hashlib
+        content = "src/main.py\n\ntests/test.py\n"
+        archive = tmp_path / "archive.txt"
+        archive.write_bytes(content.encode("utf-8"))
+        sha = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        evidence = self._make_evidence("archive.txt", sha)
+        _files, _rel, err = gsv.load_archive_snapshot(
+            tmp_path, Path("TASK-001.code.md"), evidence, {"src/main.py", "tests/test.py"}
+        )
+        assert err is not None
+        assert "blank line" in err
+
+    def test_archive_invalid_path_traversal(self, tmp_path):
+        """Line 451: path with mid-traversal '/../'."""
+        import hashlib
+        content = "src/../escape/file.py\n"
+        archive = tmp_path / "archive.txt"
+        archive.write_bytes(content.encode("utf-8"))
+        sha = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        evidence = self._make_evidence("archive.txt", sha)
+        _files, _rel, err = gsv.load_archive_snapshot(
+            tmp_path, Path("TASK-001.code.md"), evidence, {"src/../escape/file.py"}
+        )
+        assert err is not None
+        assert "invalid path" in err
+
+    def test_archive_unsorted(self, tmp_path):
+        """Line 459: paths not sorted."""
+        import hashlib
+        content = "z/file.py\na/file.py\n"
+        archive = tmp_path / "archive.txt"
+        archive.write_bytes(content.encode("utf-8"))
+        sha = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        evidence = self._make_evidence("archive.txt", sha)
+        _files, _rel, err = gsv.load_archive_snapshot(
+            tmp_path, Path("TASK-001.code.md"), evidence, {"a/file.py", "z/file.py"}
+        )
+        assert err is not None
+        assert "sorted" in err
+
+    def test_archive_duplicate_path(self, tmp_path):
+        """Line 454-455: duplicate path."""
+        import hashlib
+        content = "src/main.py\nsrc/main.py\n"
+        archive = tmp_path / "archive.txt"
+        archive.write_bytes(content.encode("utf-8"))
+        sha = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        evidence = self._make_evidence("archive.txt", sha)
+        _files, _rel, err = gsv.load_archive_snapshot(
+            tmp_path, Path("TASK-001.code.md"), evidence, {"src/main.py"}
+        )
+        assert err is not None
+        assert "duplicate" in err
+
+    def test_archive_snapshot_mismatch(self, tmp_path):
+        """Line 462-464: archive files != snapshot files."""
+        import hashlib
+        content = "src/main.py\n"
+        archive = tmp_path / "archive.txt"
+        archive.write_bytes(content.encode("utf-8"))
+        sha = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        evidence = self._make_evidence("archive.txt", sha)
+        _files, _rel, err = gsv.load_archive_snapshot(
+            tmp_path, Path("TASK-001.code.md"), evidence, {"src/main.py", "src/extra.py"}
+        )
+        assert err is not None
+        assert "does not match Changed Files Snapshot" in err
+
+    def test_archive_success(self, tmp_path):
+        """Happy path: archive matches snapshot."""
+        import hashlib
+        content = "src/extra.py\nsrc/main.py\n"
+        archive = tmp_path / "archive.txt"
+        archive.write_bytes(content.encode("utf-8"))
+        sha = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        evidence = self._make_evidence("archive.txt", sha)
+        files, rel, err = gsv.load_archive_snapshot(
+            tmp_path, Path("TASK-001.code.md"), evidence, {"src/main.py", "src/extra.py"}
+        )
+        assert err is None
+        assert files == {"src/main.py", "src/extra.py"}
+        assert rel == "archive.txt"
+
+    def test_archive_path_and_sha_must_appear_together(self, tmp_path):
+        """Line 414: archive_path without sha256."""
+        evidence = {"archive path": "archive.txt", "archive sha256": ""}
+        _files, _rel, err = gsv.load_archive_snapshot(tmp_path, Path("TASK-001.code.md"), evidence, set())
+        assert err is not None
+        assert "together" in err
+
+    def test_archive_sha_invalid_hex(self, tmp_path):
+        """Line 420: invalid hex string."""
+        evidence = {"archive path": "archive.txt", "archive sha256": "not-hex"}
+        _files, _rel, err = gsv.load_archive_snapshot(tmp_path, Path("TASK-001.code.md"), evidence, set())
+        assert err is not None
+        assert "hexadecimal" in err
+
+    def test_no_archive_returns_none(self, tmp_path):
+        """Line 417-418: both empty → return None,None,None."""
+        evidence = {"archive path": "", "archive sha256": ""}
+        files, rel, err = gsv.load_archive_snapshot(tmp_path, Path("TASK-001.code.md"), evidence, set())
+        assert files is None
+        assert rel is None
+        assert err is None
+
+
+class TestGsvCollectGithubPrFilesWithToken:
+    """Cover line 481 — Authorization header when GITHUB_TOKEN is set."""
+    def test_token_header_included(self):
+        with unittest.mock.patch.dict(os.environ, {"GITHUB_TOKEN": "test-token-abc"}, clear=False):
+            with unittest.mock.patch("urllib.request.urlopen") as mock_urlopen:
+                mock_resp = unittest.mock.MagicMock()
+                mock_resp.read.return_value = b"[]"
+                mock_resp.__enter__ = lambda s: s
+                mock_resp.__exit__ = lambda s, *a: None
+                mock_urlopen.return_value = mock_resp
+                files, err = gsv.collect_github_pr_files("owner/repo", "1", "")
+        assert err is None
+        assert files == set()
+        # Verify Authorization header was set
+        call_args = mock_urlopen.call_args
+        request_obj = call_args[0][0]
+        assert request_obj.get_header("Authorization") == "Bearer test-token-abc"
+
+
+class TestGsvDetectGitBackedScopeDriftUndeclared:
+    """Cover line 674 — undeclared actual changed files."""
+    def test_undeclared_files(self, tmp_path):
+        plan_path = tmp_path / "plan.md"
+        plan_path.write_text(
+            "## Files Likely Affected\n- `src/main.py`\n",
+            encoding="utf-8",
+        )
+        code_path = tmp_path / "code.md"
+        code_path.write_text(
+            "## Files Changed\n- `src/main.py`\n",
+            encoding="utf-8",
+        )
+        actual_changed = {"src/main.py", "src/extra.py", "artifacts/tasks/TASK-001.task.md"}
+        task_artifacts = {"artifacts/tasks/TASK-001.task.md"}
+        result = gsv.detect_git_backed_scope_drift(plan_path, code_path, actual_changed, task_artifacts)
+        assert result.waiver_candidate_errors
+        assert any("src/extra.py" in e for e in result.waiver_candidate_errors)
+        assert "src/extra.py" in result.drift_files
+
+    def test_all_declared_no_drift(self, tmp_path):
+        plan_path = tmp_path / "plan.md"
+        plan_path.write_text(
+            "## Files Likely Affected\n- `src/main.py`\n",
+            encoding="utf-8",
+        )
+        code_path = tmp_path / "code.md"
+        code_path.write_text(
+            "## Files Changed\n- `src/main.py`\n",
+            encoding="utf-8",
+        )
+        actual_changed = {"src/main.py", "artifacts/tasks/TASK-001.task.md"}
+        task_artifacts = {"artifacts/tasks/TASK-001.task.md"}
+        result = gsv.detect_git_backed_scope_drift(plan_path, code_path, actual_changed, task_artifacts)
+        assert not result.waiver_candidate_errors
+        assert not result.drift_files
+
+
+class TestGsvVerifyChecklistStructuredMissingField:
+    """Cover line 1134 — structured checklist item missing a field."""
+    def test_missing_evidence_field(self, tmp_path):
+        text = (
+            "## Acceptance Criteria Checklist\n\n"
+            "- **Criterion**: Feature works\n"
+            "- **Method**: Manual test\n"
+            "- **Reviewer**: Alice\n"
+            "- **Timestamp**: 2026-01-15T10:00:00+08:00\n"
+        )
+        path = tmp_path / "TASK-001.verify.md"
+        result = gsv.validate_verify_checklist_schema(text, path)
+        assert any("missing evidence field" in w or "missing result field" in w for w in result.warnings)
+
+    def test_all_fields_present_no_warning(self, tmp_path):
+        text = (
+            "## Acceptance Criteria Checklist\n\n"
+            "- **Criterion**: Feature works\n"
+            "- **Method**: Manual test\n"
+            "- **Evidence**: Screenshot attached\n"
+            "- **Result**: pass\n"
+            "- **Reviewer**: Alice\n"
+            "- **Timestamp**: 2026-01-15T10:00:00+08:00\n"
+        )
+        path = tmp_path / "TASK-001.verify.md"
+        result = gsv.validate_verify_checklist_schema(text, path)
+        # No missing-field warnings
+        missing_warnings = [w for w in result.warnings if "missing" in w and "field" in w]
+        assert not missing_warnings
+
+
+class TestGsvPremortemHighRiskWarning:
+    """Cover line 1261 — high-risk warning when min_critical=0 and no blocking risks."""
+    def test_hotfix_with_security_keyword_no_blocking(self, tmp_path):
+        # hotfix policy → min_critical=0, min_risks=1
+        task_path = tmp_path / "tasks" / "TASK-001.task.md"
+        task_path.parent.mkdir(parents=True)
+        task_path.write_text(
+            "# Task: hotfix fix security issue\n## Metadata\n- Task ID: TASK-001\n",
+            encoding="utf-8",
+        )
+        plan_path = tmp_path / "plans" / "TASK-001.plan.md"
+        plan_path.parent.mkdir(parents=True)
+        plan_text = (
+            "# Plan\n## Metadata\n- Task ID: TASK-001\n"
+            "## Risks\n"
+            "R1: Regression risk\n"
+            "- Risk: May break other features\n"
+            "- Trigger: When deployed\n"
+            "- Detection: Monitoring\n"
+            "- Mitigation: Rollback\n"
+            "- Severity: non-blocking\n"
+            "## Ready For Coding\nyes\n"
+        )
+        plan_path.write_text(plan_text, encoding="utf-8")
+        result = gsv.validate_premortem(plan_path, task_path)
+        assert any("high-risk signals" in w for w in result.warnings)
+
+
+class TestGsvReconcileStatusProtectedFieldSkip:
+    """Cover line 1339 — protected field in defaults is skipped during reconcile."""
+    def test_protected_field_not_overwritten(self, tmp_path):
+        _setup_valid_done_tree(tmp_path, "TASK-001")
+        sp = tmp_path / "status" / "TASK-001.status.json"
+        status = json.loads(sp.read_text(encoding="utf-8"))
+        # Set a protected field
+        status["Gate_E_passed"] = True
+        status["Gate_E_evidence"] = "commit abc123"
+        sp.write_text(json.dumps(status, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        # Now mock build_reconcile_defaults to include protected fields in defaults
+        fake_defaults = {
+            "Gate_E_passed": False,
+            "Gate_E_evidence": "overwritten",
+            "some_new_field": "value",
+        }
+        with unittest.mock.patch.object(gsv, "build_reconcile_defaults", return_value=(fake_defaults, [])):
+            result = gsv.reconcile_status(tmp_path, "TASK-001")
+        # Protected fields should NOT have been overwritten
+        updated = json.loads(sp.read_text(encoding="utf-8"))
+        assert updated["Gate_E_passed"] is True
+        assert updated["Gate_E_evidence"] == "commit abc123"
+        # Non-protected field should have been added
+        assert updated.get("some_new_field") == "value"
+
+
+class TestGsvValidateScopeDriftWaiverBranches:
+    """Cover lines 808, 811 — decision without Guard Exception / wrong exception type."""
+    def test_decision_without_guard_exception(self, tmp_path):
+        """Line 808: decision exists but has no Guard Exception section."""
+        decisions_dir = tmp_path / "decisions"
+        decisions_dir.mkdir()
+        decision = (
+            "# Decision\n## Metadata\n- Task ID: TASK-001\n"
+            "## Context\nSome context\n"
+            "## Decision\nSome decision\n"
+        )
+        (decisions_dir / "TASK-001.decision.md").write_text(decision, encoding="utf-8")
+        result = gsv.validate_scope_drift_waiver(tmp_path, "TASK-001", {"src/extra.py"})
+        assert result.errors
+        assert any("Guard Exception" in e for e in result.errors)
+
+    def test_decision_wrong_exception_type(self, tmp_path):
+        """Line 811: decision has Guard Exception but wrong type."""
+        decisions_dir = tmp_path / "decisions"
+        decisions_dir.mkdir()
+        decision = (
+            "# Decision\n## Metadata\n- Task ID: TASK-001\n"
+            "## Guard Exception\n"
+            "- Exception Type: some-other-type\n"
+            "- Scope Files: src/extra.py\n"
+            "- Justification: testing\n"
+        )
+        (decisions_dir / "TASK-001.decision.md").write_text(decision, encoding="utf-8")
+        result = gsv.validate_scope_drift_waiver(tmp_path, "TASK-001", {"src/extra.py"})
+        assert result.errors
+        assert any("Guard Exception" in e for e in result.errors)
+
+    def test_decision_correct_waiver(self, tmp_path):
+        """Happy path: correct allow-scope-drift waiver."""
+        decisions_dir = tmp_path / "decisions"
+        decisions_dir.mkdir()
+        decision = (
+            "# Decision\n## Metadata\n- Task ID: TASK-001\n"
+            "## Guard Exception\n"
+            "- Exception Type: allow-scope-drift\n"
+            "- Scope Files: src/extra.py\n"
+            "- Justification: Necessary for fix\n"
+        )
+        (decisions_dir / "TASK-001.decision.md").write_text(decision, encoding="utf-8")
+        result = gsv.validate_scope_drift_waiver(tmp_path, "TASK-001", {"src/extra.py"})
+        assert not result.errors
+        assert any("waiver applied" in w for w in result.warnings)
+
+
+class TestGsvValidateAllScopeDriftGitBacked:
+    """Cover lines 1413-1421 — validate_all calls detect_git_backed_scope_drift."""
+    @unittest.mock.patch.object(gsv, "load_git_scope_context")
+    def test_git_backed_drift_in_coding_state(self, mock_lgsc, tmp_path):
+        _setup_valid_done_tree(tmp_path, "TASK-001")
+        # Set state to coding (validate_all reads state from status.json)
+        sp = tmp_path / "status" / "TASK-001.status.json"
+        status = json.loads(sp.read_text(encoding="utf-8"))
+        status["state"] = "coding"
+        sp.write_text(json.dumps(status, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        # Mock git scope context: task artifacts overlap actual_changed
+        mock_lgsc.return_value = (
+            tmp_path,
+            {"src/main.py", "src/extra.py", "artifacts/tasks/TASK-001.task.md"},
+            {"artifacts/tasks/TASK-001.task.md"},
+            [],
+        )
+        result = gsv.validate_all(tmp_path, "TASK-001")
+        # non-strict → waiver_candidate_errors go to warnings
+        assert any("src/extra.py" in w for w in result.warnings)
+
+
+class TestGsvValidateAllHistoricalDrift:
+    """Cover lines 1425-1432 — validate_all falls through to detect_historical_diff_scope_drift."""
+    @unittest.mock.patch.object(gsv, "detect_historical_diff_scope_drift")
+    @unittest.mock.patch.object(gsv, "load_git_scope_context")
+    def test_historical_drift_in_done_state(self, mock_lgsc, mock_hdsd, tmp_path):
+        _setup_valid_done_tree(tmp_path, "TASK-001")
+        # done state (already set by _setup_valid_done_tree) → historical branch
+        mock_lgsc.return_value = (tmp_path, set(), set(), [])
+        mock_hdsd.return_value = gsv.ScopeCheckResult(
+            [], ["drift warning candidate"], ["some warning"], {"src/drifted.py"}
+        )
+        result = gsv.validate_all(tmp_path, "TASK-001")
+        # waiver_candidate_errors become warnings (non-strict)
+        assert any("drift warning candidate" in w for w in result.warnings)
+        assert any("some warning" in w for w in result.warnings)
+
+
+class TestGsvValidateAllScopeDriftWaiver:
+    """Cover lines 1443-1445 — scope drift waiver integration in validate_all."""
+    @unittest.mock.patch.object(gsv, "validate_scope_drift_waiver")
+    @unittest.mock.patch.object(gsv, "detect_historical_diff_scope_drift")
+    @unittest.mock.patch.object(gsv, "load_git_scope_context")
+    @unittest.mock.patch.object(gsv, "detect_plan_code_scope_drift")
+    def test_waiver_triggered_on_drift(self, mock_pcsd, mock_lgsc, mock_hdsd, mock_vsdw, tmp_path):
+        _setup_valid_done_tree(tmp_path, "TASK-001")
+        mock_pcsd.return_value = {"src/drifted.py"}
+        mock_lgsc.return_value = (tmp_path, set(), set(), [])
+        mock_hdsd.return_value = gsv.ScopeCheckResult([], [], [], set())
+        mock_vsdw.return_value = gsv.ValidationResult(
+            ["waiver not found for drift files"], ["waiver info"]
+        )
+        result = gsv.validate_all(tmp_path, "TASK-001", strict_scope=False)
+        # validate_scope_drift_waiver was called
+        mock_vsdw.assert_called_once()
+        assert any("waiver not found" in e for e in result.errors)
+
+
+# ── Phase 5b: Targeting remaining uncovered lines ───────────────────
+
+
+class TestGsvLoadArchiveInvalidPath:
+    """Cover line 422 — resolve_workspace_relative_path returns error for archive path."""
+    def test_archive_path_with_slash_prefix(self, tmp_path):
+        import hashlib
+        evidence = {"archive path": "/etc/shadow", "archive sha256": "a" * 64}
+        _files, _rel, err = gsv.load_archive_snapshot(tmp_path, Path("TASK-001.code.md"), evidence, set())
+        assert err is not None
+        assert "invalid Archive Path" in err
+
+    def test_archive_path_escape(self, tmp_path):
+        evidence = {"archive path": "../../secret", "archive sha256": "b" * 64}
+        _files, _rel, err = gsv.load_archive_snapshot(tmp_path, Path("TASK-001.code.md"), evidence, set())
+        assert err is not None
+        assert "invalid Archive Path" in err
+
+
+class TestGsvLoadArchiveEmptyFile:
+    """Cover line 441 — archive file has no lines."""
+    def test_empty_archive(self, tmp_path):
+        import hashlib
+        archive = tmp_path / "empty_archive.txt"
+        archive.write_bytes(b"")
+        sha = hashlib.sha256(b"").hexdigest()
+        evidence = {"archive path": "empty_archive.txt", "archive sha256": sha}
+        _files, _rel, err = gsv.load_archive_snapshot(tmp_path, Path("TASK-001.code.md"), evidence, set())
+        assert err is not None
+        assert "at least one" in err
+
+
+class TestGsvDetectGitBackedScopeDriftEmptyScope:
+    """Cover line 674 — actual_scope_changed is empty after filtering."""
+    def test_only_artifact_files_changed(self, tmp_path):
+        plan_path = tmp_path / "plan.md"
+        plan_path.write_text("## Files Likely Affected\n- `src/main.py`\n", encoding="utf-8")
+        code_path = tmp_path / "code.md"
+        code_path.write_text("## Files Changed\n- `src/main.py`\n", encoding="utf-8")
+        # Only artifacts/ paths changed (and not in declared/planned)
+        actual_changed = {"artifacts/other/file.md", "artifacts/tasks/TASK-001.task.md"}
+        task_artifacts = {"artifacts/tasks/TASK-001.task.md"}
+        result = gsv.detect_git_backed_scope_drift(plan_path, code_path, actual_changed, task_artifacts)
+        # artifacts/other/file.md starts with artifacts/ and is not in declared/planned → excluded
+        assert not result.waiver_candidate_errors
+        assert not result.drift_files
+
+
+class TestGsvVerifyChecklistNonMatchingFields:
+    """Cover line 1134 — structured block with no matching key fields."""
+    def test_block_with_only_evidence_result(self, tmp_path):
+        text = (
+            "## Acceptance Criteria Checklist\n\n"
+            "- **Evidence**: Screenshot\n"
+            "- **Result**: pass\n"
+        )
+        path = tmp_path / "TASK-001.verify.md"
+        result = gsv.validate_verify_checklist_schema(text, path)
+        # No warnings because the block doesn't have any of criterion/method/reviewer/timestamp
+        assert not result.warnings
+
+
+class TestGsvValidateAllStrictScopePlanCodeDrift:
+    """Cover line 1419 — strict_scope=True with plan-code drift."""
+    @unittest.mock.patch.object(gsv, "load_git_scope_context")
+    @unittest.mock.patch.object(gsv, "detect_plan_code_scope_drift")
+    def test_strict_scope_plan_code_drift(self, mock_pcsd, mock_lgsc, tmp_path):
+        _setup_valid_done_tree(tmp_path, "TASK-001")
+        sp = tmp_path / "status" / "TASK-001.status.json"
+        status = json.loads(sp.read_text(encoding="utf-8"))
+        status["state"] = "coding"
+        sp.write_text(json.dumps(status, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        mock_pcsd.return_value = {"src/drifted.py"}
+        mock_lgsc.return_value = (tmp_path, set(), set(), [])
+        result = gsv.validate_all(tmp_path, "TASK-001", strict_scope=True)
+        assert any("files changed not listed in" in e and "src/drifted.py" in e for e in result.errors)
+
+
+class TestGsvValidateAllStrictScopeGitBackedDrift:
+    """Cover line 1429 — strict_scope=True with git-backed drift."""
+    @unittest.mock.patch.object(gsv, "load_git_scope_context")
+    def test_strict_scope_git_backed_drift(self, mock_lgsc, tmp_path):
+        _setup_valid_done_tree(tmp_path, "TASK-001")
+        sp = tmp_path / "status" / "TASK-001.status.json"
+        status = json.loads(sp.read_text(encoding="utf-8"))
+        status["state"] = "coding"
+        sp.write_text(json.dumps(status, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        mock_lgsc.return_value = (
+            tmp_path,
+            {"src/main.py", "src/extra.py", "artifacts/tasks/TASK-001.task.md"},
+            {"artifacts/tasks/TASK-001.task.md"},
+            [],
+        )
+        result = gsv.validate_all(tmp_path, "TASK-001", strict_scope=True)
+        assert any("git-backed scope check" in e and "src/extra.py" in e for e in result.errors)
