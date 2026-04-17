@@ -4962,6 +4962,81 @@ class TestVcsCheckMemoryBankQuality:
         errors = vcs.check_memory_bank_quality(tmp_path)
         assert any("lines" in e for e in errors)
 
+    def test_code_fence_skips_headings(self, tmp_path):
+        """Cover L285-286,288: code fence at top level skips inner headings."""
+        mb = tmp_path / ".github" / "memory-bank"
+        mb.mkdir(parents=True)
+        # Code fence wrapping a heading — the heading inside shouldn't be
+        # treated as a real section (so no orphan warning for it)
+        content = (
+            "# Rules\n"
+            "## Task\n"
+            "content\n"
+            "```\n"
+            "## Fake Heading Inside Fence\n"
+            "```\n"
+            "## Plan\n"
+            "content\n"
+            "## Code\n"
+            "content\n"
+            "## Verify\n"
+            "content\n"
+        )
+        (mb / "artifact-rules.md").write_text(content, encoding="utf-8")
+        errors = vcs.check_memory_bank_quality(tmp_path)
+        # The "Fake Heading Inside Fence" should NOT produce an orphan warning
+        assert not any("Fake Heading" in e for e in errors)
+
+    def test_heading_with_code_fence_content(self, tmp_path):
+        """Cover L296,298-300: heading followed by code fence counts as content."""
+        mb = tmp_path / ".github" / "memory-bank"
+        mb.mkdir(parents=True)
+        content = (
+            "# Rules\n"
+            "## Task\n"
+            "```python\n"
+            "print('hello')\n"
+            "```\n"
+            "## Plan\n"
+            "content\n"
+            "## Code\n"
+            "content\n"
+            "## Verify\n"
+            "content\n"
+        )
+        (mb / "artifact-rules.md").write_text(content, encoding="utf-8")
+        errors = vcs.check_memory_bank_quality(tmp_path)
+        # ## Task has code fence as content — should NOT be orphan
+        assert not any("orphan" in e and "Task" in e for e in errors)
+
+
+class TestVcsUtf8Wrapping:
+    """Cover L19, L21: module-level stdout/stderr UTF-8 wrapping."""
+
+    def test_wraps_non_utf8_stdout(self):
+        import importlib, io as _io
+        orig_stdout = sys.stdout
+        try:
+            fake = _io.TextIOWrapper(_io.BytesIO(), encoding="ascii")
+            sys.stdout = fake
+            importlib.reload(vcs)
+            assert sys.stdout.encoding == "utf-8"
+        finally:
+            sys.stdout = orig_stdout
+            importlib.reload(vcs)
+
+    def test_wraps_non_utf8_stderr(self):
+        import importlib, io as _io
+        orig_stderr = sys.stderr
+        try:
+            fake = _io.TextIOWrapper(_io.BytesIO(), encoding="ascii")
+            sys.stderr = fake
+            importlib.reload(vcs)
+            assert sys.stderr.encoding == "utf-8"
+        finally:
+            sys.stderr = orig_stderr
+            importlib.reload(vcs)
+
 
 # ─────────────────────────────────────────────
 # prompt_regression_validator — deeper branches
