@@ -7885,3 +7885,298 @@ class TestGsvValidateAllStrictScopeGitBackedDrift:
         )
         result = gsv.validate_all(tmp_path, "TASK-001", strict_scope=True)
         assert any("git-backed scope check" in e and "src/extra.py" in e for e in result.errors)
+
+
+# ── Phase 6: commit-range / github-pr scope drift (lines 722-786) ──
+
+
+def _make_diff_evidence_code(tmp_path, evidence_type, snapshot_files, extra_fields=None):
+    """Helper: create a code artifact with ## Diff Evidence section."""
+    sha = gsv.compute_snapshot_sha256(snapshot_files) if snapshot_files else ""
+    lines = [
+        "## Diff Evidence",
+        f"- Evidence Type: {evidence_type}",
+        f"- Changed Files Snapshot: {', '.join(sorted(snapshot_files))}",
+        f"- Snapshot SHA256: {sha}",
+    ]
+    if extra_fields:
+        for k, v in extra_fields.items():
+            lines.append(f"- {k}: {v}")
+    code_path = tmp_path / "code.md"
+    code_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return code_path
+
+
+class TestGsvHistoricalDriftGithubPrBranch:
+    """Cover lines 722-733 — github-pr evidence branch."""
+
+    def test_missing_repository(self, tmp_path):
+        """L722-723: Missing repository field."""
+        code_path = _make_diff_evidence_code(
+            tmp_path, "github-pr", {"src/main.py"},
+            {"PR Number": "42"},
+        )
+        plan_path = tmp_path / "plan.md"
+        plan_path.write_text("## Files Likely Affected\n- `src/main.py`\n", encoding="utf-8")
+        result = gsv.detect_historical_diff_scope_drift(tmp_path, plan_path, code_path)
+        assert any("requires non-empty Repository" in e for e in result.errors)
+
+    def test_missing_pr_number(self, tmp_path):
+        """L722-723: Missing PR Number field."""
+        code_path = _make_diff_evidence_code(
+            tmp_path, "github-pr", {"src/main.py"},
+            {"Repository": "owner/repo"},
+        )
+        plan_path = tmp_path / "plan.md"
+        plan_path.write_text("## Files Likely Affected\n- `src/main.py`\n", encoding="utf-8")
+        result = gsv.detect_historical_diff_scope_drift(tmp_path, plan_path, code_path)
+        assert any("requires non-empty Repository" in e for e in result.errors)
+
+    @unittest.mock.patch.object(gsv, "collect_github_pr_files")
+    def test_provider_error(self, mock_collect, tmp_path):
+        """L724-727: Provider returns error."""
+        mock_collect.return_value = (set(), "HTTP 403 forbidden")
+        code_path = _make_diff_evidence_code(
+            tmp_path, "github-pr", {"src/main.py"},
+            {"Repository": "owner/repo", "PR Number": "42"},
+        )
+        plan_path = tmp_path / "plan.md"
+        plan_path.write_text("## Files Likely Affected\n- `src/main.py`\n", encoding="utf-8")
+        result = gsv.detect_historical_diff_scope_drift(tmp_path, plan_path, code_path)
+        assert any("evidence fetch failed" in e for e in result.errors)
+
+    @unittest.mock.patch.object(gsv, "collect_github_pr_files")
+    def test_provider_snapshot_mismatch(self, mock_collect, tmp_path):
+        """L729-732: Provider files != snapshot."""
+        mock_collect.return_value = ({"src/main.py", "src/other.py"}, None)
+        code_path = _make_diff_evidence_code(
+            tmp_path, "github-pr", {"src/main.py"},
+            {"Repository": "owner/repo", "PR Number": "42"},
+        )
+        plan_path = tmp_path / "plan.md"
+        plan_path.write_text("## Files Likely Affected\n- `src/main.py`\n", encoding="utf-8")
+        result = gsv.detect_historical_diff_scope_drift(tmp_path, plan_path, code_path)
+        assert any("does not match github-pr provider" in e for e in result.errors)
+
+    @unittest.mock.patch.object(gsv, "collect_github_pr_files")
+    def test_provider_match_happy_path(self, mock_collect, tmp_path):
+        """L733: Provider matches → compare_reconstructed_scope."""
+        mock_collect.return_value = ({"src/main.py"}, None)
+        code_path = _make_diff_evidence_code(
+            tmp_path, "github-pr", {"src/main.py"},
+            {"Repository": "owner/repo", "PR Number": "42"},
+        )
+        plan_path = tmp_path / "plan.md"
+        plan_path.write_text("## Files Likely Affected\n- `src/main.py`\n", encoding="utf-8")
+        result = gsv.detect_historical_diff_scope_drift(tmp_path, plan_path, code_path)
+        assert not result.errors
+
+
+_FAKE_BASE = "a" * 40
+_FAKE_HEAD = "b" * 40
+
+
+class TestGsvHistoricalDriftCommitRangeBranch:
+    """Cover lines 735-786 — commit-range evidence branch."""
+
+    def _make_commit_range_code(self, tmp_path, snapshot_files, base=_FAKE_BASE, head=_FAKE_HEAD,
+                                diff_cmd="git diff --name-only", base_ref="", head_ref="",
+                                archive_path="", archive_sha256=""):
+        extra = {
+            "Base Commit": base,
+            "Head Commit": head,
+            "Diff Command": diff_cmd,
+        }
+        if base_ref:
+            extra["Base Ref"] = base_ref
+        if head_ref:
+            extra["Head Ref"] = head_ref
+        if archive_path:
+            extra["Archive Path"] = archive_path
+        if archive_sha256:
+            extra["Archive SHA256"] = archive_sha256
+        return _make_diff_evidence_code(tmp_path, "commit-range", snapshot_files, extra)
+
+    def test_no_repo_root(self, tmp_path):
+        """L735-736: repo_root is None."""
+        code_path = self._make_commit_range_code(tmp_path, {"src/main.py"})
+        plan_path = tmp_path / "plan.md"
+        plan_path.write_text("## Files Likely Affected\n- `src/main.py`\n", encoding="utf-8")
+        result = gsv.detect_historical_diff_scope_drift(None, plan_path, code_path)
+        assert not result.errors  # silently returns empty
+
+    def test_missing_base_commit(self, tmp_path):
+        """L742-746: Missing base commit."""
+        code_path = self._make_commit_range_code(
+            tmp_path, {"src/main.py"}, base="", head=_FAKE_HEAD
+        )
+        plan_path = tmp_path / "plan.md"
+        plan_path.write_text("## Files Likely Affected\n- `src/main.py`\n", encoding="utf-8")
+        result = gsv.detect_historical_diff_scope_drift(tmp_path, plan_path, code_path)
+        assert any("requires non-empty Base Commit" in e for e in result.errors)
+
+    def test_missing_diff_command(self, tmp_path):
+        """L742-746: Missing diff command."""
+        code_path = self._make_commit_range_code(
+            tmp_path, {"src/main.py"}, diff_cmd=""
+        )
+        plan_path = tmp_path / "plan.md"
+        plan_path.write_text("## Files Likely Affected\n- `src/main.py`\n", encoding="utf-8")
+        result = gsv.detect_historical_diff_scope_drift(tmp_path, plan_path, code_path)
+        assert any("requires non-empty" in e for e in result.errors)
+
+    def test_invalid_sha_format(self, tmp_path):
+        """L747-749: Non-40-char hex SHA."""
+        code_path = self._make_commit_range_code(
+            tmp_path, {"src/main.py"}, base="short", head=_FAKE_HEAD
+        )
+        plan_path = tmp_path / "plan.md"
+        plan_path.write_text("## Files Likely Affected\n- `src/main.py`\n", encoding="utf-8")
+        result = gsv.detect_historical_diff_scope_drift(tmp_path, plan_path, code_path)
+        assert any("40-character git commit SHAs" in e for e in result.errors)
+
+    def test_archive_error(self, tmp_path):
+        """L750-753: load_archive_snapshot returns error."""
+        code_path = self._make_commit_range_code(
+            tmp_path, {"src/main.py"},
+            archive_path="missing.txt", archive_sha256="c" * 64,
+        )
+        plan_path = tmp_path / "plan.md"
+        plan_path.write_text("## Files Likely Affected\n- `src/main.py`\n", encoding="utf-8")
+        result = gsv.detect_historical_diff_scope_drift(tmp_path, plan_path, code_path)
+        assert any("does not exist" in e or "Archive" in e for e in result.errors)
+
+    @unittest.mock.patch.object(gsv, "resolve_git_revision_commit")
+    @unittest.mock.patch.object(gsv, "collect_git_diff_range_files")
+    def test_base_ref_error(self, mock_diff, mock_resolve, tmp_path):
+        """L755-757: Base ref resolution error."""
+        mock_resolve.return_value = (None, "unknown revision")
+        mock_diff.return_value = ({"src/main.py"}, None)
+        code_path = self._make_commit_range_code(
+            tmp_path, {"src/main.py"}, base_ref="main"
+        )
+        plan_path = tmp_path / "plan.md"
+        plan_path.write_text("## Files Likely Affected\n- `src/main.py`\n", encoding="utf-8")
+        result = gsv.detect_historical_diff_scope_drift(tmp_path, plan_path, code_path)
+        assert any("Base Ref" in w and "no longer resolves" in w for w in result.warnings)
+
+    @unittest.mock.patch.object(gsv, "resolve_git_revision_commit")
+    @unittest.mock.patch.object(gsv, "collect_git_diff_range_files")
+    def test_base_ref_mismatch(self, mock_diff, mock_resolve, tmp_path):
+        """L758-761: Base ref resolves to different commit."""
+        mock_resolve.return_value = ("c" * 40, None)
+        mock_diff.return_value = ({"src/main.py"}, None)
+        code_path = self._make_commit_range_code(
+            tmp_path, {"src/main.py"}, base_ref="main"
+        )
+        plan_path = tmp_path / "plan.md"
+        plan_path.write_text("## Files Likely Affected\n- `src/main.py`\n", encoding="utf-8")
+        result = gsv.detect_historical_diff_scope_drift(tmp_path, plan_path, code_path)
+        assert any("Base Ref" in w and "not pinned" in w for w in result.warnings)
+
+    @unittest.mock.patch.object(gsv, "resolve_git_revision_commit")
+    @unittest.mock.patch.object(gsv, "collect_git_diff_range_files")
+    def test_head_ref_error(self, mock_diff, mock_resolve, tmp_path):
+        """L764-765: Head ref resolution error."""
+        # First call (base_ref) → not called (no base_ref)
+        # For head_ref only:
+        mock_resolve.return_value = (None, "unknown revision")
+        mock_diff.return_value = ({"src/main.py"}, None)
+        code_path = self._make_commit_range_code(
+            tmp_path, {"src/main.py"}, head_ref="feature"
+        )
+        plan_path = tmp_path / "plan.md"
+        plan_path.write_text("## Files Likely Affected\n- `src/main.py`\n", encoding="utf-8")
+        result = gsv.detect_historical_diff_scope_drift(tmp_path, plan_path, code_path)
+        assert any("Head Ref" in w and "no longer resolves" in w for w in result.warnings)
+
+    @unittest.mock.patch.object(gsv, "resolve_git_revision_commit")
+    @unittest.mock.patch.object(gsv, "collect_git_diff_range_files")
+    def test_head_ref_mismatch(self, mock_diff, mock_resolve, tmp_path):
+        """L766-769: Head ref resolves to different commit."""
+        mock_resolve.return_value = ("d" * 40, None)
+        mock_diff.return_value = ({"src/main.py"}, None)
+        code_path = self._make_commit_range_code(
+            tmp_path, {"src/main.py"}, head_ref="feature"
+        )
+        plan_path = tmp_path / "plan.md"
+        plan_path.write_text("## Files Likely Affected\n- `src/main.py`\n", encoding="utf-8")
+        result = gsv.detect_historical_diff_scope_drift(tmp_path, plan_path, code_path)
+        assert any("Head Ref" in w and "not pinned" in w for w in result.warnings)
+
+    @unittest.mock.patch.object(gsv, "collect_git_diff_range_files")
+    def test_diff_error_no_archive(self, mock_diff, tmp_path):
+        """L773-775: Diff error without archive fallback."""
+        mock_diff.return_value = (set(), "fatal: bad revision")
+        code_path = self._make_commit_range_code(tmp_path, {"src/main.py"})
+        plan_path = tmp_path / "plan.md"
+        plan_path.write_text("## Files Likely Affected\n- `src/main.py`\n", encoding="utf-8")
+        result = gsv.detect_historical_diff_scope_drift(tmp_path, plan_path, code_path)
+        assert any("diff replay failed" in e for e in result.errors)
+
+    @unittest.mock.patch.object(gsv, "collect_git_diff_range_files")
+    def test_diff_error_with_archive_fallback(self, mock_diff, tmp_path):
+        """L776-780: Diff error with archive fallback."""
+        import hashlib
+        archive_content = "src/main.py\n"
+        archive = tmp_path / "archive.txt"
+        archive.write_bytes(archive_content.encode("utf-8"))
+        archive_sha = hashlib.sha256(archive_content.encode("utf-8")).hexdigest()
+        mock_diff.return_value = (set(), "fatal: bad revision")
+        code_path = self._make_commit_range_code(
+            tmp_path, {"src/main.py"},
+            archive_path="archive.txt", archive_sha256=archive_sha,
+        )
+        plan_path = tmp_path / "plan.md"
+        plan_path.write_text("## Files Likely Affected\n- `src/main.py`\n", encoding="utf-8")
+        result = gsv.detect_historical_diff_scope_drift(tmp_path, plan_path, code_path)
+        # Should use archive fallback, not error
+        assert not result.errors
+        assert any("archive fallback" in w for w in result.warnings)
+
+    @unittest.mock.patch.object(gsv, "collect_git_diff_range_files")
+    def test_diff_changed_mismatch(self, mock_diff, tmp_path):
+        """L781-786: Diff result doesn't match snapshot."""
+        mock_diff.return_value = ({"src/main.py", "src/other.py"}, None)
+        code_path = self._make_commit_range_code(tmp_path, {"src/main.py"})
+        plan_path = tmp_path / "plan.md"
+        plan_path.write_text("## Files Likely Affected\n- `src/main.py`\n", encoding="utf-8")
+        result = gsv.detect_historical_diff_scope_drift(tmp_path, plan_path, code_path)
+        assert any("does not match" in e and "replayed" in e for e in result.errors)
+
+    @unittest.mock.patch.object(gsv, "collect_git_diff_range_files")
+    def test_happy_path_no_drift(self, mock_diff, tmp_path):
+        """Happy path: diff matches snapshot, files planned → no drift."""
+        mock_diff.return_value = ({"src/main.py"}, None)
+        code_path = self._make_commit_range_code(tmp_path, {"src/main.py"})
+        # code artifact needs ## Files Changed too
+        with open(code_path, "a", encoding="utf-8") as f:
+            f.write("\n## Files Changed\n- `src/main.py`\n")
+        plan_path = tmp_path / "plan.md"
+        plan_path.write_text("## Files Likely Affected\n- `src/main.py`\n", encoding="utf-8")
+        result = gsv.detect_historical_diff_scope_drift(tmp_path, plan_path, code_path)
+        assert not result.errors
+
+    @unittest.mock.patch.object(gsv, "collect_git_diff_range_files")
+    def test_archive_fallback_mismatch(self, mock_diff, tmp_path):
+        """L782: archive fallback mismatch label in error."""
+        import hashlib
+        archive_content = "src/different.py\n"
+        archive = tmp_path / "archive.txt"
+        archive.write_bytes(archive_content.encode("utf-8"))
+        archive_sha = hashlib.sha256(archive_content.encode("utf-8")).hexdigest()
+        mock_diff.return_value = (set(), "fatal: bad revision")
+        # Snapshot has src/main.py but archive has src/different.py
+        # But wait — archive must match snapshot for load_archive_snapshot to succeed
+        # So this test is about diff_changed (from archive) != snapshot
+        # That can't happen if archive == snapshot (load_archive checks this)
+        # The mismatch happens when archive loads OK but diff replayed from archive
+        # still doesn't match. Actually the archive_files == snapshot_files check
+        # would prevent this case from ever hitting line 782 via archive fallback.
+        # Line 782 with archive fallback label can only be reached if archive_files
+        # IS the snapshot (passes load_archive) but somehow diff_changed is different.
+        # Since in the fallback path diff_changed = archive_files = snapshot_files,
+        # the check `diff_changed != snapshot_files` is always False → line 782 unreachable
+        # in the archive fallback path. But line 782 IS reachable in the normal diff path
+        # (scope_label = "commit-range scope check") via the test_diff_changed_mismatch above.
+        pass  # This specific sub-case is unreachable via archive fallback
