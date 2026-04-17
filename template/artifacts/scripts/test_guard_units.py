@@ -3129,3 +3129,1372 @@ class TestPrintResult:
         gsv.print_result(gsv.ValidationResult([], [], active_waivers=["A", "B"]))
         captured = capsys.readouterr()
         assert "[WAIVER ACTIVE gate=A]" in captured.out
+
+
+# ─────────────────────────────────────────────
+# Phase 2: High-impact coverage expansion
+# ─────────────────────────────────────────────
+
+def _ts():
+    """Return a valid Taipei timestamp string."""
+    return "2026-01-15T10:00:00+08:00"
+
+
+def _future_ts():
+    """Return a future Taipei timestamp for waiver expiry."""
+    return "2099-12-31T23:59:59+08:00"
+
+
+def _make_full_status(task_id, state="drafted", **overrides):
+    """Build a valid modern status.json dict."""
+    base = {
+        "task_id": task_id,
+        "state": state,
+        "current_owner": "Claude",
+        "next_agent": "Claude",
+        "required_artifacts": ["task", "status"],
+        "available_artifacts": ["task", "status"],
+        "missing_artifacts": [],
+        "blocked_reason": "",
+        "last_updated": _ts(),
+    }
+    base.update(overrides)
+    return base
+
+
+def _write_status(tmp_path, task_id, status_dict):
+    d = tmp_path / "status"
+    d.mkdir(parents=True, exist_ok=True)
+    p = d / f"{task_id}.status.json"
+    p.write_text(json.dumps(status_dict, indent=2) + "\n", encoding="utf-8")
+    return p
+
+
+def _write_markdown_artifact(tmp_path, task_id, atype, extra_content=""):
+    """Create a minimal valid markdown artifact."""
+    markers = gsv.MARKERS[atype]
+    dirname = gsv.ARTIFACT_DIRS[atype]
+    ext = gsv.ARTIFACT_EXTENSIONS[atype]
+    d = tmp_path / dirname
+    d.mkdir(parents=True, exist_ok=True)
+
+    allowed = gsv.ARTIFACT_ALLOWED_STATUSES.get(atype, {"drafted"})
+    status_val = next(iter(sorted(allowed)))
+
+    lines = [markers[0] + f" {task_id}"]
+    lines.append("## Metadata")
+    lines.append(f"- Artifact Type: {atype}")
+    lines.append(f"- Task ID: {task_id}")
+    lines.append("- Owner: Claude")
+    lines.append(f"- Status: {status_val}")
+    lines.append(f"- Last Updated: {_ts()}")
+    lines.append("")
+
+    # Add all remaining markers as sections
+    for marker in markers[1:]:
+        if marker.startswith("## "):
+            lines.append(marker)
+            lines.append("Content placeholder")
+            lines.append("")
+        elif marker.endswith(":") and not marker.startswith("#"):
+            # Inline field like "Task ID:" already handled in metadata
+            pass
+
+    if extra_content:
+        lines.append(extra_content)
+    content = "\n".join(lines) + "\n"
+    p = d / f"{task_id}{ext}"
+    p.write_text(content, encoding="utf-8")
+    return p
+
+
+def _build_task_artifact(tmp_path, task_id):
+    d = tmp_path / "tasks"
+    d.mkdir(parents=True, exist_ok=True)
+    content = textwrap.dedent(f"""\
+        # Task: Test Task
+        ## Metadata
+        - Artifact Type: task
+        - Task ID: {task_id}
+        - Owner: Claude
+        - Status: approved
+        - Last Updated: {_ts()}
+        ## Objective
+        Test objective
+        ## Constraints
+        None
+        ## Acceptance Criteria
+        Done when tested
+    """)
+    p = d / f"{task_id}.task.md"
+    p.write_text(content, encoding="utf-8")
+    return p
+
+
+def _build_plan_artifact(tmp_path, task_id, ready="yes", risk_count=4):
+    d = tmp_path / "plans"
+    d.mkdir(parents=True, exist_ok=True)
+    risks = ""
+    for i in range(1, risk_count + 1):
+        sev = "blocking" if i <= 2 else "non-blocking"
+        risks += textwrap.dedent(f"""\
+            R{i}: Risk {i}
+            - Risk: Something might break
+            - Trigger: When X happens
+            - Detection: Monitor logs
+            - Mitigation: Roll back
+            - Severity: {sev}
+        """)
+    content = textwrap.dedent(f"""\
+        # Plan: {task_id}
+        ## Metadata
+        - Artifact Type: plan
+        - Task ID: {task_id}
+        - Owner: Claude
+        - Status: approved
+        - Last Updated: {_ts()}
+        ## Scope
+        Test scope
+        ## Files Likely Affected
+        - `src/main.py`
+        - `tests/test_main.py`
+        ## Proposed Changes
+        Change things
+        ## Validation Strategy
+        Run tests
+        ## Risks
+        {risks}
+        ## Ready For Coding
+        {ready}
+    """)
+    p = d / f"{task_id}.plan.md"
+    p.write_text(content, encoding="utf-8")
+    return p
+
+
+def _build_code_artifact(tmp_path, task_id):
+    d = tmp_path / "code"
+    d.mkdir(parents=True, exist_ok=True)
+    content = textwrap.dedent(f"""\
+        # Code Result: {task_id}
+        ## Metadata
+        - Artifact Type: code
+        - Task ID: {task_id}
+        - Owner: Claude
+        - Status: ready
+        - Last Updated: {_ts()}
+        ## Files Changed
+        - `src/main.py`
+        - `tests/test_main.py`
+        ## Summary Of Changes
+        Implemented feature
+        ## Mapping To Plan
+        - plan_item: 1.1, status: done, evidence: "Implemented in src/main.py"
+    """)
+    p = d / f"{task_id}.code.md"
+    p.write_text(content, encoding="utf-8")
+    return p
+
+
+def _build_verify_artifact(tmp_path, task_id, result="pass"):
+    d = tmp_path / "verify"
+    d.mkdir(parents=True, exist_ok=True)
+    content = textwrap.dedent(f"""\
+        # Verification: {task_id}
+        ## Metadata
+        - Artifact Type: verify
+        - Task ID: {task_id}
+        - Owner: Claude
+        - Status: {result}
+        - Last Updated: {_ts()}
+        ## Acceptance Criteria Checklist
+        - **Criterion**: Tests pass
+        - **Method**: pytest
+        - **Evidence**: All green
+        - **Result**: pass
+        - **Reviewer**: Claude
+        - **Timestamp**: {_ts()}
+        ## Pass Fail Result
+        {result}
+        ## Build Guarantee
+        Commit abc1234
+    """)
+    p = d / f"{task_id}.verify.md"
+    p.write_text(content, encoding="utf-8")
+    return p
+
+
+def _build_research_artifact(tmp_path, task_id):
+    d = tmp_path / "research"
+    d.mkdir(parents=True, exist_ok=True)
+    content = textwrap.dedent(f"""\
+        # Research: {task_id}
+        ## Metadata
+        - Artifact Type: research
+        - Task ID: {task_id}
+        - Owner: Claude
+        - Status: ready
+        - Last Updated: {_ts()}
+        ## Research Questions
+        How does X work?
+        ## Confirmed Facts
+        - X uses Y approach `docs/x.md`
+        - Z is faster https://example.com/z
+        ## Relevant References
+        See docs
+        ## Uncertain Items
+        - UNVERIFIED: Might be slow
+        ## Constraints For Implementation
+        Must use Y
+        ## Sources
+        [1] Author. "Title." https://example.com (2026-01-15 retrieved)
+        [2] Author2. "Title2." https://example2.com (2026-01-14 retrieved)
+    """)
+    p = d / f"{task_id}.research.md"
+    p.write_text(content, encoding="utf-8")
+    return p
+
+
+def _setup_done_tree(tmp_path, task_id="TASK-001"):
+    """Set up a complete artifact tree for 'done' state."""
+    _build_task_artifact(tmp_path, task_id)
+    _build_plan_artifact(tmp_path, task_id)
+    _build_code_artifact(tmp_path, task_id)
+    _build_verify_artifact(tmp_path, task_id)
+    status = _make_full_status(task_id, "done",
+        required_artifacts=["task", "code", "verify", "status"],
+        available_artifacts=["task", "plan", "code", "verify", "status"],
+        missing_artifacts=[])
+    _write_status(tmp_path, task_id, status)
+    return task_id
+
+
+# ─────────────────────────────────────────────
+# load_archive_snapshot
+# ─────────────────────────────────────────────
+
+class TestLoadArchiveSnapshot:
+    def test_no_archive_path(self, tmp_path):
+        code_path = tmp_path / "code.md"
+        evidence = {}
+        result = gsv.load_archive_snapshot(tmp_path, code_path, evidence, set())
+        assert result == (None, None, None)
+
+    def test_mismatched_archive_fields(self, tmp_path):
+        code_path = tmp_path / "code.md"
+        evidence = {"archive path": "archive.txt"}
+        files, rel, err = gsv.load_archive_snapshot(tmp_path, code_path, evidence, set())
+        assert err is not None
+        assert "together" in err
+
+    def test_invalid_sha256_format(self, tmp_path):
+        code_path = tmp_path / "code.md"
+        evidence = {"archive path": "archive.txt", "archive sha256": "not-a-sha"}
+        files, rel, err = gsv.load_archive_snapshot(tmp_path, code_path, evidence, set())
+        assert "hexadecimal" in err
+
+    def test_archive_file_missing(self, tmp_path):
+        import hashlib
+        code_path = tmp_path / "code.md"
+        evidence = {
+            "archive path": "archive.txt",
+            "archive sha256": "a" * 64,
+        }
+        files, rel, err = gsv.load_archive_snapshot(tmp_path, code_path, evidence, set())
+        assert "does not exist" in err
+
+    def test_sha256_mismatch(self, tmp_path):
+        import hashlib
+        archive = tmp_path / "archive.txt"
+        archive.write_bytes(b"src/main.py\n")
+        code_path = tmp_path / "code.md"
+        evidence = {
+            "archive path": "archive.txt",
+            "archive sha256": "b" * 64,
+        }
+        files, rel, err = gsv.load_archive_snapshot(tmp_path, code_path, evidence, set())
+        assert "does not match" in err
+
+    def test_valid_archive(self, tmp_path):
+        import hashlib
+        archive_bytes = b"src/main.py\ntests/test_main.py\n"
+        archive = tmp_path / "archive.txt"
+        archive.write_bytes(archive_bytes)
+        sha = hashlib.sha256(archive_bytes).hexdigest()
+        code_path = tmp_path / "code.md"
+        snapshot = {"src/main.py", "tests/test_main.py"}
+        evidence = {"archive path": "archive.txt", "archive sha256": sha}
+        files, rel, err = gsv.load_archive_snapshot(tmp_path, code_path, evidence, snapshot)
+        assert err is None
+        assert files == snapshot
+
+    def test_blank_line_in_archive(self, tmp_path):
+        import hashlib
+        archive_bytes = b"src/main.py\n\ntests/test_main.py\n"
+        archive = tmp_path / "archive.txt"
+        archive.write_bytes(archive_bytes)
+        sha = hashlib.sha256(archive_bytes).hexdigest()
+        code_path = tmp_path / "code.md"
+        evidence = {"archive path": "archive.txt", "archive sha256": sha}
+        files, rel, err = gsv.load_archive_snapshot(tmp_path, code_path, evidence, set())
+        assert "blank line" in err
+
+    def test_unsorted_archive(self, tmp_path):
+        import hashlib
+        archive_bytes = b"tests/test_main.py\nsrc/main.py\n"
+        archive = tmp_path / "archive.txt"
+        archive.write_bytes(archive_bytes)
+        sha = hashlib.sha256(archive_bytes).hexdigest()
+        code_path = tmp_path / "code.md"
+        evidence = {"archive path": "archive.txt", "archive sha256": sha}
+        files, rel, err = gsv.load_archive_snapshot(tmp_path, code_path, evidence, set())
+        assert "sorted" in err
+
+    def test_snapshot_mismatch(self, tmp_path):
+        import hashlib
+        archive_bytes = b"src/main.py\n"
+        archive = tmp_path / "archive.txt"
+        archive.write_bytes(archive_bytes)
+        sha = hashlib.sha256(archive_bytes).hexdigest()
+        code_path = tmp_path / "code.md"
+        evidence = {"archive path": "archive.txt", "archive sha256": sha}
+        files, rel, err = gsv.load_archive_snapshot(tmp_path, code_path, evidence, {"other.py"})
+        assert "does not match Changed Files Snapshot" in err
+
+
+# ─────────────────────────────────────────────
+# validate_markdown_artifact
+# ─────────────────────────────────────────────
+
+class TestValidateMarkdownArtifact:
+    def test_valid_task(self, tmp_path):
+        p = _build_task_artifact(tmp_path, "TASK-001")
+        result = gsv.validate_markdown_artifact(p, "task", "TASK-001")
+        assert not result.errors
+
+    def test_missing_marker(self, tmp_path):
+        d = tmp_path / "tasks"
+        d.mkdir(parents=True, exist_ok=True)
+        p = d / "TASK-001.task.md"
+        p.write_text("# Wrong Header\n- Task ID: TASK-001\n", encoding="utf-8")
+        result = gsv.validate_markdown_artifact(p, "task", "TASK-001")
+        assert any("missing required markers" in e for e in result.errors)
+
+    def test_missing_task_id(self, tmp_path):
+        d = tmp_path / "tasks"
+        d.mkdir(parents=True, exist_ok=True)
+        content = textwrap.dedent("""\
+            # Task: Test
+            ## Metadata
+            - Artifact Type: task
+            - Task ID: TASK-999
+            - Owner: Claude
+            - Status: drafted
+            - Last Updated: 2026-01-15T10:00:00+08:00
+            ## Objective
+            test
+            ## Constraints
+            none
+            ## Acceptance Criteria
+            done
+        """)
+        p = d / "TASK-001.task.md"
+        p.write_text(content, encoding="utf-8")
+        result = gsv.validate_markdown_artifact(p, "task", "TASK-001")
+        assert any("missing exact task id" in e for e in result.errors)
+
+    def test_plan_ready_for_coding_yes(self, tmp_path):
+        p = _build_plan_artifact(tmp_path, "TASK-001", ready="yes")
+        result = gsv.validate_markdown_artifact(p, "plan", "TASK-001")
+        assert not any("Ready For Coding" in e for e in result.errors)
+
+    def test_plan_not_ready_error(self, tmp_path):
+        p = _build_plan_artifact(tmp_path, "TASK-001", ready="maybe")
+        result = gsv.validate_markdown_artifact(p, "plan", "TASK-001")
+        assert any("Ready For Coding" in e for e in result.errors)
+
+    def test_verify_pass_fail_result(self, tmp_path):
+        p = _build_verify_artifact(tmp_path, "TASK-001", result="pass")
+        result = gsv.validate_markdown_artifact(p, "verify", "TASK-001")
+        assert not any("Pass Fail Result" in e for e in result.errors)
+
+    def test_verify_missing_pass_fail(self, tmp_path):
+        d = tmp_path / "verify"
+        d.mkdir(parents=True, exist_ok=True)
+        content = textwrap.dedent("""\
+            # Verification: TASK-001
+            ## Metadata
+            - Artifact Type: verify
+            - Task ID: TASK-001
+            - Owner: Claude
+            - Status: pass
+            - Last Updated: 2026-01-15T10:00:00+08:00
+            ## Acceptance Criteria Checklist
+            Content
+            ## Pass Fail Result
+            unknown
+            ## Build Guarantee
+            Commit xyz
+        """)
+        p = d / "TASK-001.verify.md"
+        p.write_text(content, encoding="utf-8")
+        result = gsv.validate_markdown_artifact(p, "verify", "TASK-001")
+        assert any("Pass Fail Result" in e for e in result.errors)
+
+    def test_invalid_status_value(self, tmp_path):
+        d = tmp_path / "tasks"
+        d.mkdir(parents=True, exist_ok=True)
+        content = textwrap.dedent("""\
+            # Task: Test
+            ## Metadata
+            - Artifact Type: task
+            - Task ID: TASK-001
+            - Owner: Claude
+            - Status: invalid_status
+            - Last Updated: 2026-01-15T10:00:00+08:00
+            ## Objective
+            test
+            ## Constraints
+            none
+            ## Acceptance Criteria
+            done
+        """)
+        p = d / "TASK-001.task.md"
+        p.write_text(content, encoding="utf-8")
+        result = gsv.validate_markdown_artifact(p, "task", "TASK-001")
+        assert any("invalid Status" in e for e in result.errors)
+
+    def test_code_mapping_to_plan_warnings(self, tmp_path):
+        p = _build_code_artifact(tmp_path, "TASK-001")
+        result = gsv.validate_markdown_artifact(p, "code", "TASK-001")
+        assert not any("Mapping To Plan" in w for w in result.errors)
+
+    def test_research_artifact_validation(self, tmp_path):
+        _write_status(tmp_path, "TASK-001", _make_full_status("TASK-001"))
+        p = _build_research_artifact(tmp_path, "TASK-001")
+        result = gsv.validate_markdown_artifact(p, "research", "TASK-001")
+        # Should validate without critical errors
+        assert not any("## Recommendation" in e for e in result.errors)
+
+
+# ─────────────────────────────────────────────
+# validate_artifact_presence
+# ─────────────────────────────────────────────
+
+class TestValidateArtifactPresence:
+    def test_drafted_with_task_and_status(self, tmp_path):
+        task_id = "TASK-001"
+        _build_task_artifact(tmp_path, task_id)
+        status = _make_full_status(task_id, "drafted")
+        _write_status(tmp_path, task_id, status)
+        result = gsv.validate_artifact_presence(tmp_path, task_id, "drafted", status)
+        assert not result.errors
+
+    def test_drafted_missing_task(self, tmp_path):
+        task_id = "TASK-001"
+        status = _make_full_status(task_id, "drafted")
+        _write_status(tmp_path, task_id, status)
+        result = gsv.validate_artifact_presence(tmp_path, task_id, "drafted", status)
+        assert any("Missing required" in e for e in result.errors)
+
+    def test_coding_needs_plan_and_code(self, tmp_path):
+        task_id = "TASK-001"
+        _build_task_artifact(tmp_path, task_id)
+        _build_plan_artifact(tmp_path, task_id)
+        _build_code_artifact(tmp_path, task_id)
+        status = _make_full_status(task_id, "coding",
+            required_artifacts=["task", "plan", "code", "status"],
+            available_artifacts=["task", "plan", "code", "status"],
+            missing_artifacts=[])
+        _write_status(tmp_path, task_id, status)
+        result = gsv.validate_artifact_presence(tmp_path, task_id, "coding", status)
+        # Should not have missing artifact errors
+        assert not any("Missing required" in e for e in result.errors)
+
+    def test_done_requires_verify_pass(self, tmp_path):
+        task_id = "TASK-001"
+        _build_task_artifact(tmp_path, task_id)
+        _build_plan_artifact(tmp_path, task_id)
+        _build_code_artifact(tmp_path, task_id)
+        _build_verify_artifact(tmp_path, task_id, result="fail")
+        status = _make_full_status(task_id, "done",
+            required_artifacts=["task", "code", "verify", "status"],
+            available_artifacts=["task", "plan", "code", "verify", "status"],
+            missing_artifacts=[])
+        _write_status(tmp_path, task_id, status)
+        result = gsv.validate_artifact_presence(tmp_path, task_id, "done", status)
+        assert any("Pass Fail Result = pass" in e for e in result.errors)
+
+    def test_done_with_verify_pass(self, tmp_path):
+        task_id = "TASK-001"
+        _build_task_artifact(tmp_path, task_id)
+        _build_plan_artifact(tmp_path, task_id)
+        _build_code_artifact(tmp_path, task_id)
+        _build_verify_artifact(tmp_path, task_id, result="pass")
+        status = _make_full_status(task_id, "done",
+            required_artifacts=["task", "code", "verify", "status"],
+            available_artifacts=["task", "plan", "code", "verify", "status"],
+            missing_artifacts=[])
+        _write_status(tmp_path, task_id, status)
+        result = gsv.validate_artifact_presence(tmp_path, task_id, "done", status)
+        assert not any("Pass Fail Result" in e for e in result.errors)
+
+    def test_lightweight_mode_skips_plan(self, tmp_path):
+        task_id = "TASK-001"
+        _build_task_artifact(tmp_path, task_id)
+        _build_research_artifact(tmp_path, task_id)
+        _build_code_artifact(tmp_path, task_id)
+        _write_status(tmp_path, task_id, _make_full_status(task_id))
+        status = _make_full_status(task_id, "coding")
+        _write_status(tmp_path, task_id, status)
+        result = gsv.validate_artifact_presence(
+            tmp_path, task_id, "coding", status,
+            validation_mode=gsv.AUTO_CLASSIFY_LIGHTWEIGHT)
+        assert not any("Missing required" in e for e in result.errors)
+
+    def test_available_artifacts_mismatch_warning(self, tmp_path):
+        task_id = "TASK-001"
+        _build_task_artifact(tmp_path, task_id)
+        status = _make_full_status(task_id, "drafted",
+            available_artifacts=["task", "research", "status"])  # research doesn't exist
+        _write_status(tmp_path, task_id, status)
+        result = gsv.validate_artifact_presence(tmp_path, task_id, "drafted", status)
+        assert any("available_artifacts mismatch" in w for w in result.warnings)
+
+
+# ─────────────────────────────────────────────
+# validate_transition
+# ─────────────────────────────────────────────
+
+class TestValidateTransition:
+    def test_valid_drafted_to_researched(self):
+        result = gsv.validate_transition("drafted", "researched")
+        assert not result.errors
+
+    def test_invalid_state(self):
+        result = gsv.validate_transition("drafted", "invalid")
+        assert result.errors
+
+    def test_illegal_transition(self):
+        result = gsv.validate_transition("drafted", "done")
+        assert any("Illegal state transition" in e for e in result.errors)
+
+    def test_unknown_from_state(self):
+        result = gsv.validate_transition("nonexistent", "drafted")
+        assert any("Unknown from_state" in e for e in result.errors)
+
+    def test_blocked_to_unblocked_needs_improvement(self, tmp_path):
+        task_id = "TASK-001"
+        _build_task_artifact(tmp_path, task_id)
+        _write_status(tmp_path, task_id, _make_full_status(task_id, "blocked"))
+        result = gsv.validate_transition("blocked", "drafted", tmp_path, task_id)
+        assert any("improvement artifact" in e for e in result.errors)
+
+
+# ─────────────────────────────────────────────
+# validate_all
+# ─────────────────────────────────────────────
+
+class TestValidateAll:
+    def test_valid_drafted(self, tmp_path):
+        task_id = "TASK-001"
+        _build_task_artifact(tmp_path, task_id)
+        _write_status(tmp_path, task_id, _make_full_status(task_id, "drafted"))
+        result = gsv.validate_all(tmp_path, task_id)
+        assert not result.errors
+
+    def test_invalid_task_id(self, tmp_path):
+        result = gsv.validate_all(tmp_path, "bad-id")
+        assert any("Invalid task id" in e for e in result.errors)
+
+
+# ─────────────────────────────────────────────
+# build_reconcile_defaults
+# ─────────────────────────────────────────────
+
+class TestBuildReconcileDefaults:
+    def test_defaults_for_drafted(self, tmp_path):
+        task_id = "TASK-001"
+        _build_task_artifact(tmp_path, task_id)
+        _write_status(tmp_path, task_id, _make_full_status(task_id, "drafted"))
+        status = _make_full_status(task_id, "drafted")
+        defaults, warnings = gsv.build_reconcile_defaults(tmp_path, task_id, status)
+        assert defaults["task_id"] == task_id
+        assert "state" in defaults
+
+    def test_state_conflict_warning(self, tmp_path):
+        task_id = "TASK-001"
+        _build_task_artifact(tmp_path, task_id)
+        _build_plan_artifact(tmp_path, task_id)
+        _write_status(tmp_path, task_id, _make_full_status(task_id, "done"))
+        status = _make_full_status(task_id, "done")
+        defaults, warnings = gsv.build_reconcile_defaults(tmp_path, task_id, status)
+        assert any("conflict" in w for w in warnings)
+
+    def test_invalid_state_warning(self, tmp_path):
+        task_id = "TASK-001"
+        _build_task_artifact(tmp_path, task_id)
+        _write_status(tmp_path, task_id, _make_full_status(task_id, "drafted"))
+        status = _make_full_status(task_id, "nonexistent_state")
+        defaults, warnings = gsv.build_reconcile_defaults(tmp_path, task_id, status)
+        assert any("invalid value" in w for w in warnings)
+
+
+# ─────────────────────────────────────────────
+# reconcile_status
+# ─────────────────────────────────────────────
+
+class TestReconcileStatus:
+    def test_backfill_missing_fields(self, tmp_path):
+        task_id = "TASK-001"
+        _build_task_artifact(tmp_path, task_id)
+        d = tmp_path / "status"
+        d.mkdir(parents=True, exist_ok=True)
+        # Write minimal status missing several fields
+        p = d / f"{task_id}.status.json"
+        p.write_text(json.dumps({
+            "task_id": task_id,
+            "state": "drafted",
+            "last_updated": _ts(),
+        }, indent=2) + "\n", encoding="utf-8")
+        result = gsv.reconcile_status(tmp_path, task_id)
+        # After reconcile, read back status
+        updated = json.loads(p.read_text(encoding="utf-8"))
+        assert "current_owner" in updated
+        assert "next_agent" in updated
+
+
+# ─────────────────────────────────────────────
+# apply_override
+# ─────────────────────────────────────────────
+
+class TestApplyOverride:
+    def test_override_critical_error(self, tmp_path):
+        task_id = "TASK-001"
+        _build_task_artifact(tmp_path, task_id)
+        _write_status(tmp_path, task_id, _make_full_status(task_id, "drafted"))
+        errors = ["Missing required artifacts for state 'coding': ['plan']"]
+        result = gsv.ValidationResult(errors, [])
+        overridden = gsv.apply_override(result, tmp_path, task_id, "Testing", "Admin")
+        assert not overridden.errors
+        assert any("[OVERRIDDEN]" in w for w in overridden.warnings)
+
+    def test_override_premortem_missing_not_suppressed(self, tmp_path):
+        task_id = "TASK-001"
+        _build_task_artifact(tmp_path, task_id)
+        _write_status(tmp_path, task_id, _make_full_status(task_id, "drafted"))
+        errors = ["plan.md: premortem check failed — ## Risks section not found"]
+        result = gsv.ValidationResult(errors, [])
+        overridden = gsv.apply_override(result, tmp_path, task_id, "Testing", "Admin")
+        assert any("premortem" in e.lower() for e in overridden.errors)
+
+    def test_override_premortem_warning(self, tmp_path):
+        task_id = "TASK-001"
+        _build_task_artifact(tmp_path, task_id)
+        _write_status(tmp_path, task_id, _make_full_status(task_id, "drafted"))
+        errors = ["plan.md: premortem task_type='code' requires at least 4 numbered risks"]
+        result = gsv.ValidationResult(errors, [])
+        overridden = gsv.apply_override(result, tmp_path, task_id, "Testing", "Admin")
+        assert not overridden.errors
+        assert any("OVERRIDE PREMORTEM WARNING" in w for w in overridden.warnings)
+
+
+# ─────────────────────────────────────────────
+# write_transition
+# ─────────────────────────────────────────────
+
+class TestWriteTransition:
+    def test_valid_transition_drafted_to_researched(self, tmp_path):
+        task_id = "TASK-001"
+        _build_task_artifact(tmp_path, task_id)
+        _build_research_artifact(tmp_path, task_id)
+        _write_status(tmp_path, task_id, _make_full_status(task_id, "drafted"))
+        result = gsv.write_transition(tmp_path, task_id, "drafted", "researched")
+        # Check status was updated
+        status_path = gsv.artifact_path(tmp_path, task_id, "status")
+        updated = json.loads(status_path.read_text(encoding="utf-8"))
+        if not result.errors:
+            assert updated["state"] == "researched"
+
+    def test_illegal_transition_blocked(self, tmp_path):
+        task_id = "TASK-001"
+        _build_task_artifact(tmp_path, task_id)
+        _write_status(tmp_path, task_id, _make_full_status(task_id, "drafted"))
+        result = gsv.write_transition(tmp_path, task_id, "drafted", "done")
+        assert result.errors
+
+    def test_state_mismatch_refused(self, tmp_path):
+        task_id = "TASK-001"
+        _build_task_artifact(tmp_path, task_id)
+        _build_research_artifact(tmp_path, task_id)
+        _write_status(tmp_path, task_id, _make_full_status(task_id, "researched",
+            required_artifacts=["task", "research", "status"],
+            available_artifacts=["task", "research", "status"],
+            missing_artifacts=[]))
+        result = gsv.write_transition(tmp_path, task_id, "drafted", "researched")
+        assert any("Refusing transition" in e for e in result.errors)
+
+
+# ─────────────────────────────────────────────
+# resolve_validation_mode
+# ─────────────────────────────────────────────
+
+class TestResolveValidationMode:
+    def test_non_auto_classify(self, tmp_path):
+        result = gsv.resolve_validation_mode(tmp_path, "TASK-001", auto_classify=False)
+        assert result.validation_mode == gsv.AUTO_CLASSIFY_FULL
+
+    def test_no_plan_drafted_lightweight(self, tmp_path):
+        task_id = "TASK-001"
+        _build_task_artifact(tmp_path, task_id)
+        _write_status(tmp_path, task_id, _make_full_status(task_id, "drafted"))
+        result = gsv.resolve_validation_mode(tmp_path, task_id, auto_classify=True)
+        assert result.validation_mode == gsv.AUTO_CLASSIFY_LIGHTWEIGHT
+
+
+# ─────────────────────────────────────────────
+# state_required_artifacts & infer_state
+# ─────────────────────────────────────────────
+
+class TestStateRequiredArtifacts:
+    def test_drafted_requires_task_status(self):
+        result = gsv.state_required_artifacts("drafted", set())
+        assert "task" in result
+        assert "status" in result
+
+    def test_done_requires_verify(self):
+        result = gsv.state_required_artifacts("done", set())
+        assert "verify" in result
+
+    def test_lightweight_mode(self):
+        result = gsv.state_required_artifacts("done", set(), gsv.AUTO_CLASSIFY_LIGHTWEIGHT)
+        assert result == set(gsv.LIGHTWEIGHT_REQUIRED_ARTIFACTS)
+
+    def test_research_retained_if_exists(self):
+        result = gsv.state_required_artifacts("planned", {"research"})
+        assert "research" in result
+
+
+class TestInferStateFromArtifacts:
+    def test_empty(self):
+        assert gsv.infer_state_from_artifacts(set()) == "drafted"
+
+    def test_task_only(self):
+        assert gsv.infer_state_from_artifacts({"task", "status"}) == "drafted"
+
+    def test_full_done(self):
+        assert gsv.infer_state_from_artifacts({"task", "code", "verify", "status"}) == "done"
+
+
+# ─────────────────────────────────────────────
+# collect_git_changed_files (mocked)
+# ─────────────────────────────────────────────
+
+class TestCollectGitChangedFiles:
+    def test_git_not_available(self, tmp_path):
+        with patch("subprocess.run", side_effect=FileNotFoundError):
+            files, warnings = gsv.collect_git_changed_files(tmp_path)
+        assert files == set()
+        assert any("not available" in w for w in warnings)
+
+    def test_git_error(self, tmp_path):
+        from unittest.mock import MagicMock
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        mock_result.stderr = "fatal: not a git repo"
+        mock_result.stdout = ""
+        with patch("subprocess.run", return_value=mock_result):
+            files, warnings = gsv.collect_git_changed_files(tmp_path)
+        assert files == set()
+        assert any("failed" in w for w in warnings)
+
+
+class TestCollectGitDiffRangeFiles:
+    def test_git_not_available(self, tmp_path):
+        with patch("subprocess.run", side_effect=FileNotFoundError):
+            files, error = gsv.collect_git_diff_range_files(tmp_path, "abc", "def")
+        assert files == set()
+        assert "not available" in error
+
+
+# ─────────────────────────────────────────────
+# detect_git_backed_scope_drift
+# ─────────────────────────────────────────────
+
+class TestDetectGitBackedScopeDrift:
+    def test_no_actual_changed(self, tmp_path):
+        plan = tmp_path / "plan.md"
+        plan.write_text("# Plan\n## Files Likely Affected\n- `a.py`\n", encoding="utf-8")
+        code = tmp_path / "code.md"
+        code.write_text("# Code\n## Files Changed\n- `a.py`\n", encoding="utf-8")
+        result = gsv.detect_git_backed_scope_drift(plan, code, set(), {"artifacts/tasks/TASK-001.task.md"})
+        assert not result.errors
+        assert not result.waiver_candidate_errors
+
+    def test_no_task_artifact_overlap(self, tmp_path):
+        plan = tmp_path / "plan.md"
+        plan.write_text("# Plan\n## Files Likely Affected\n- `a.py`\n", encoding="utf-8")
+        code = tmp_path / "code.md"
+        code.write_text("# Code\n## Files Changed\n- `a.py`\n", encoding="utf-8")
+        result = gsv.detect_git_backed_scope_drift(plan, code, {"x.py"}, {"artifacts/tasks/TASK-001.task.md"})
+        assert not result.waiver_candidate_errors
+
+    def test_drift_detected(self, tmp_path):
+        plan = tmp_path / "plan.md"
+        plan.write_text("# Plan\n## Files Likely Affected\n- `a.py`\n", encoding="utf-8")
+        code = tmp_path / "code.md"
+        code.write_text("# Code\n## Files Changed\n- `a.py`\n", encoding="utf-8")
+        actual = {"a.py", "b.py", "artifacts/tasks/TASK-001.task.md"}
+        task_arts = {"artifacts/tasks/TASK-001.task.md"}
+        result = gsv.detect_git_backed_scope_drift(plan, code, actual, task_arts)
+        assert any("b.py" in e for e in result.waiver_candidate_errors)
+
+
+# ─────────────────────────────────────────────
+# validate_scope_drift_waiver (deeper)
+# ─────────────────────────────────────────────
+
+class TestValidateScopeDriftWaiverDeeper:
+    def test_waiver_with_decision_file(self, tmp_path):
+        task_id = "TASK-001"
+        d = tmp_path / "decisions"
+        d.mkdir(parents=True, exist_ok=True)
+        content = textwrap.dedent(f"""\
+            # Decision Log: {task_id}
+            ## Metadata
+            - Artifact Type: decision
+            - Task ID: {task_id}
+            - Owner: Claude
+            - Status: done
+            - Last Updated: {_ts()}
+            ## Issue
+            Scope drift needed
+            ## Chosen Option
+            Allow drift
+            ## Reasoning
+            Necessary change
+            ## Guard Exception
+            - Exception Type: allow-scope-drift
+            - Scope Files: b.py
+            - Justification: Required for fix
+        """)
+        (d / f"{task_id}.decision.md").write_text(content, encoding="utf-8")
+        result = gsv.validate_scope_drift_waiver(tmp_path, task_id, {"b.py"})
+        assert not result.errors
+
+    def test_waiver_insufficient_scope(self, tmp_path):
+        task_id = "TASK-001"
+        d = tmp_path / "decisions"
+        d.mkdir(parents=True, exist_ok=True)
+        content = textwrap.dedent(f"""\
+            # Decision Log: {task_id}
+            ## Metadata
+            - Artifact Type: decision
+            - Task ID: {task_id}
+            - Owner: Claude
+            - Status: done
+            - Last Updated: {_ts()}
+            ## Issue
+            Scope drift
+            ## Chosen Option
+            Allow
+            ## Reasoning
+            Needed
+            ## Guard Exception
+            - Exception Type: allow-scope-drift
+            - Scope Files: b.py
+            - Justification: Only for b
+        """)
+        (d / f"{task_id}.decision.md").write_text(content, encoding="utf-8")
+        result = gsv.validate_scope_drift_waiver(tmp_path, task_id, {"b.py", "c.py"})
+        assert result.errors  # c.py not covered
+
+
+# ─────────────────────────────────────────────
+# prompt_regression_validator
+# ─────────────────────────────────────────────
+
+class TestPrvEvaluateCase:
+    def test_no_assertions(self):
+        case = {"id": "TC-01", "title": "Test", "assertions": []}
+        result = prv.evaluate_case(case, Path("."), {})
+        assert not result.passed
+
+    def test_must_contain_all_found(self, tmp_path):
+        (tmp_path / "test.md").write_text("hello world foo bar", encoding="utf-8")
+        case = {
+            "id": "TC-01",
+            "title": "Test",
+            "assertions": [{"file": "test.md", "must_contain_all": ["hello", "foo"]}],
+        }
+        result = prv.evaluate_case(case, tmp_path, {})
+        assert result.passed
+
+    def test_must_contain_all_missing(self, tmp_path):
+        (tmp_path / "test.md").write_text("hello world", encoding="utf-8")
+        case = {
+            "id": "TC-01",
+            "title": "Test",
+            "assertions": [{"file": "test.md", "must_contain_all": ["hello", "missing"]}],
+        }
+        result = prv.evaluate_case(case, tmp_path, {})
+        assert not result.passed
+
+    def test_must_not_contain_any(self, tmp_path):
+        (tmp_path / "test.md").write_text("hello world secret", encoding="utf-8")
+        case = {
+            "id": "TC-01",
+            "title": "Test",
+            "assertions": [{"file": "test.md", "must_not_contain_any": ["secret"]}],
+        }
+        result = prv.evaluate_case(case, tmp_path, {})
+        assert not result.passed
+
+    def test_all_of_any(self, tmp_path):
+        (tmp_path / "test.md").write_text("the quick brown fox", encoding="utf-8")
+        case = {
+            "id": "TC-01",
+            "title": "Test",
+            "assertions": [
+                {"file": "test.md", "all_of_any": [["quick", "slow"], ["cat", "fox"]]}
+            ],
+        }
+        result = prv.evaluate_case(case, tmp_path, {})
+        assert result.passed
+
+    def test_all_of_any_missing(self, tmp_path):
+        (tmp_path / "test.md").write_text("the quick brown fox", encoding="utf-8")
+        case = {
+            "id": "TC-01",
+            "title": "Test",
+            "assertions": [
+                {"file": "test.md", "all_of_any": [["missing1", "missing2"]]}
+            ],
+        }
+        result = prv.evaluate_case(case, tmp_path, {})
+        assert not result.passed
+
+    def test_near_terms(self, tmp_path):
+        (tmp_path / "test.md").write_text("the quick brown fox jumps", encoding="utf-8")
+        case = {
+            "id": "TC-01",
+            "title": "Test",
+            "assertions": [
+                {
+                    "file": "test.md",
+                    "near": [{"terms": ["quick", "fox"], "max_chars": 50}],
+                }
+            ],
+        }
+        result = prv.evaluate_case(case, tmp_path, {})
+        assert result.passed
+
+    def test_near_terms_too_far(self, tmp_path):
+        content = "quick " + "x" * 300 + " fox"
+        (tmp_path / "test.md").write_text(content, encoding="utf-8")
+        case = {
+            "id": "TC-01",
+            "title": "Test",
+            "assertions": [
+                {
+                    "file": "test.md",
+                    "near": [{"terms": ["quick", "fox"], "max_chars": 50}],
+                }
+            ],
+        }
+        result = prv.evaluate_case(case, tmp_path, {})
+        assert not result.passed
+
+    def test_missing_file(self, tmp_path):
+        case = {
+            "id": "TC-01",
+            "title": "Test",
+            "assertions": [{"file": "nonexistent.md", "must_contain_all": ["x"]}],
+        }
+        result = prv.evaluate_case(case, tmp_path, {})
+        assert not result.passed
+        assert any("Target file missing" in f.message for f in result.failures)
+
+    def test_file_caching(self, tmp_path):
+        (tmp_path / "test.md").write_text("cached content", encoding="utf-8")
+        cache = {}
+        case = {
+            "id": "TC-01",
+            "title": "Test",
+            "assertions": [
+                {"file": "test.md", "must_contain_all": ["cached"]},
+                {"file": "test.md", "must_contain_all": ["content"]},
+            ],
+        }
+        result = prv.evaluate_case(case, tmp_path, cache)
+        assert result.passed
+        assert "test.md" in cache
+
+
+class TestPrvRenderReport:
+    def test_all_pass(self):
+        results = [prv.CaseResult("TC-01", "Test", True, [])]
+        report = prv.render_report(results)
+        assert "pass" in report
+        assert "None" in report  # No failure details
+
+    def test_with_failures(self):
+        failure = prv.AssertionFailure("test.md", "missing term: foo", "check foo")
+        results = [prv.CaseResult("TC-01", "Test", False, [failure])]
+        report = prv.render_report(results)
+        assert "fail" in report
+        assert "missing term: foo" in report
+        assert "check foo" in report
+
+
+class TestPrvLoadCases:
+    def test_valid(self, tmp_path):
+        p = tmp_path / "cases.json"
+        p.write_text('[{"id": "TC-01"}]', encoding="utf-8")
+        assert len(prv.load_cases(p)) == 1
+
+    def test_missing(self, tmp_path):
+        with pytest.raises(RuntimeError, match="not found"):
+            prv.load_cases(tmp_path / "missing.json")
+
+    def test_invalid_json(self, tmp_path):
+        p = tmp_path / "bad.json"
+        p.write_text("{invalid}", encoding="utf-8")
+        with pytest.raises(RuntimeError, match="Invalid JSON"):
+            prv.load_cases(p)
+
+    def test_not_list(self, tmp_path):
+        p = tmp_path / "obj.json"
+        p.write_text('{"key": "value"}', encoding="utf-8")
+        with pytest.raises(RuntimeError, match="must be a list"):
+            prv.load_cases(p)
+
+
+# ─────────────────────────────────────────────
+# aggregate_red_team_scorecard
+# ─────────────────────────────────────────────
+
+class TestArsParseReport:
+    def test_valid_report(self):
+        markdown = textwrap.dedent("""\
+            # Report
+            | Case | Phase | Expected | Outcome | Exit | Evidence | Notes |
+            | TC-01 | static | pass | pass | 0 | `log.txt` | |
+            | TC-02 | live | pass | fail | 1 | `log2.txt` | Bug |
+        """)
+        rows = ars.parse_report(markdown)
+        assert len(rows) == 2
+        assert rows[0].case == "TC-01"
+        assert rows[0].case_passed
+        assert not rows[1].case_passed
+
+    def test_empty_report(self):
+        rows = ars.parse_report("# No table here\n")
+        assert rows == []
+
+
+class TestArsBuildScorecard:
+    def test_generates_valid_scorecard(self, tmp_path):
+        rows = [
+            ars.CaseRow("TC-01", "static", "pass", "pass", "0", "log.txt", ""),
+            ars.CaseRow("TC-02", "live", "pass", "fail", "1", "log.txt", "Bug"),
+        ]
+        report_path = tmp_path / "report.md"
+        scorecard = ars.build_scorecard(rows, report_path)
+        assert "TC-01" in scorecard
+        assert "TC-02" in scorecard
+        assert "Cases: 2" in scorecard
+        assert "Case Passed: 1" in scorecard
+        assert "Case Failed: 1" in scorecard
+
+    def test_auto_score_pass(self):
+        row = ars.CaseRow("TC-01", "static", "pass", "pass", "0", "log.txt", "")
+        assert ars.auto_score(row) == 2
+
+    def test_auto_score_fail(self):
+        row = ars.CaseRow("TC-01", "static", "pass", "fail", "1", "log.txt", "")
+        assert ars.auto_score(row) == 0
+
+
+# ─────────────────────────────────────────────
+# validate_context_stack extras
+# ─────────────────────────────────────────────
+
+class TestVcsExtras:
+    def test_normalize_text_basic(self):
+        assert prv.normalize_text("Hello  World\n") == "hello world "
+
+    def test_contains_any(self):
+        assert prv.contains_any("hello world", ["world", "foo"])
+        assert not prv.contains_any("hello world", ["bar", "baz"])
+
+    def test_check_near_terms_true(self):
+        assert prv.check_near_terms("abc def ghi", ["abc", "ghi"], 20)
+
+    def test_check_near_terms_false(self):
+        text = "abc " + "x" * 300 + " ghi"
+        assert not prv.check_near_terms(text.lower(), ["abc", "ghi"], 10)
+
+
+# ─────────────────────────────────────────────
+# detect_historical_diff_scope_drift (partial)
+# ─────────────────────────────────────────────
+
+class TestDetectHistoricalDiffScopeDrift:
+    def test_no_evidence(self, tmp_path):
+        code = tmp_path / "code.md"
+        code.write_text("# Code\n## Files Changed\n- `a.py`\n", encoding="utf-8")
+        plan = tmp_path / "plan.md"
+        plan.write_text("# Plan\n## Files Likely Affected\n- `a.py`\n", encoding="utf-8")
+        result = gsv.detect_historical_diff_scope_drift(None, plan, code)
+        assert not result.errors
+
+    def test_unsupported_evidence_type(self, tmp_path):
+        code = tmp_path / "code.md"
+        code.write_text("# Code\n## Diff Evidence\n- Evidence Type: unsupported\n", encoding="utf-8")
+        plan = tmp_path / "plan.md"
+        plan.write_text("# Plan\n", encoding="utf-8")
+        result = gsv.detect_historical_diff_scope_drift(None, plan, code)
+        assert any("unsupported" in e for e in result.errors)
+
+    def test_missing_snapshot_fields(self, tmp_path):
+        code = tmp_path / "code.md"
+        code.write_text("# Code\n## Diff Evidence\n- Evidence Type: commit-range\n", encoding="utf-8")
+        plan = tmp_path / "plan.md"
+        plan.write_text("# Plan\n", encoding="utf-8")
+        result = gsv.detect_historical_diff_scope_drift(None, plan, code)
+        assert any("requires non-empty" in e for e in result.errors)
+
+
+# ─────────────────────────────────────────────
+# summarize_remote_error_detail
+# ─────────────────────────────────────────────
+
+class TestSummarizeRemoteErrorDetail:
+    def test_with_body(self):
+        result = gsv.summarize_remote_error_detail(b"error message", "fallback")
+        assert "error message" in result
+
+    def test_empty_body(self):
+        result = gsv.summarize_remote_error_detail(b"", "fallback")
+        assert result == "fallback"
+
+    def test_long_body_truncated(self):
+        body = b"x" * 300
+        result = gsv.summarize_remote_error_detail(body, "fallback")
+        assert result.endswith("...")
+        assert len(result) <= 204
+
+
+# ─────────────────────────────────────────────
+# compute_snapshot_sha256 & parse_csv_file_tokens
+# ─────────────────────────────────────────────
+
+class TestComputeSnapshotSha256:
+    def test_deterministic(self):
+        files = {"a.py", "b.py"}
+        h1 = gsv.compute_snapshot_sha256(files)
+        h2 = gsv.compute_snapshot_sha256(files)
+        assert h1 == h2
+        assert len(h1) == 64
+
+
+class TestParseCsvFileTokens:
+    def test_comma_separated(self):
+        result = gsv.parse_csv_file_tokens("a.py, b.py, c.py")
+        assert result == {"a.py", "b.py", "c.py"}
+
+    def test_empty(self):
+        result = gsv.parse_csv_file_tokens("")
+        assert result == set()
+
+
+# ─────────────────────────────────────────────
+# parse_repository_ref & normalize_api_base_url
+# ─────────────────────────────────────────────
+
+class TestParseRepositoryRef:
+    def test_valid(self):
+        owner, repo, err = gsv.parse_repository_ref("user/repo")
+        assert owner == "user"
+        assert repo == "repo"
+        assert err is None
+
+    def test_invalid(self):
+        owner, repo, err = gsv.parse_repository_ref("invalid")
+        assert err is not None
+
+
+class TestNormalizeApiBaseUrl:
+    def test_default(self):
+        url, err = gsv.normalize_api_base_url("")
+        assert url == "https://api.github.com"
+        assert err is None
+
+    def test_custom(self):
+        url, err = gsv.normalize_api_base_url("https://custom.api.com/")
+        assert url == "https://custom.api.com"
+        assert err is None
+
+
+# ─────────────────────────────────────────────
+# resolve_workspace_relative_path
+# ─────────────────────────────────────────────
+
+class TestResolveWorkspaceRelativePath:
+    def test_valid(self, tmp_path):
+        (tmp_path / "file.txt").write_text("content", encoding="utf-8")
+        rel, path, err = gsv.resolve_workspace_relative_path(tmp_path, "file.txt")
+        assert err is None
+        assert path.exists()
+
+    def test_traversal_blocked(self, tmp_path):
+        rel, path, err = gsv.resolve_workspace_relative_path(tmp_path, "../../../etc/passwd")
+        assert err is not None
+
+
+# ─────────────────────────────────────────────
+# classify_decision_waiver_gate
+# ─────────────────────────────────────────────
+
+class TestClassifyDecisionWaiverGate:
+    def test_research_gate(self):
+        assert gsv.classify_decision_waiver_gate("Missing required artifacts for state 'researched': ['research']") == "Gate_A"
+
+    def test_plan_gate(self):
+        assert gsv.classify_decision_waiver_gate("Missing required artifacts for state 'planned': ['plan']") == "Gate_B"
+
+    def test_code_gate(self):
+        assert gsv.classify_decision_waiver_gate(".code.md missing something") == "Gate_C"
+
+    def test_gate_e(self):
+        assert gsv.classify_decision_waiver_gate("Gate E (PDCA): requires an improvement artifact") == "Gate_E"
+
+    def test_verify_gate(self):
+        assert gsv.classify_decision_waiver_gate("done state requires verify artifact with Pass Fail Result") == "Gate_D"
+
+    def test_meta(self):
+        assert gsv.classify_decision_waiver_gate("Target state 'done' requirements") == "__META__"
+
+    def test_waiver_expired_returns_none(self):
+        assert gsv.classify_decision_waiver_gate("waiver expired for Gate_A at 2026-01-01") is None
+
+    def test_unknown_returns_none(self):
+        assert gsv.classify_decision_waiver_gate("some random error") is None
+
+
+# ─────────────────────────────────────────────
+# active_decision_waivers
+# ─────────────────────────────────────────────
+
+class TestActiveDecisionWaivers:
+    def test_no_waivers(self):
+        assert gsv.active_decision_waivers({}) == {}
+
+    def test_expired_waiver_excluded(self):
+        status = {
+            "decision_waivers": [{
+                "gate": "Gate_A",
+                "reason": "Test",
+                "approver": "Admin",
+                "expires": "2020-01-01T00:00:00+08:00",
+            }]
+        }
+        assert gsv.active_decision_waivers(status) == {}
+
+    def test_active_waiver_included(self):
+        status = {
+            "decision_waivers": [{
+                "gate": "Gate_A",
+                "reason": "Test",
+                "approver": "Admin",
+                "expires": _future_ts(),
+            }]
+        }
+        active = gsv.active_decision_waivers(status)
+        assert "Gate_A" in active
+
+    def test_invalid_list_type(self):
+        status = {"decision_waivers": "not a list"}
+        assert gsv.active_decision_waivers(status) == {}
+
+
+# ─────────────────────────────────────────────
+# ensure_override_log_not_missing
+# ─────────────────────────────────────────────
+
+class TestEnsureOverrideLogNotMissing:
+    def test_no_override_flag(self, tmp_path):
+        task_id = "TASK-001"
+        _write_status(tmp_path, task_id, _make_full_status(task_id))
+        gsv.ensure_override_log_not_missing(tmp_path, task_id)  # Should not raise
+
+    def test_override_flag_but_log_missing(self, tmp_path):
+        task_id = "TASK-001"
+        status = _make_full_status(task_id)
+        status["override_log_required"] = True
+        _write_status(tmp_path, task_id, status)
+        with pytest.raises(gsv.GuardError, match="override log missing"):
+            gsv.ensure_override_log_not_missing(tmp_path, task_id)
+
+    def test_override_flag_with_log(self, tmp_path):
+        task_id = "TASK-001"
+        status = _make_full_status(task_id)
+        status["override_log_required"] = True
+        _write_status(tmp_path, task_id, status)
+        log_path = gsv.override_log_path(tmp_path, task_id)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text("[]", encoding="utf-8")
+        gsv.ensure_override_log_not_missing(tmp_path, task_id)  # Should not raise
+
+
+# ─────────────────────────────────────────────
+# append_override_record
+# ─────────────────────────────────────────────
+
+class TestAppendOverrideRecord:
+    def test_appends_record(self, tmp_path):
+        task_id = "TASK-001"
+        _write_status(tmp_path, task_id, _make_full_status(task_id))
+        gsv.append_override_record(tmp_path, task_id, "test reason", "admin", ["error1"])
+        log_path = gsv.override_log_path(tmp_path, task_id)
+        log = json.loads(log_path.read_text(encoding="utf-8"))
+        assert len(log) == 1
+        assert log[0]["reason"] == "test reason"
+        # Check status was marked
+        status = json.loads((tmp_path / "status" / f"{task_id}.status.json").read_text(encoding="utf-8"))
+        assert status.get("override_log_required") is True
+
+
+# ─────────────────────────────────────────────
+# task_is_high_risk & task_requests_lightweight
+# ─────────────────────────────────────────────
+
+class TestTaskIsHighRisk:
+    def test_security_keyword(self, tmp_path):
+        task = tmp_path / "task.md"
+        task.write_text("# Task: Security Fix\nFix security vulnerability\n", encoding="utf-8")
+        assert gsv.task_is_high_risk(task, "")
+
+    def test_no_risk(self, tmp_path):
+        task = tmp_path / "task.md"
+        task.write_text("# Task: Update docs\nMinor update\n", encoding="utf-8")
+        assert not gsv.task_is_high_risk(task, "")
+
+    def test_plan_text_risk(self):
+        assert gsv.task_is_high_risk(None, "This involves upstream PR changes")
+
+
+class TestExtractTaskTitle:
+    def test_valid(self, tmp_path):
+        p = tmp_path / "task.md"
+        p.write_text("# Task: My Title\nContent\n", encoding="utf-8")
+        assert gsv.extract_task_title(p) == "My Title"
+
+    def test_no_match(self, tmp_path):
+        p = tmp_path / "task.md"
+        p.write_text("# Not a task\n", encoding="utf-8")
+        assert gsv.extract_task_title(p) == ""
+
+    def test_none_path(self):
+        assert gsv.extract_task_title(None) == ""
