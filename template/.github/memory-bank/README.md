@@ -10,6 +10,7 @@
 | `workflow-gates.md` | Guard validator 的觸發條件與回避方式 | 雙周 |
 | `prompt-patterns.md` | 本 repo 的 prompt 寫作範式 | 月度 |
 | `project-facts.md` | 專案特有的技術棧、集成點、部署約定 | 改變時 |
+| `coverage-sprint.md` | 測試覆蓋率衝刺策略、技巧與踩坑紀錄 | 衝刺完成時 |
 
 ## 經驗沉澱流程
 
