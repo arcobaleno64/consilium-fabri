@@ -185,7 +185,7 @@
 | ~~R2~~ | ~~wiki Context-System 頁面空殼~~ | ~~Medium~~ | ✅ **v2.1 已修復**：新增 7 項檢查清單、Skills & Agents 層、正式驗證腳本路徑 |
 | R3 | **單一 owner 風險** | Medium | 全部 18 task 的 owner 都是 Claude，無人類 reviewer 或第二 agent 參與。對真實多人團隊的可轉移性尚未被驗證。 |
 | ~~R4~~ | ~~TASK-001 孤兒~~ | ~~Low~~ | ✅ **v2.1 已解決**：PR #1 關閉未合併，TASK-001 artifacts 不存在於 master，dashboard 未回報 |
-| ~~R5~~ | ~~Coverage threshold 偏低~~ | ~~Low~~ | ✅ **v2.3 已修復**：Phase 1-3 共 551 個測試，覆蓋率 51%→90%，CI threshold 提升至 90% |
+| ~~R5~~ | ~~Coverage threshold 偏低~~ | ~~Low~~ | ✅ **已修復**：目前 validate coverage gate 為 100%，13 個 Python 模組 / 3118 stmts / 959 tests 全數 100%。 |
 | ~~R6~~ | ~~外部依賴管理~~ | ~~Low~~ | ✅ **v2.1 已修復**：TASK-963 已完成 supply-chain hardening — Actions SHA pin（checkout v6.0.2、setup-python v6.2.0）、`dependabot.yml` 自動 PR、`security-scan.yml` pip-audit CI 掃描 |
 
 ### 已解決風險（v1.x → v2.0 期間）
@@ -227,7 +227,7 @@
 - ✅ ~~template/skills 同步自動化~~ — v2.1 已完成（37 檔同步 + validator 全 PASS）
 - ✅ ~~Supply-chain hardening~~ — TASK-963 done（SHA pin + dependabot + pip-audit + release scripts）
 - ⬜ 多 owner / 多人協作驗證
-- ✅ ~~Coverage target 從 45% → 90%~~ — v2.3 已達成 90%（551 tests）
+- ✅ ~~Coverage target 從 45% → 100%~~ — 已達成 100%（13 個模組 / 3118 stmts / 959 tests）
 - ⬜ Contributor onboarding automation
 
 ## 七、建議優先事項
@@ -277,7 +277,8 @@
 | `update_repository_profile.py` | ~90 | `.github/repository-profile.json` 管理 |
 | `validate_scorecard_deltas.py` | ~90 | reviewer delta 驗證 |
 | `workflow_constants.py` | ~50 | 共用常數 |
-| `test_guard_units.py` | ~250+ | 255 項 unit test |
+| `test_guard_units.py` | ~8400 | validator / runner 單元與回歸測試主體 |
+| `test_security_scans.py` | ~160 | `repo_security_scan.py` 的 secrets / static 回歸測試 |
 | `Invoke-CodexAgent.ps1` | ~120 | Codex CLI resilient wrapper |
 | `Invoke-GeminiAgent.ps1` | ~120 | Gemini CLI resilient wrapper |
 | `load_env.ps1` | ~12 | `.env` 載入 |
@@ -315,7 +316,7 @@
 | Q2 | ~~重複定義~~ | `guard_contract_validator.py` + `update_repository_profile.py` | ~~`REQUIRED_TOPICS` 與 `TOPIC_PATTERN` 在兩個檔案中重複定義。~~ **已解決** — 已提取共用常數至 `_shared_constants.py`。 | ~~Medium~~ ✅ |
 | Q3 | 重複函式 | `guard_status_validator.py` + `run_red_team_suite.py` | `compute_snapshot_sha256()` 在兩個檔案中都有定義，簽章略有不同（一個接受 `Set[str]`，一個接受 `Sequence[str]`）。 | Low |
 | Q4 | 硬編碼 | `run_red_team_suite.py` | `blocked_sample_source()` 硬編碼檢查 `TASK-902` / `TASK-901`，未來新增或移除 sample task 時容易遺漏。 | Low |
-| Q5 | ~~缺少單元測試~~ | 全局 | ~~目前只有 red-team suite 作為 integration test。~~ **已解決** — `test_guard_units.py` 包含 255 項 unit test，覆蓋核心解析函式、驗證邏輯與邊界條件（coverage ≥45%，CI 強制執行）。 | ~~Medium~~ ✅ |
+| Q5 | ~~缺少單元測試~~ | 全局 | ~~目前只有 red-team suite 作為 integration test。~~ **已解決** — `test_guard_units.py` 與 `test_security_scans.py` 合計 959 項 tests，覆蓋 validator、runner 與 repo security scan 的核心邊界；目前 coverage 100%，CI 以 `--cov-fail-under=100` 強制執行。 | ~~Medium~~ ✅ |
 
 ### 8.2 安全性
 
@@ -387,14 +388,14 @@
 | 2 | ~~CI status guard 改為動態掃描~~ | ✅ 已完成 | CI 治理覆蓋 3 → 18 task |
 | 3 | ~~提取共用常數~~ | ✅ 已完成 | `workflow_constants.py` 消除重複定義 |
 | 4 | ~~加入 `requirements.txt`~~ | ✅ 已完成 | CI 可自動安裝依賴 |
-| 5 | ~~為核心函式加 unit test~~ | ✅ 已完成 | 255 項 test，coverage ≥45% |
+| 5 | ~~為核心函式加 unit test~~ | ✅ 已完成 | 959 項 tests，coverage 100% |
 
 ### 8.6 剩餘改進項目
 
 | 優先 | 行動 | 效果 |
 |---:|---|---|
 | 1 | ~~對齊 `BOOTSTRAP_PROMPT.md` 與 `docs/subagent_roles.md` 的 Gemini/Codex 認證指引~~ ✅ 已完成 | 降低新使用者 onboarding 摩擦 |
-| 2 | 持續提升 unit test coverage（目前 ≥45%，目標 60%+） | 強化回歸保護 |
+| 2 | 維持 unit test coverage 100%（新增模組時同步補測試） | 強化回歸保護並避免 validate 退化 |
 | 3 | PowerShell wrapper 加入 `-ErrorAction Stop` | 捕獲非 terminating error |
 | 4 | ~~制定 `template/` 同步責任邊界說明~~ ✅ 已完成 | `docs/orchestration.md` §9.6 Tier 1–5 定義 |
 | 5 | ~~將 `validate_context_stack.py` 的 template/skills 檢查結果降為 warning 或修正同步~~ ✅ 已完成 | 37 檔同步，errors 24→0 |
@@ -463,3 +464,4 @@
 | 2025-07-17 | v1.2 | 對齊 BOOTSTRAP_PROMPT.md 與 subagent_roles.md 的 Gemini 認證方式（GEMINI_API_KEY → OAuth）；新增 orchestration.md §9.6 同步責任邊界（Tier 1–5）。§5 風險 5/5 已解決或緩解，§7 建議 5/5 已完成 |
 | 2026-04-17 | v2.0 | 全面重新評估。新增上下文系統（memory-bank / prompts / skills / agents）、wiki 9 頁、KPI sprint tracking、custom agents、validate_context_stack.py。Task 數 5→18、commits 20→54、CI steps 7→10。發現 template/skills 同步落後（24 errors）。綜合 4.3→4.5（Level 4.5 Managed → Optimizing） |
 | 2026-04-17 | v2.1 | 反映 session 內所有修復成果。template/skills 同步修復（37 檔，R1 ✅）；TASK-963 supply-chain hardening 完成（SHA pin v6.0.2/v6.2.0 + dependabot + pip-audit CI + release scripts，R6 ✅）；CI pip-audit 模組名修正；Dependabot PR #3/#4 合併；PR #1 關閉（不完整）並手動實作 drafted→planned 轉移 + lightweight mode 文件釐清。Done 13→14、commits 54→58、CI workflows 1→2、context stack errors 24→0。綜合 4.5→4.6 |
+| 2026-04-18 | v2.2 | 反映 validate coverage 收尾：`test_guard_units.py` 與 `test_security_scans.py` 合計 959 項 tests，13 個 Python 模組 / 3118 stmts 全數 100%，CI coverage gate 維持 `--cov-fail-under=100`。 |

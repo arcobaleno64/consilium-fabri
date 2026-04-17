@@ -1,12 +1,12 @@
 # Coverage Sprint — 測試覆蓋率衝刺經驗筆記
 
-**Reference**: artifacts/scripts/test_guard_units.py, .coveragerc  
-**Last Updated**: 2026-04-17T22:30:00+08:00  
-**Commits**: 3efb833 → 7517de1（master）
+**Reference**: artifacts/scripts/test_guard_units.py, artifacts/scripts/test_security_scans.py, .coveragerc  
+**Last Updated**: 2026-04-18T00:19:32+08:00  
+**Commits**: 3efb833 → c7cc8a7（master）
 
 ## 成果摘要
 
-- 12 個 Python 模組，2757 stmts，0 miss，907 tests
+- 13 個 Python 模組，3118 stmts，0 miss，959 tests
 - CI gate：`--cov-fail-under=100`
 - 從 51% 分 6 階段推到 100%（51→64→83→90→95→97→100）
 
@@ -90,32 +90,35 @@ with run_server(handler_class, port) as server:
 1. `workflow_constants.py` — 4 stmts，純常數
 2. `validate_scorecard_deltas.py` — 40 stmts，簡單 YAML 比對
 3. `discover_templates.py` — 45 stmts，檔案系統掃描
-4. `aggregate_red_team_scorecard.py` — 46 stmts，YAML 聚合
-5. `update_repository_profile.py` — 47 stmts，GitHub API mock 需注意 topic 邏輯
+4. `update_repository_profile.py` — 47 stmts，GitHub API mock 需注意 topic 邏輯
+5. `aggregate_red_team_scorecard.py` — 66 stmts，Markdown / scorecard 聚合
 6. `prompt_regression_validator.py` — 128 stmts，hash 比對
 7. `guard_contract_validator.py` — 133 stmts，多檔案同步檢查
 8. `repo_health_dashboard.py` — 158 stmts，argparse + status 檔掃描
 9. `build_decision_registry.py` — 158 stmts，Markdown parsing
-10. `validate_context_stack.py` — 192 stmts，YAML + 多層驗證
-11. `run_red_team_suite.py` — 553 stmts，23 RT cases + HTTP server + subprocess
-12. `guard_status_validator.py` — 1253 stmts，最複雜，涵蓋所有 artifact 狀態機
+10. `repo_security_scan.py` — 160 stmts，secret / static heuristic scanning
+11. `validate_context_stack.py` — 192 stmts，YAML + 多層驗證
+12. `run_red_team_suite.py` — 688 stmts，23 RT cases + HTTP server + subprocess
+13. `guard_status_validator.py` — 1299 stmts，最複雜，涵蓋所有 artifact 狀態機
 
 ## CI 設定
 
 ```yaml
 # .github/workflows/workflow-guards.yml
 - run: |
-    python -m pytest artifacts/scripts/test_guard_units.py \
-      --cov=artifacts/scripts \
-      --cov-config=.coveragerc \
-      --cov-fail-under=100 \
-      --tb=short -q
+        python -m pytest artifacts/scripts/test_guard_units.py artifacts/scripts/test_security_scans.py -v \
+            --cov \
+            --cov-config=.coveragerc \
+            --cov-report=term-missing \
+            --cov-report=html:coverage-report \
+            --cov-fail-under=100
 ```
 
 ## Template 同步提醒
 
-每次修改 `.coveragerc` 或 `test_guard_units.py` 後，必須同步到 `template/`：
+每次修改 `.coveragerc`、`test_guard_units.py` 或 `test_security_scans.py` 後，必須同步到 `template/`：
 ```powershell
 Copy-Item .coveragerc template/.coveragerc
 Copy-Item artifacts/scripts/test_guard_units.py template/artifacts/scripts/test_guard_units.py
+Copy-Item artifacts/scripts/test_security_scans.py template/artifacts/scripts/test_security_scans.py
 ```
