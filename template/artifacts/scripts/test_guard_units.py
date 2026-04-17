@@ -8596,3 +8596,148 @@ class TestParseArgsCoverage:
         sc.write_text("# Scorecard\n", encoding="utf-8")
         args = vsd.parse_args(["--scorecard", str(sc)])
         assert args.scorecard == str(sc)
+
+
+
+# ── discover_templates tests ──
+
+
+import discover_templates as dt
+
+
+class TestDtYamlImportGuard:
+    """Cover L13-19: except ImportError when yaml is missing."""
+
+    def test_exit_when_yaml_unavailable(self, monkeypatch):
+        import builtins
+        import importlib
+        real_import = builtins.__import__
+
+        def fail_yaml(name, *args, **kwargs):
+            if name == "yaml":
+                raise ImportError("test: no yaml")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", fail_yaml)
+        with pytest.raises(SystemExit) as exc_info:
+            importlib.reload(dt)
+        assert exc_info.value.code == 1
+        monkeypatch.undo()
+        importlib.reload(dt)
+
+
+class TestDtParseFrontmatter:
+    def test_valid_frontmatter(self, tmp_path):
+        md = tmp_path / "TEMPLATE.md"
+        md.write_text("---\nname: Test\nversion: '1.0'\n---\n# Body\n", encoding="utf-8")
+        result = dt.parse_frontmatter(md)
+        assert result["name"] == "Test"
+        assert result["version"] == "1.0"
+
+    def test_no_frontmatter(self, tmp_path):
+        md = tmp_path / "TEMPLATE.md"
+        md.write_text("# No frontmatter\n", encoding="utf-8")
+        result = dt.parse_frontmatter(md)
+        assert result == {}
+
+    def test_empty_frontmatter(self, tmp_path):
+        md = tmp_path / "TEMPLATE.md"
+        md.write_text("---\n---\n# Body\n", encoding="utf-8")
+        result = dt.parse_frontmatter(md)
+        assert result == {}
+
+
+class TestDtDiscover:
+    def _make_template(self, templates_dir, role_name, fm_dict):
+        import yaml
+        role_dir = templates_dir / role_name
+        role_dir.mkdir(parents=True, exist_ok=True)
+        fm_yaml = yaml.dump(fm_dict, default_flow_style=False)
+        (role_dir / "TEMPLATE.md").write_text(
+            f"---\n{fm_yaml}---\n# Template\n", encoding="utf-8"
+        )
+
+    def test_discover_all(self, tmp_path):
+        self._make_template(tmp_path, "coder", {
+            "name": "Coder", "applicable_agents": ["Codex CLI"],
+            "applicable_stages": ["coding"],
+        })
+        self._make_template(tmp_path, "researcher", {
+            "name": "Researcher", "applicable_agents": ["Gemini CLI"],
+            "applicable_stages": ["research"],
+        })
+        results = dt.discover(templates_dir=tmp_path)
+        assert len(results) == 2
+
+    def test_filter_by_agent(self, tmp_path):
+        self._make_template(tmp_path, "coder", {
+            "name": "Coder", "applicable_agents": ["Codex CLI"],
+            "applicable_stages": ["coding"],
+        })
+        self._make_template(tmp_path, "researcher", {
+            "name": "Researcher", "applicable_agents": ["Gemini CLI"],
+            "applicable_stages": ["research"],
+        })
+        results = dt.discover(agent="Codex CLI", templates_dir=tmp_path)
+        assert len(results) == 1
+        assert results[0].name == "Coder"
+
+    def test_filter_by_stage(self, tmp_path):
+        self._make_template(tmp_path, "coder", {
+            "name": "Coder", "applicable_agents": ["Codex CLI"],
+            "applicable_stages": ["coding"],
+        })
+        results = dt.discover(stage="research", templates_dir=tmp_path)
+        assert len(results) == 0
+
+    def test_stage_any_wildcard(self, tmp_path):
+        self._make_template(tmp_path, "utility", {
+            "name": "Utility", "applicable_agents": ["Any"],
+            "applicable_stages": ["any"],
+        })
+        results = dt.discover(stage="coding", templates_dir=tmp_path)
+        assert len(results) == 1
+
+    def test_skip_no_name(self, tmp_path):
+        self._make_template(tmp_path, "broken", {
+            "description": "No name field",
+        })
+        results = dt.discover(templates_dir=tmp_path)
+        assert len(results) == 0
+
+    def test_empty_dir(self, tmp_path):
+        results = dt.discover(templates_dir=tmp_path)
+        assert results == []
+
+
+class TestDtMain:
+    def test_json_output(self, tmp_path, capsys, monkeypatch):
+        import yaml
+        role = tmp_path / "coder"
+        role.mkdir()
+        fm = yaml.dump({"name": "Coder", "applicable_agents": ["Codex"], "applicable_stages": ["coding"]})
+        (role / "TEMPLATE.md").write_text(f"---\n{fm}---\n# T\n", encoding="utf-8")
+        monkeypatch.setattr(sys, "argv", ["dt", "--templates-dir", str(tmp_path), "--json"])
+        dt.main()
+        out = capsys.readouterr().out
+        import json
+        data = json.loads(out)
+        assert len(data) == 1
+        assert data[0]["name"] == "Coder"
+
+    def test_text_output(self, tmp_path, capsys, monkeypatch):
+        import yaml
+        role = tmp_path / "coder"
+        role.mkdir()
+        fm = yaml.dump({"name": "Coder", "applicable_agents": ["Codex"], "applicable_stages": ["coding"]})
+        (role / "TEMPLATE.md").write_text(f"---\n{fm}---\n# T\n", encoding="utf-8")
+        monkeypatch.setattr(sys, "argv", ["dt", "--templates-dir", str(tmp_path)])
+        dt.main()
+        out = capsys.readouterr().out
+        assert "Coder" in out
+
+    def test_no_results(self, tmp_path, capsys, monkeypatch):
+        monkeypatch.setattr(sys, "argv", ["dt", "--templates-dir", str(tmp_path)])
+        dt.main()
+        out = capsys.readouterr().out
+        assert "No matching" in out
