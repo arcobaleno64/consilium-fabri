@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import sys
 import textwrap
 from datetime import datetime, timedelta, timezone
@@ -224,6 +225,11 @@ class TestNormalizeText:
     def test_crlf_normalize(self):
         result = gcv.normalize_text("line1\r\nline2")
         assert "\r" not in result
+
+
+class TestContractSyncFiles:
+    def test_requirements_dev_is_exact_sync(self):
+        assert "requirements-dev.txt" in gcv.EXACT_SYNC_FILES
 
 
 # ─────────────────────────────────────────────
@@ -9460,6 +9466,115 @@ class TestRrtsPrepareTemp:
         import shutil
         shutil.rmtree(temp_base, ignore_errors=True)
 
+    def test_registers_temp_dir(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(rrts, "LOCAL_TMP_ROOT", tmp_path / ".codex-red-team")
+        rrts.reset_temp_root_registry()
+        created = rrts.prepare_temp_root("case")
+        assert created in rrts.CREATED_TEMP_ROOTS
+
+
+class TestRrtsHandleRemoveReadonly:
+    def test_retries_after_chmod(self, monkeypatch, tmp_path):
+        target = tmp_path / "locked.txt"
+        target.write_text("x", encoding="utf-8")
+        calls = []
+
+        def fake_func(path):
+            calls.append(("func", path))
+
+        def fake_chmod(path, mode):
+            calls.append(("chmod", path, mode))
+
+        monkeypatch.setattr(rrts.os, "chmod", fake_chmod)
+        rrts.handle_remove_readonly(fake_func, str(target), None)
+        assert calls == [
+            ("chmod", str(target), stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR),
+            ("func", str(target)),
+        ]
+
+
+class TestRrtsCleanupTempRoots:
+    def test_ignores_missing_path(self, tmp_path):
+        temp_root = tmp_path / ".codex-red-team"
+        temp_root.mkdir(parents=True)
+        missing = temp_root / "RT-001"
+        errors = rrts.cleanup_temp_roots([missing], temp_root=temp_root)
+        assert errors == []
+        assert not temp_root.exists()
+
+    def test_removes_temp_dirs_and_empty_root(self, tmp_path):
+        temp_root = tmp_path / ".codex-red-team"
+        first = temp_root / "RT-001"
+        second = temp_root / "RT-002"
+        first.mkdir(parents=True)
+        second.mkdir(parents=True)
+        (first / "note.txt").write_text("x", encoding="utf-8")
+        (second / "note.txt").write_text("y", encoding="utf-8")
+        errors = rrts.cleanup_temp_roots([first, second], temp_root=temp_root)
+        assert errors == []
+        assert not temp_root.exists()
+
+    def test_keeps_root_when_unrelated_entries_remain(self, tmp_path):
+        temp_root = tmp_path / ".codex-red-team"
+        case_dir = temp_root / "RT-001"
+        other_dir = temp_root / "manual"
+        case_dir.mkdir(parents=True)
+        other_dir.mkdir(parents=True)
+        errors = rrts.cleanup_temp_roots([case_dir], temp_root=temp_root)
+        assert errors == []
+        assert temp_root.exists()
+        assert other_dir.exists()
+
+    def test_reports_cleanup_failure(self, monkeypatch, tmp_path):
+        temp_root = tmp_path / ".codex-red-team"
+        case_dir = temp_root / "RT-001"
+        case_dir.mkdir(parents=True)
+
+        def boom(path, *args, **kwargs):
+            raise OSError("locked")
+
+        monkeypatch.setattr(rrts.shutil, "rmtree", boom)
+        errors = rrts.cleanup_temp_roots([case_dir], temp_root=temp_root)
+        assert len(errors) == 1
+        assert "locked" in errors[0]
+
+    def test_removes_readonly_file_tree(self, tmp_path):
+        temp_root = tmp_path / ".codex-red-team"
+        case_dir = temp_root / "RT-001"
+        object_dir = case_dir / ".git" / "objects" / "00"
+        object_dir.mkdir(parents=True)
+        object_file = object_dir / "sample"
+        object_file.write_text("locked", encoding="utf-8")
+        object_file.chmod(stat.S_IREAD)
+        errors = rrts.cleanup_temp_roots([case_dir], temp_root=temp_root)
+        assert errors == []
+        assert not temp_root.exists()
+
+    def test_reports_root_remove_failure(self, monkeypatch, tmp_path):
+        temp_root = tmp_path / ".codex-red-team"
+        temp_root.mkdir(parents=True)
+
+        def boom(self):
+            raise OSError("busy")
+
+        monkeypatch.setattr(type(temp_root), "rmdir", boom)
+        errors = rrts.cleanup_temp_roots([], temp_root=temp_root)
+        assert len(errors) == 1
+        assert "Failed to remove temp root" in errors[0]
+
+    def test_reports_root_iterdir_failure(self, monkeypatch, tmp_path):
+        temp_root = tmp_path / ".codex-red-team"
+        temp_root.mkdir(parents=True)
+
+        def boom(self):
+            raise OSError("inspect failed")
+            yield  # pragma: no cover
+
+        monkeypatch.setattr(type(temp_root), "iterdir", boom)
+        errors = rrts.cleanup_temp_roots([], temp_root=temp_root)
+        assert len(errors) == 1
+        assert "Failed to inspect temp root" in errors[0]
+
 
 class TestRrtsCopyTaskFixture:
     def test_copies_and_renames(self, tmp_path):
@@ -9758,6 +9873,58 @@ class TestRrtsMain:
         assert result == 0
         assert out_path.exists()
         assert "T-1" in out_path.read_text(encoding="utf-8")
+
+    def test_cleanup_temp_dirs_by_default(self, monkeypatch, capsys, tmp_path):
+        monkeypatch.setattr(rrts, "LOCAL_TMP_ROOT", tmp_path / ".codex-red-team")
+
+        def runner():
+            rrts.prepare_temp_root("T-1")
+            return rrts.CaseResult("T-1", "static", "test", "pass", 0, True, 0, "ok", "n")
+
+        monkeypatch.setattr(
+            rrts,
+            "build_cases",
+            lambda: [rrts.CaseDefinition("T-1", "static", "test", "pass", 0, "ok", runner)],
+        )
+        result = rrts.main(["--static"])
+        assert result == 0
+        assert not rrts.LOCAL_TMP_ROOT.exists()
+
+    def test_keep_temp_preserves_dirs_and_reports_path(self, monkeypatch, capsys, tmp_path):
+        monkeypatch.setattr(rrts, "LOCAL_TMP_ROOT", tmp_path / ".codex-red-team")
+
+        def runner():
+            path = rrts.prepare_temp_root("T-1")
+            return rrts.CaseResult("T-1", "static", "test", "pass", 0, True, 0, str(path), "n")
+
+        monkeypatch.setattr(
+            rrts,
+            "build_cases",
+            lambda: [rrts.CaseDefinition("T-1", "static", "test", "pass", 0, "ok", runner)],
+        )
+        result = rrts.main(["--static", "--keep-temp"])
+        out = capsys.readouterr().out
+        assert result == 0
+        assert rrts.LOCAL_TMP_ROOT.exists()
+        assert "Kept red-team temp fixtures under" in out
+
+    def test_cleanup_failure_returns_1(self, monkeypatch, capsys, tmp_path):
+        monkeypatch.setattr(rrts, "LOCAL_TMP_ROOT", tmp_path / ".codex-red-team")
+
+        def runner():
+            rrts.prepare_temp_root("T-1")
+            return rrts.CaseResult("T-1", "static", "test", "pass", 0, True, 0, "ok", "n")
+
+        monkeypatch.setattr(
+            rrts,
+            "build_cases",
+            lambda: [rrts.CaseDefinition("T-1", "static", "test", "pass", 0, "ok", runner)],
+        )
+        monkeypatch.setattr(rrts, "cleanup_temp_roots", lambda paths, temp_root=None: ["cleanup failed"])
+        result = rrts.main(["--static"])
+        err = capsys.readouterr().err
+        assert result == 1
+        assert "cleanup failed" in err
 
 
 

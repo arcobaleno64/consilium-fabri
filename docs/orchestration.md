@@ -293,11 +293,11 @@ Codex CLI 不得：
 
 以下任一檔案被修改時，觸發同步：
 
-- 入口檔：`CLAUDE.md`、`GEMINI.md`、`CODEX.md`、`AGENTS.md`
+- 入口檔：`START_HERE.md`、`CLAUDE.md`、`GEMINI.md`、`CODEX.md`、`AGENTS.md`
 - Obsidian 入口：`OBSIDIAN.md`
 - 參考文件：`docs/*.md`（本檔案含在內）
 - 驗證器：`artifacts/scripts/guard_status_validator.py`、`artifacts/scripts/guard_contract_validator.py`
-- 啟動範本：`BOOTSTRAP_PROMPT.md`
+- 啟動/導覽檔：`BOOTSTRAP_PROMPT.md`、`START_HERE.md`
 
 ### 9.2 同步流程
 
@@ -307,7 +307,7 @@ Codex CLI 不得：
    - Repo 名稱 → `{{REPO_NAME}}`
    - 上游組織 → `{{UPSTREAM_ORG}}`
 2. **複製**：將泛化後的內容寫入 `template/` 對應路徑，並同步更新 `OBSIDIAN.md` 與 `template/OBSIDIAN.md`。
-3. **README / Obsidian 同步判定**：若修改涉及以下任一項，必須同步更新 `README.md`、`README.zh-TW.md`、`template/README.md`、`template/README.zh-TW.md`、`OBSIDIAN.md` 與 `template/OBSIDIAN.md`：
+3. **README / Obsidian 同步判定**：若修改涉及以下任一項，必須同步更新 `START_HERE.md`、`template/START_HERE.md`、`README.md`、`README.zh-TW.md`、`template/README.md`、`template/README.zh-TW.md`、`OBSIDIAN.md` 與 `template/OBSIDIAN.md`：
    - 檔案結構變更（新增、刪除、改名）
    - 工作流程階段或 Gate 變更
    - Agent 角色變更
@@ -346,6 +346,8 @@ Template sync 與 Obsidian sync 由 **Orchestrator（Claude Code）** 負責。G
 
 | 檔案 | 說明 |
 |---|---|
+| `START_HERE.md` | 新使用者 3 檔導覽入口 |
+| `requirements-dev.txt` | 本地開發 / 測試依賴契約 |
 | `AGENTS.md` | 文件索引 |
 | `BOOTSTRAP_PROMPT.md` | 新專案啟動範本 |
 | `CODEX.md`、`GEMINI.md` | Agent 入口檔 |

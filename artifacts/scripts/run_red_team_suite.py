@@ -8,6 +8,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import threading
@@ -40,6 +41,7 @@ STATUS_GUARD = REPO_ROOT / "artifacts" / "scripts" / "guard_status_validator.py"
 CONTRACT_GUARD = REPO_ROOT / "artifacts" / "scripts" / "guard_contract_validator.py"
 PROMPT_REGRESSION = REPO_ROOT / "artifacts" / "scripts" / "prompt_regression_validator.py"
 LOCAL_TMP_ROOT = REPO_ROOT / ".codex-red-team"
+CREATED_TEMP_ROOTS: List[Path] = []
 GITHUB_API_ALLOWED_HOSTS_ENV = "CONSILIUM_ALLOWED_GITHUB_API_HOSTS"
 
 
@@ -194,7 +196,41 @@ def prepare_temp_root(case_id: str) -> Path:
     LOCAL_TMP_ROOT.mkdir(parents=True, exist_ok=True)
     case_root = LOCAL_TMP_ROOT / f"{case_id}-{uuid.uuid4().hex[:8]}"
     case_root.mkdir(parents=True, exist_ok=False)
+    CREATED_TEMP_ROOTS.append(case_root)
     return case_root
+
+
+def reset_temp_root_registry() -> None:
+    CREATED_TEMP_ROOTS.clear()
+
+
+def handle_remove_readonly(func: Callable[..., object], path: str, _exc_info: object) -> None:
+    os.chmod(path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
+    func(path)
+
+
+def cleanup_temp_roots(paths: Iterable[Path], *, temp_root: Optional[Path] = None) -> List[str]:
+    errors: List[str] = []
+    root = temp_root or LOCAL_TMP_ROOT
+    unique_paths = sorted({path for path in paths}, key=lambda path: str(path), reverse=True)
+    for path in unique_paths:
+        if not path.exists():
+            continue
+        try:
+            shutil.rmtree(path, onerror=handle_remove_readonly)
+        except OSError as exc:
+            errors.append(f"Failed to remove temp fixture '{path}': {exc}")
+    if root.exists():
+        try:
+            next(root.iterdir())
+        except StopIteration:
+            try:
+                root.rmdir()
+            except OSError as exc:
+                errors.append(f"Failed to remove temp root '{root}': {exc}")
+        except OSError as exc:
+            errors.append(f"Failed to inspect temp root '{root}': {exc}")
+    return errors
 
 
 def copy_task_fixture(temp_root: Path, source_task_id: str, target_task_id: str, include_improvement: bool = True) -> Path:
@@ -1484,6 +1520,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--live", action="store_true", help="Convenience alias for --phase live")
     parser.add_argument("--prompt", action="store_true", help="Convenience alias for --phase prompt")
     parser.add_argument("--all", action="store_true", help="Convenience alias for --phase all")
+    parser.add_argument("--keep-temp", action="store_true", help="Keep .codex-red-team fixtures for debugging instead of deleting them after the run")
     parser.add_argument("--output", help="Optional path to write the markdown report")
     return parser.parse_args(argv)
 
@@ -1496,15 +1533,32 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 2
     if aliases:
         args.phase = aliases[0]
+    reset_temp_root_registry()
     selected = [case for case in build_cases() if args.phase in ("all", case.phase)]
-    results = [case.runner() for case in selected]
-    report = render_markdown(results)
-    print(report, end="")
-    if args.output:
-        output_path = Path(args.output)
-        ensure_parent(output_path)
-        output_path.write_text(report, encoding="utf-8")
-    return 0 if all(result.passed for result in results) else 1
+    exit_code = 1
+    try:
+        results = [case.runner() for case in selected]
+        report = render_markdown(results)
+        print(report, end="")
+        if args.output:
+            output_path = Path(args.output)
+            ensure_parent(output_path)
+            output_path.write_text(report, encoding="utf-8")
+        exit_code = 0 if all(result.passed for result in results) else 1
+    finally:
+        created_temp_roots = list(CREATED_TEMP_ROOTS)
+        if args.keep_temp:
+            if created_temp_roots:
+                print(f"[NOTE] Kept red-team temp fixtures under {LOCAL_TMP_ROOT}")
+                for path in created_temp_roots:
+                    print(f"[NOTE] {path}")
+        else:
+            cleanup_errors = cleanup_temp_roots(created_temp_roots)
+            if cleanup_errors:
+                for error in cleanup_errors:
+                    print(f"[FAIL] {error}", file=sys.stderr)
+                exit_code = 1
+    return exit_code
 
 
 if __name__ == "__main__":

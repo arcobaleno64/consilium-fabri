@@ -15,6 +15,8 @@ EXACT_SYNC_FILES = [
     "BOOTSTRAP_PROMPT.md",
     "CODEX.md",
     "GEMINI.md",
+    "START_HERE.md",
+    "requirements-dev.txt",
     "artifacts/scripts/build_decision_registry.py",
     "artifacts/scripts/guard_contract_validator.py",
     "artifacts/scripts/prompt_regression_validator.py",
@@ -66,6 +68,7 @@ REQUIRED_PHRASES: Dict[str, Sequence[str]] = {
         "contract guard",
         "run_red_team_suite.py",
         "prompt_regression_validator.py",
+        "START_HERE.md",
     ),
     "template/OBSIDIAN.md": (
         "Research artifact 是 fact-only 契約",
@@ -73,6 +76,7 @@ REQUIRED_PHRASES: Dict[str, Sequence[str]] = {
         "contract guard",
         "run_red_team_suite.py",
         "prompt_regression_validator.py",
+        "START_HERE.md",
     ),
     "README.md": (
         "guard_status_validator.py",
@@ -80,6 +84,8 @@ REQUIRED_PHRASES: Dict[str, Sequence[str]] = {
         "Obsidian",
         "run_red_team_suite.py",
         "prompt_regression_validator.py",
+        "START_HERE.md",
+        "requirements-dev.txt",
     ),
     "README.zh-TW.md": (
         "guard_status_validator.py",
@@ -87,6 +93,8 @@ REQUIRED_PHRASES: Dict[str, Sequence[str]] = {
         "Obsidian",
         "run_red_team_suite.py",
         "prompt_regression_validator.py",
+        "START_HERE.md",
+        "requirements-dev.txt",
     ),
     "template/README.md": (
         "guard_status_validator.py",
@@ -94,6 +102,8 @@ REQUIRED_PHRASES: Dict[str, Sequence[str]] = {
         "Obsidian",
         "run_red_team_suite.py",
         "prompt_regression_validator.py",
+        "START_HERE.md",
+        "requirements-dev.txt",
     ),
     "template/README.zh-TW.md": (
         "guard_status_validator.py",
@@ -101,6 +111,8 @@ REQUIRED_PHRASES: Dict[str, Sequence[str]] = {
         "Obsidian",
         "run_red_team_suite.py",
         "prompt_regression_validator.py",
+        "START_HERE.md",
+        "requirements-dev.txt",
     ),
 }
 

@@ -24,6 +24,14 @@
 
 ---
 
+## Start Here
+
+- New here? Read [`START_HERE.md`](START_HERE.md) first.
+- Use **Python 3.11** and install local dev dependencies with `python -m pip install -r requirements-dev.txt`.
+- Initialize required external integrations before local validation: `git submodule update --init --recursive`.
+
+---
+
 ## Product Positioning
 
 Consilium Fabri is a multi-agent AI workflow framework designed to live inside the repository itself. It is not built around "asking a model to code faster"; it is built around creating a delivery system with explicit boundaries, reviewable checkpoints, durable artifacts, and hard verification.
@@ -128,6 +136,7 @@ Consilium Fabri exists to compress those failure modes into an explicit operatin
 - `docs/red_team_scorecard.md` provides the scoring matrix
 - `docs/red_team_backlog.md` tracks follow-up hardening work
 - `python artifacts/scripts/run_red_team_suite.py --phase all` reruns the built-in red-team suite and live drill samples
+- red-team fixtures are created under `.codex-red-team/` and are deleted by default after each run; pass `--keep-temp` when you need to inspect a failing fixture
 - `python artifacts/scripts/prompt_regression_validator.py --root .` runs fixed prompt regression cases for `CLAUDE.md`, `GEMINI.md`, `CODEX.md`, and critical workflow contracts
 - the fixed prompt regression suite now also covers artifact-only truth/completion, workflow sync completeness, Gemini blocked preconditions, Codex summary discipline, conflict-to-decision routing, decision schema integrity, external failure STOP, decision-gated scope waivers, historical diff evidence contracts, pinned diff evidence integrity, GitHub provider-backed diff evidence, and archive retention fallback contracts
 - `python artifacts/scripts/run_red_team_suite.py --phase prompt` runs prompt regression through the same report pipeline
@@ -173,16 +182,49 @@ The model is simple on purpose: each stage produces the artifact that justifies 
 
 ---
 
+## Architecture Snapshot
+
+```text
+Entry Layer
+  START_HERE.md -> README -> AGENTS / BOOTSTRAP_PROMPT
+
+Rules Layer
+  docs/ + agent entry files + workflow contracts
+
+Execution Layer
+  artifacts/ + guard scripts + prompt regression + repo health
+
+Publishing Layer
+  template/ + .github/ + OBSIDIAN.md + external/
+```
+
+The repository is intentionally layered: entry documents route people in, workflow docs define rules, artifacts and validators enforce execution, and publishing and integration surfaces package the workflow for reuse.
+
+---
+
 ## Getting Started
 
 ### Prerequisites
 
-- **Python 3.10+** (for validator scripts)
+- **Python 3.11** (for validator scripts and local development)
 - **Git** (version control)
 - **Claude Code** (orchestrator agent — via VS Code extension or CLI)
 - **Gemini CLI** (research agent — optional, for full workflow)
 - **Codex CLI** (implementation agent — optional, for full workflow)
-- **PyYAML** (`pip install -r requirements.txt`)
+
+### Local Development Setup
+
+`external/` contains required external integrations tracked as Git submodules. Initialize it before local validation so your workspace matches CI and the documented repo shape.
+
+```bash
+python -m venv .venv
+# PowerShell: .\.venv\Scripts\Activate.ps1
+# bash/zsh: source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements-dev.txt
+git submodule update --init --recursive
+python -m pytest artifacts/scripts/test_guard_units.py artifacts/scripts/test_security_scans.py -q
+```
 
 ### Quick Start — New Project
 
@@ -191,7 +233,7 @@ The model is simple on purpose: each stage produces the artifact that justifies 
 git clone https://github.com/arcobaleno64/consilium-fabri.git my-project
 cd my-project
 
-# 1.5. Initialize external integrations tracked as submodules
+# 1.5. Initialize required external integrations under external/
 git submodule update --init --recursive
 
 # 2. Replace placeholders in CLAUDE.md (remove fork section if not needed)
@@ -214,7 +256,7 @@ See `BOOTSTRAP_PROMPT.md` for the full bootstrapping guide.
 
 Copy the `template/` directory contents into your repository root, replace placeholders, and run the same bootstrap validation commands above.
 
-If your repository keeps external integrations as Git submodules, run `git submodule update --init --recursive` after cloning so local development and CI operate on the same tree shape.
+Before local development or validation, run `git submodule update --init --recursive` so the required integrations under `external/` are present and the workspace matches CI.
 
 ---
 
@@ -222,6 +264,7 @@ If your repository keeps external integrations as Git submodules, run `git submo
 
 ```
 .
+├── START_HERE.md              # 3-file onboarding guide for first-time readers
 ├── AGENTS.md                  # Document index and phase-loading matrix
 ├── CLAUDE.md                  # Orchestrator (Claude Code) entry file
 ├── GEMINI.md                  # Research agent (Gemini CLI) entry file
@@ -229,7 +272,8 @@ If your repository keeps external integrations as Git submodules, run `git submo
 ├── OBSIDIAN.md                # Obsidian vault entry note
 ├── BOOTSTRAP_PROMPT.md        # New project bootstrapping guide
 ├── README.md / README.zh-TW.md
-├── requirements.txt           # Python dependencies (PyYAML)
+├── requirements.txt           # Base Python dependency declaration (PyYAML)
+├── requirements-dev.txt       # Local development and test dependencies
 │
 ├── docs/                      # Workflow specification documents
 │   ├── orchestration.md       # Full workflow: goals, principles, stages, gates
@@ -280,7 +324,7 @@ If your repository keeps external integrations as Git submodules, run `git submo
 │       └── security-scan.yml     # pip-audit + repo-local secret/static scans
 │
 ├── template/                  # Clean template for new projects (sync target)
-└── external/                  # External project integrations
+└── external/                  # Required external integrations (initialize submodules)
 ```
 
 ---
@@ -297,6 +341,7 @@ If your repository keeps external integrations as Git submodules, run `git submo
 | `python artifacts/scripts/repo_security_scan.py --root . secrets` | Run repo-local high-confidence secret scan |
 | `python artifacts/scripts/repo_security_scan.py --root . static` | Run focused static control-plane rules |
 | `python artifacts/scripts/run_red_team_suite.py --phase all` | Run the full red-team exercise suite |
+| `python artifacts/scripts/run_red_team_suite.py --phase static --keep-temp` | Keep red-team fixtures under `.codex-red-team/` for debugging |
 | `python artifacts/scripts/run_red_team_suite.py --phase prompt` | Run prompt regression via the report pipeline |
 | `python artifacts/scripts/repo_health_dashboard.py` | Generate repository health dashboard |
 | `python artifacts/scripts/build_decision_registry.py --root .` | Rebuild the decision registry |
@@ -323,6 +368,7 @@ If your repository keeps external integrations as Git submodules, run `git submo
 
 - The default `workflow-guards` CI now runs with explicit read-only GitHub token permissions, disables persisted checkout credentials, cancels superseded runs per branch or pull request, and applies a job timeout to reduce avoidable runner exposure.
 - `artifacts/scripts/load_env.ps1` and its `template/` counterpart now parse quoted `.env` values, ignore blank and commented lines, accept optional `export` prefixes, and preserve existing process environment variables by default.
+- `artifacts/scripts/run_red_team_suite.py` cleans up `.codex-red-team/` fixtures after each run by default; use `--keep-temp` only when you need to inspect a failing fixture locally.
 - Use `pwsh -NoProfile -File artifacts/scripts/load_env.ps1 -Quiet` for silent loading in local automation, or add `-Force` only when you intentionally want `.env` values to overwrite variables that already exist in the current process.
 
 ---

@@ -1,6 +1,6 @@
 # Obsidian 入口筆記
 
-本檔是此 vault 的 Markdown 文件入口，提供文件語言規範、閱讀順序與同步範圍摘要。完整 workflow 規則仍以 `AGENTS.md`、`CLAUDE.md` 與 `docs/` 內文件為準；任何 workflow 規則變更若未同步本檔，視為未完成。
+本檔是此 vault 的 Markdown 文件入口，提供文件語言規範、閱讀順序與同步範圍摘要。完整 workflow 規則仍以 `START_HERE.md`、`AGENTS.md`、`CLAUDE.md` 與 `docs/` 內文件為準；任何 workflow 規則變更若未同步本檔，視為未完成。
 
 ## 文件語言規範
 
@@ -12,15 +12,17 @@
 
 ## 建議閱讀順序
 
-1. `AGENTS.md`
-2. `CLAUDE.md`
-3. `docs/orchestration.md`
-4. `docs/artifact_schema.md`
-5. `BOOTSTRAP_PROMPT.md`
-6. `docs/red_team_runbook.md`
+1. `START_HERE.md`
+2. `AGENTS.md`
+3. `CLAUDE.md`
+4. `docs/orchestration.md`
+5. `docs/artifact_schema.md`
+6. `BOOTSTRAP_PROMPT.md`
+7. `docs/red_team_runbook.md`
 
 ## 導覽目錄
 
+- `Start Here` → `START_HERE.md`
 - `Lightweight Mode` → `docs/lightweight_mode_rules.md`
 - `Workflow Orchestration` → `docs/orchestration.md`
 - `Artifact Schema` → `docs/artifact_schema.md`
@@ -29,7 +31,7 @@
 
 ## 同步範圍
 
-- 需同步：入口檔、`docs/*.md`、README、Obsidian 入口、`artifacts/scripts/guard_status_validator.py`、`artifacts/scripts/guard_contract_validator.py`、`artifacts/scripts/run_red_team_suite.py`、template 對應文件。
+- 需同步：入口檔（含 `START_HERE.md`）、`docs/*.md`、README、Obsidian 入口、`artifacts/scripts/guard_status_validator.py`、`artifacts/scripts/guard_contract_validator.py`、`artifacts/scripts/run_red_team_suite.py`、template 對應文件。
 - 不追溯改寫：`artifacts/` 內歷史任務記錄、`template/experiments/` 產出、外部 repo 與備份目錄中的 Markdown。
 
 ## Workflow 摘要
@@ -41,6 +43,7 @@
 - `CLAUDE.md` / `GEMINI.md` / `CODEX.md` 有變更時，必須同步更新 `artifacts/scripts/drills/prompt_regression_cases.json`。
 - workflow 規則變更後，必須同步更新 root、`template/` 與 Obsidian 入口，並通過 contract guard。
 - 紅隊演練入口是 `docs/red_team_runbook.md`，重跑命令是 `python artifacts/scripts/run_red_team_suite.py`；靜態案例現新增邊界版本測試（如 RT-004B）確保防治邏輯合理。
+- `python artifacts/scripts/run_red_team_suite.py` 預設會在每次執行後清理 `.codex-red-team/` fixture；若需要保留現場供除錯，可加上 `--keep-temp`。
 - Prompt regression 固定入口是 `python artifacts/scripts/prompt_regression_validator.py --root .`，固定測例在 `artifacts/scripts/drills/prompt_regression_cases.json`。
 - 固定 Prompt regression 測例目前涵蓋 artifact-only truth/completion、workflow sync completeness、research blocked preconditions、implementation summary discipline、conflict-to-decision routing、decision schema integrity、external failure STOP、decision-gated scope waiver、historical diff evidence contract、pinned diff evidence integrity、GitHub provider-backed diff evidence 與 archive retention fallback。
 
@@ -58,6 +61,6 @@
 
 ## GitHub / Template 對應
 
-- GitHub 對外入口：`README.md`、`README.zh-TW.md`
-- Template 對應：`template/AGENTS.md`、`template/CLAUDE.md`、`template/GEMINI.md`、`template/CODEX.md`、`template/BOOTSTRAP_PROMPT.md`
+- GitHub 對外入口：`START_HERE.md`、`README.md`、`README.zh-TW.md`
+- Template 對應：`template/START_HERE.md`、`template/AGENTS.md`、`template/CLAUDE.md`、`template/GEMINI.md`、`template/CODEX.md`、`template/BOOTSTRAP_PROMPT.md`
 - Obsidian 對應：`template/OBSIDIAN.md`

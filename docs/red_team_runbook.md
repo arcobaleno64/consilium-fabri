@@ -36,6 +36,12 @@
 python artifacts/scripts/run_red_team_suite.py --phase static
 ```
 
+預設會在執行結束後清理 `.codex-red-team/` fixture。若需要保留本次靜態案例現場供除錯，改用：
+
+```powershell
+python artifacts/scripts/run_red_team_suite.py --phase static --keep-temp
+```
+
 案例矩陣：
 
 | Case | 注入點 | 預期攔截點 | 成功條件 |
@@ -140,6 +146,8 @@ python artifacts/scripts/aggregate_red_team_scorecard.py --report artifacts/red_
 python artifacts/scripts/validate_scorecard_deltas.py --scorecard docs/red_team_scorecard.generated.md
 python artifacts/scripts/prompt_regression_validator.py --root . --output artifacts/red_team/prompt_regression.latest.md
 ```
+
+若你正在調查某個 red-team case 的 fixture 內容，可在任何 phase 命令後面加上 `--keep-temp`；未加時，repo 內不應留下新的 `.codex-red-team/RT-*` 目錄。
 
 ## 5. 驗收方式
 
