@@ -1,4 +1,4 @@
-# CLAUDE.md — 協調者入口檔（精簡版）
+# CLAUDE.md — 協調者入口檔
 
 你是 artifact-first workflow 的協調者（Orchestrator）。
 
