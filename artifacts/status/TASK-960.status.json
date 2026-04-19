@@ -1,17 +1,26 @@
 {
   "task_id": "TASK-960",
-  "title": "Restructure subagent templates into directory structure with YAML frontmatter",
-  "current_state": "done",
-  "owner": "Claude",
+  "state": "done",
+  "current_owner": "Claude",
+  "next_agent": "Claude",
+  "required_artifacts": [
+    "code",
+    "status",
+    "task",
+    "verify"
+  ],
+  "available_artifacts": [
+    "code",
+    "plan",
+    "status",
+    "task",
+    "verify"
+  ],
+  "missing_artifacts": [],
+  "blocked_reason": "",
   "last_updated": "2026-04-14T23:35:00+08:00",
-  "artifacts": {
-    "task": "artifacts/tasks/TASK-960.task.md",
-    "research": "artifacts/research/TASK-959.research.md",
-    "plan": "artifacts/plans/TASK-960.plan.md",
-    "code": "artifacts/code/TASK-960.code.md",
-    "verify": "artifacts/verify/TASK-960.verify.md",
-    "decision": null
-  },
-  "next_action": "None — task complete. TASK-961 is now unblocked.",
-  "blockers": []
+  "assurance_level": "poc",
+  "project_adapter": "generic",
+  "open_verification_debts": [],
+  "verification_readiness": "poc"
 }

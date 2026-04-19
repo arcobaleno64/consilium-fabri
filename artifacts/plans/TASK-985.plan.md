@@ -5,7 +5,7 @@
 - Artifact Type: plan
 - Owner: Codex CLI
 - Status: ready
-- Last Updated: 2026-04-19T23:16:59+08:00
+- Last Updated: 2026-04-19T23:22:43+08:00
 
 ## Scope
 
@@ -97,6 +97,7 @@
 - 在 red-team suite 新增 external import case，證明 unparseable legacy fragment 進入 `external-legacy` 後只能落成 manual-review / deferred。
 - shared workflow validators 補 fail-closed coverage hardening：`workflow_constants.py` 對壞 rule tables 回傳 validation errors 而不是 `KeyError`，`guard_status_validator.py` 補回 `reconcile_status_file(..., apply=...)` 相容入口。
 - root / `template/` workflow contract 一併收斂：同步 `guard_contract_validator.py`、`build_decision_registry.py`、prompt regression corpus，以及 7 個入口文件與關聯 docs，避免本地依賴 dirty files 才能通過 CI。
+- historical root artifacts 一併 reconciliation：把既有 task / decision / improvement / verify / status 檔補到新 schema 最低要求，消除 source-repo strictness 對 legacy warning 的阻擋。
 - 重跑 root / `template/` 全量 guard tests、migration dry-run、contract / context / status validators、static / all red-team，並更新 generated report / scorecard。
 
 ## Risks

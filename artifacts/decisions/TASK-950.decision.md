@@ -7,6 +7,15 @@
 - Status: done
 - Last Updated: 2026-04-11T11:00:00+08:00
 
+## Decision Class
+scope-drift-waiver
+
+## Affected Gate
+Gate_B
+
+## Scope
+Current task artifact governance and exception handling.
+
 ## Issue
 本 live drill 模擬兩個角色邊界事件：一是 Gemini research 草稿夾帶 solution design；二是 Codex 提議擴大到未列入 plan 的額外修改。
 
@@ -25,6 +34,18 @@
 - 最終 research artifact 必須維持 fact-only
 - code artifact 只能描述 plan 內的 live drill 產物
 - verify evidence 必須同時指向 decision 與 improvement artifact
+
+## Expiry
+None
+
+## Linked Artifacts
+- `artifacts/tasks/TASK-950.task.md`
+- `artifacts/research/TASK-950.research.md`
+- `artifacts/plans/TASK-950.plan.md`
+- `artifacts/code/TASK-950.code.md`
+- `artifacts/verify/TASK-950.verify.md`
+- `artifacts/status/TASK-950.status.json`
+- `artifacts/improvement/TASK-950.improvement.md`
 
 ## Follow Up
 - 保留 `TASK-950` 作為 role boundary live drill 樣本

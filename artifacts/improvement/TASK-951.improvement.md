@@ -8,6 +8,7 @@
 - Owner: Claude
 - Status: applied
 - Last Updated: 2026-04-11T11:10:00+08:00
+- Improvement Profile: gate-e
 
 ## Risk Analysis (新增)
 - Predicted Risks: [R1, R2]  # 來自 TASK-951.plan.md 的 premortem 

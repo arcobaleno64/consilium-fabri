@@ -3,9 +3,24 @@
   "state": "planned",
   "current_owner": "Claude",
   "next_agent": "Claude",
-  "required_artifacts": ["task", "research", "plan", "status"],
-  "available_artifacts": ["decision", "plan", "research", "status", "task"],
+  "required_artifacts": [
+    "plan",
+    "research",
+    "status",
+    "task"
+  ],
+  "available_artifacts": [
+    "decision",
+    "plan",
+    "research",
+    "status",
+    "task"
+  ],
   "missing_artifacts": [],
   "blocked_reason": "",
-  "last_updated": "2026-04-16T00:00:00+08:00"
+  "last_updated": "2026-04-16T00:00:00+08:00",
+  "assurance_level": "production",
+  "project_adapter": "docs-spec",
+  "open_verification_debts": [],
+  "verification_readiness": "production-blocked"
 }

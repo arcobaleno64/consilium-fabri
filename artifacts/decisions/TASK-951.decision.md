@@ -7,6 +7,15 @@
 - Status: done
 - Last Updated: 2026-04-11T11:10:00+08:00
 
+## Decision Class
+scope-drift-waiver
+
+## Affected Gate
+Gate_E
+
+## Scope
+Current task artifact governance and exception handling.
+
 ## Issue
 本 live drill 要驗證 blocked 任務不能只靠 decision 或 blocked_reason 恢復，必須先有合法且 `Status: applied` 的 improvement artifact。
 
@@ -25,6 +34,18 @@
 - blocked 與 resume 必須同時出現在 decision、improvement 與 verify evidence 中
 - 最終樣本雖然收斂到 `done`，但必須保留完整 Gate E 證據
 - `TASK-951` 可直接拿來重跑 status validator
+
+## Expiry
+None
+
+## Linked Artifacts
+- `artifacts/tasks/TASK-951.task.md`
+- `artifacts/research/TASK-951.research.md`
+- `artifacts/plans/TASK-951.plan.md`
+- `artifacts/code/TASK-951.code.md`
+- `artifacts/verify/TASK-951.verify.md`
+- `artifacts/status/TASK-951.status.json`
+- `artifacts/improvement/TASK-951.improvement.md`
 
 ## Follow Up
 - 保留 `TASK-951` 作為 blocked / PDCA / resume live drill 樣本
