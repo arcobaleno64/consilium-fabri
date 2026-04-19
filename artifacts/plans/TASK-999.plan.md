@@ -11,7 +11,7 @@
 
 1. 新增 docs/orchestration.md §13 Cross-Repository Collaboration（13.1–13.4）。
 2. 新增 docs/red_team_runbook.md §7 Extension Guide（7.1–7.3）。
-3. 建立 artifacts/status/kpi_sprint6.json（S6 KPI 實測對比）。
+3. 建立 artifacts/metrics/kpi_sprint6.json（S6 KPI 實測對比）。
 4. 建立 artifacts/decisions/TASK-999.decision.md（下季路線圖決策）。
 5. 建立 artifacts/status/TASK-999.status.json。
 6. 同步 docs/orchestration.md → template/docs/orchestration.md。
@@ -23,7 +23,7 @@
 - template/docs/orchestration.md
 - docs/red_team_runbook.md
 - template/docs/red_team_runbook.md
-- artifacts/status/kpi_sprint6.json
+- artifacts/metrics/kpi_sprint6.json
 - artifacts/decisions/TASK-999.decision.md
 - artifacts/status/TASK-999.status.json
 - artifacts/tasks/TASK-999.task.md
@@ -53,6 +53,13 @@
 - `python artifacts/scripts/guard_status_validator.py --task-id TASK-951`
 - `python artifacts/scripts/guard_status_validator.py --task-id TASK-902`
 - `python artifacts/scripts/guard_status_validator.py --task-id TASK-999`
+
+## Verification Obligations
+
+- `docs/orchestration.md` / `template/docs/orchestration.md` 必須在 wording 與 stage/gate 規則上保持一致。
+- `docs/red_team_runbook.md` / `template/docs/red_team_runbook.md` 必須同步更新新增章節。
+- `artifacts/metrics/kpi_sprint6.json` 的數值與 methodology 必須可回溯至本次測量。
+- `TASK-999.decision.md` 必須能被 Decision Registry 正確收錄。
 
 ## Out of Scope
 

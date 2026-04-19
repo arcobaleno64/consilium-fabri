@@ -5,7 +5,7 @@
 - Artifact Type: code
 - Owner: Codex CLI
 - Status: ready
-- Last Updated: 2026-04-19T23:22:43+08:00
+- Last Updated: 2026-04-19T23:29:25+08:00
 
 ## Files Changed
 
@@ -41,7 +41,7 @@
 - `docs/red_team_runbook.md`
 - `artifacts/red_team/latest_report.md`
 - `docs/red_team_scorecard.generated.md`
-- selected historical root artifacts under `artifacts/tasks/`, `artifacts/decisions/`, `artifacts/improvement/`, `artifacts/verify/`, and `artifacts/status/` required to satisfy source-repo strictness without legacy warnings
+- selected historical root artifacts under `artifacts/tasks/`, `artifacts/plans/`, `artifacts/decisions/`, `artifacts/improvement/`, `artifacts/verify/`, and `artifacts/status/` required to satisfy source-repo strictness without legacy warnings
 - `artifacts/verify/TASK-900.verify.md`
 - `artifacts/verify/TASK-952.verify.md`
 - `artifacts/verify/TASK-953.verify.md`
@@ -92,7 +92,7 @@
 - 在 `migrate_artifact_schema.py` 收緊 `Evidence Refs` 推斷：command-style evidence lines 不再被誤當成 path refs；root tracked verify 若已明示 `Evidence Refs`，migration 不再追加推斷值。
 - shared workflow validators 補 fail-closed hardening：`workflow_constants.py` 現在對缺 profile / adapter rule / policy key 會回傳 validation errors；`guard_status_validator.py` 補回 `reconcile_status_file(..., apply=...)` 相容入口與 dry-run diff。
 - `guard_contract_validator.py` 擴充 source/downstream repo contract、README / OBSIDIAN 結構檢查、Gemini policy 限制與 prompt-regression sync 檢查；`build_decision_registry.py` 補 decision class / affected gate / linked artifacts normalization，並把 registry 產物移到 `artifacts/registry/`。
-- historical root artifacts 的 schema reconciliation 一併納入：tasks 補 `Assurance Level` / `Project Adapter`，decisions 補 `Decision Class` / `Affected Gate` / `Linked Artifacts`，improvements 補 `Improvement Profile`，verifies 補 structured checklist 與 schema-required sections，status files 補 assurance/profile/readiness 欄位並把 legacy schema 升成 current profile。
+- historical root artifacts 的 schema reconciliation 一併納入：tasks 補 `Assurance Level` / `Project Adapter`，plans 補 `## Verification Obligations`，decisions 補 `Decision Class` / `Affected Gate` / `Linked Artifacts`，improvements 補 `Improvement Profile`，verifies 補 structured checklist 與 schema-required sections，status files 補 assurance/profile/readiness 欄位並把 legacy schema 升成 current profile。
 - 新增 red-team static case `RT-030`，以 unparseable external legacy fragment 驗證 external import 仍維持 fail-closed。
 - 套用一次 migration 到 root tracked historical verifies，清掉 14 份舊 `Evidence Refs` canonicalization drift，讓 root baseline 回到可重跑 `changed_files=0`。
 - 同步 root / `template/` docs、entry docs、runner、prompt corpus、generated report 與 scorecard，避免 corpus / contract / red-team inventory drift。

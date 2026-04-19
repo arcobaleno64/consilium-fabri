@@ -5,10 +5,10 @@
 - Artifact Type: verify
 - Owner: Codex CLI
 - Status: pass
-- Last Updated: 2026-04-19T23:22:43+08:00
+- Last Updated: 2026-04-19T23:29:25+08:00
 
 ## Verification Summary
-本次驗證把 `TASK-984` 留下的 external legacy corpus 風險正式收斂，並補齊 shared workflow validator coverage gate：root / `template/` 現在有共享 external legacy verify corpus，migration regression 與 red-team 直接共用同一份 fixture；heading block 的誤分類、command-style evidence ref 污染、validator fail-closed / reconcile compatibility 缺口，以及 source/downstream workflow contract、decision registry sync、historical root artifact strictness reconciliation 都已補上，指定 9 個 repo gates 與 coverage 100% 已重新確認。
+本次驗證把 `TASK-984` 留下的 external legacy corpus 風險正式收斂，並補齊 shared workflow validator coverage gate：root / `template/` 現在有共享 external legacy verify corpus，migration regression 與 red-team 直接共用同一份 fixture；heading block 的誤分類、command-style evidence ref 污染、validator fail-closed / reconcile compatibility 缺口，以及 source/downstream workflow contract、decision registry sync、historical root artifact strictness reconciliation（含 plan verification obligations）都已補上，指定 9 個 repo gates 與 coverage 100% 已重新確認。
 
 ## Acceptance Criteria Checklist
 - **criterion**: root / `template/` 建立 external legacy verify corpus，至少覆蓋 structured checklist、heading block、checkbox list、unparseable fragment 四類
@@ -36,9 +36,9 @@
 - **evidence**: `RT-030` 已加入 static matrix，`python artifacts/scripts/run_red_team_suite.py --phase static --output artifacts/red_team/latest_report.md` 與 `--phase all` 均退出碼 `0`；report 中 `RT-030` 顯示 `fail-closed external legacy import confirmed`。
 - **result**: verified
 
-- **criterion**: root / `template/` contract、prompt regression、decision registry schema、historical root artifact strictness、context stack、既有 TASK-984 baseline 與 generated red-team outputs 沒有退步
+- **criterion**: root / `template/` contract、prompt regression、decision registry schema、historical root artifact strictness（含 plan verification obligations）、context stack、既有 TASK-984 baseline 與 generated red-team outputs 沒有退步
 - **method**: Contract validators + status validator + scorecard regeneration
-- **evidence**: `guard_contract_validator.py --root .`、`prompt_regression_validator.py --root .`、全量 `guard_status_validator.py --task-id TASK-*`、`run_red_team_suite.py --phase static`、`validate_context_stack.py --root .`、`repo_health_dashboard.py --root .`、`repo_security_scan.py --root . secrets/static` 全部 exit code `0`；`guard_contract_validator.py` 與 `build_decision_registry.py` 的新 coverage 分支已被 unit tests 命中，historical task / decision / improvement / verify / status artifacts 也已補到不再觸發 source-repo strictness warning，`template/` 對應 scripts / fixtures / docs / entry docs 已同步，`python -m pytest template/artifacts/scripts/test_guard_units.py` 亦通過 `992 passed`。
+- **evidence**: `guard_contract_validator.py --root .`、`prompt_regression_validator.py --root .`、全量 `guard_status_validator.py --task-id TASK-*`、`run_red_team_suite.py --phase static`、`validate_context_stack.py --root .`、`repo_health_dashboard.py --root .`、`repo_security_scan.py --root . secrets/static` 全部 exit code `0`；`guard_contract_validator.py` 與 `build_decision_registry.py` 的新 coverage 分支已被 unit tests 命中，historical task / plan / decision / improvement / verify / status artifacts 也已補到不再觸發 source-repo strictness warning，`template/` 對應 scripts / fixtures / docs / entry docs 已同步，`python -m pytest template/artifacts/scripts/test_guard_units.py` 亦通過 `992 passed`。
 - **result**: verified
 
 ## Overall Maturity
