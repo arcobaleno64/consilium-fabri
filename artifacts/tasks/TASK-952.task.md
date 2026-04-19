@@ -42,5 +42,11 @@
 - 修改 `CLAUDE.md`、`GEMINI.md`、`CODEX.md` 的 prompt 契約內容
 - 新增 diff-to-plan guard 或其他 M2 之後的機制
 
+## Assurance Level
+POC
+
+## Project Adapter
+generic
+
 ## Current Status Summary
 Ready to expand fixed prompt regression coverage as the first hardening task from the audit backlog.

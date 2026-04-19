@@ -42,5 +42,11 @@
 - 實作 M2 的 diff-to-plan 自動 guard
 - 變更 `CLAUDE.md`、`GEMINI.md`、`CODEX.md`、`docs/orchestration.md` 或 `docs/artifact_schema.md` 的契約內容
 
+## Assurance Level
+POC
+
+## Project Adapter
+generic
+
 ## Current Status Summary
 Completed: prompt regression now covers 15 fixed cases, including decision-focused workflow contracts and external failure STOP behavior.
