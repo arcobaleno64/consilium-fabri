@@ -20,6 +20,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Sequence
 
+import legacy_verify_corpus as lvc
+import migrate_artifact_schema as mas
+
 SCRIPT_PATH = Path(__file__).resolve()
 
 
@@ -258,11 +261,22 @@ def copy_task_fixture(temp_root: Path, source_task_id: str, target_task_id: str,
     return dest_artifacts
 
 
+def overwrite_verify_with_corpus_case(artifacts_root: Path, target_task_id: str, case_id: str) -> Path:
+    case = lvc.load_corpus_case(case_id)
+    verify_path = artifacts_root / "verify" / f"{target_task_id}.verify.md"
+    verify_path.write_text(case.text.replace("TASK-LEGACY", target_task_id), encoding="utf-8")
+    return verify_path
+
+
 def contract_fixture_paths(contract_module) -> List[str]:
     paths = set(contract_module.EXACT_SYNC_FILES)
+    paths.add(contract_module.SOURCE_REPO_SENTINEL)
     paths.update(contract_module.REQUIRED_PHRASES.keys())
+    for mode in (contract_module.SOURCE_REPO_MODE, contract_module.DOWNSTREAM_REPO_MODE):
+        paths.update(contract_module.README_CONTRACTS[mode].keys())
+        paths.update(contract_module.OBSIDIAN_CONTRACTS[mode].keys())
     for relative in list(paths):
-        if not relative.startswith("template/"):
+        if relative != contract_module.SOURCE_REPO_SENTINEL and not relative.startswith("template/"):
             paths.add(f"template/{relative}")
     return sorted(paths)
 
@@ -521,16 +535,15 @@ def case_rt_007() -> CaseResult:
 def case_rt_008() -> CaseResult:
     def mutation(temp_root: Path) -> None:
         path = temp_root / "OBSIDIAN.md"
-        # Replace "Status: applied" with a neutral string so the required phrase is absent
-        text = path.read_text(encoding="utf-8").replace("Status: applied", "Status: draft")
+        text = path.read_text(encoding="utf-8").replace("template/OBSIDIAN.md", "template/OBSIDIAN-REMOVED.md", 1)
         path.write_text(text, encoding="utf-8")
     return run_contract_case(
         expected_exit_code=1,
-        expected_output_fragment="OBSIDIAN.md missing required phrase: Status: applied",
+        expected_output_fragment="missing required phrase: template/OBSIDIAN.md",
         mutation=mutation,
         title="Obsidian drift",
         case_id="RT-008",
-        notes="Obsidian missing Gate E phrase",
+        notes="Obsidian GitHub/Template section lost required template mapping",
     )
 
 
@@ -603,6 +616,19 @@ def case_rt_012() -> CaseResult:
     try:
         artifacts_root = copy_task_fixture(temp_root, "TASK-900", "TASK-976")
         initialize_git_fixture(temp_root)
+        task_path = artifacts_root / "tasks" / "TASK-976.task.md"
+        task_text = task_path.read_text(encoding="utf-8")
+        task_text = re.sub(
+            r"## Project Adapter\s*\n.*?(?=\n## |\Z)",
+            "## Project Adapter\nresource-constrained-ui\n",
+            task_text,
+            flags=re.DOTALL,
+        )
+        task_path.write_text(task_text, encoding="utf-8")
+        status_path = artifacts_root / "status" / "TASK-976.status.json"
+        status_data = json.loads(status_path.read_text(encoding="utf-8"))
+        status_data["project_adapter"] = "resource-constrained-ui"
+        status_path.write_text(json.dumps(status_data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         verify_path = artifacts_root / "verify" / "TASK-976.verify.md"
         verify_text = verify_path.read_text(encoding="utf-8")
         verify_text = re.sub(
@@ -612,14 +638,14 @@ def case_rt_012() -> CaseResult:
             "- Criterion: `python artifacts/scripts/guard_status_validator.py --task-id TASK-976` 回報 `[OK] Validation passed`\n"
             "- Method: `python artifacts/scripts/guard_status_validator.py --task-id TASK-976`\n"
             "- Evidence: smoke sample task remains valid\n"
-            "- Result: pass\n"
+            "- Result: verified\n"
             "- Reviewer: Claude\n"
             "- Timestamp: 2026-04-15T12:00:00+08:00\n\n"
             "### AC-2\n"
             "- Criterion: verify checklist item 應保留 reviewer 欄位\n"
             "- Method: manual schema spot check\n"
             "- Evidence: structured checklist should include reviewer + timestamp\n"
-            "- Result: pass\n"
+            "- Result: verified\n"
             "- Timestamp: 2026-04-15T12:01:00+08:00\n",
             verify_text,
             flags=re.DOTALL,
@@ -1231,6 +1257,67 @@ def case_rt_028() -> CaseResult:
         shutil.rmtree(temp_root, ignore_errors=True)
 
 
+def case_rt_029() -> CaseResult:
+    def mutation(temp_root: Path) -> None:
+        path = temp_root / "template" / "README.md"
+        text = path.read_text(encoding="utf-8").replace(
+            ".github/ + OBSIDIAN.md + external/",
+            "template/ + .github/ + OBSIDIAN.md + external/",
+            1,
+        )
+        path.write_text(text, encoding="utf-8")
+    return run_contract_case(
+        expected_exit_code=1,
+        expected_output_fragment="template/README.md section 'Architecture Snapshot' contains forbidden phrase: template/ + .github/ + OBSIDIAN.md + external/",
+        mutation=mutation,
+        title="README source/downstream wording drift",
+        case_id="RT-029",
+        notes="template README architecture snapshot regressed to source-only wording",
+    )
+
+
+def case_rt_030() -> CaseResult:
+    temp_root = prepare_temp_root("RT-030")
+    try:
+        artifacts_root = copy_task_fixture(temp_root, "TASK-900", "TASK-977")
+        overwrite_verify_with_corpus_case(artifacts_root, "TASK-977", "unparseable-fragment")
+        report = mas.migrate_repository(temp_root, apply=True, input_mode=mas.EXTERNAL_LEGACY_MODE)
+        verify_path = artifacts_root / "verify" / "TASK-977.verify.md"
+        verify_text = verify_path.read_text(encoding="utf-8")
+        status_payload = json.loads((artifacts_root / "status" / "TASK-977.status.json").read_text(encoding="utf-8"))
+        passed = (
+            report.changed_count() > 0
+            and "Imported from external legacy verify artifact via manual-rewrite-fallback; confidence=low." in verify_text
+            and "## Pass Fail Result\nfail" in verify_text
+            and "MANUAL_CHECK_DEFERRED" in verify_text
+            and bool(status_payload.get("open_verification_debts"))
+        )
+        output = "\n".join(
+            [
+                "[OK] fail-closed external legacy import confirmed" if passed else "[FAIL] external legacy import escaped fail-closed policy",
+                f"changed_files={report.changed_count()}",
+                f"open_verification_debts={status_payload.get('open_verification_debts', [])}",
+            ]
+        )
+        result = completed_process_from_output(
+            ["python", str(REPO_ROOT / "artifacts" / "scripts" / "migrate_artifact_schema.py")],
+            0 if passed else 1,
+            output,
+        )
+        return build_case_result(
+            case_id="RT-030",
+            phase="static",
+            title="External legacy unparseable import stays fail-closed",
+            expected="pass",
+            expected_exit_code=0,
+            expected_output_fragment="fail-closed external legacy import confirmed",
+            result=result,
+            notes="unparseable external legacy verify stays deferred with open verification debt",
+        )
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
 def case_live_950() -> CaseResult:
     result = run_command([sys.executable, str(STATUS_GUARD), "--task-id", "TASK-950", "--artifacts-root", str(REPO_ROOT / "artifacts")])
     return build_case_result(
@@ -1340,16 +1427,16 @@ def case_pr_008() -> CaseResult:
 def case_pr_009() -> CaseResult:
     return run_prompt_case(
         "PR-009",
-        "Workflow sync completeness contract",
-        "Workflow prompt should require root/template sync, placeholder generalization, and README/Obsidian updates for workflow changes",
+        "Source/downstream sync split contract",
+        "Workflow prompt should distinguish source template repos from downstream terminal repos",
     )
 
 
 def case_pr_010() -> CaseResult:
     return run_prompt_case(
         "PR-010",
-        "Research blocked preconditions contract",
-        "Gemini prompt should block free-form research when task scope, query scope, or source credibility is missing",
+        "Research blocked preconditions and Gemini allowlist contract",
+        "Gemini prompt should block bad research inputs and keep active workflow files on the allowlisted Gemini models",
     )
 
 
@@ -1441,7 +1528,7 @@ STATIC_CASES: List[CaseDefinition] = [
     CaseDefinition("RT-005", "static", "Blocked resume without improvement artifact", "fail", 1, "requires an improvement artifact", case_rt_005),
     CaseDefinition("RT-006", "static", "Blocked resume with non-applied improvement", "fail", 1, "requires an improvement artifact with Status: applied", case_rt_006),
     CaseDefinition("RT-007", "static", "Contract drift between root and template", "fail", 1, "Contract drift detected", case_rt_007),
-    CaseDefinition("RT-008", "static", "Obsidian drift", "fail", 1, "OBSIDIAN.md missing required phrase: Status: applied", case_rt_008),
+    CaseDefinition("RT-008", "static", "Obsidian drift", "fail", 1, "missing required phrase: template/OBSIDIAN.md", case_rt_008),
     CaseDefinition("RT-009", "static", "Bootstrap missing contract guard", "fail", 1, "BOOTSTRAP_PROMPT.md missing required phrase: guard_contract_validator.py", case_rt_009),
     CaseDefinition("RT-010", "static", "Research artifact missing Sources section", "fail", 1, "missing required ## Sources section", case_rt_010),
     CaseDefinition("RT-011", "static", "Code artifact Mapping To Plan malformed entry", "pass", 0, "Mapping To Plan entry must match", case_rt_011),
@@ -1462,6 +1549,8 @@ STATIC_CASES: List[CaseDefinition] = [
     CaseDefinition("RT-026", "static", "Oversized workflow artifact is rejected before parsing", "fail", 1, "Text file too large", case_rt_026),
     CaseDefinition("RT-027", "static", "Oversized archive fallback is rejected before parsing", "fail", 1, "exceeds replay byte cap", case_rt_027),
     CaseDefinition("RT-028", "static", "Oversized provider response is rejected before JSON parsing", "fail", 1, "exceeds replay byte cap", case_rt_028),
+    CaseDefinition("RT-029", "static", "README source/downstream wording drift", "fail", 1, "template/README.md section 'Architecture Snapshot' contains forbidden phrase: template/ + .github/ + OBSIDIAN.md + external/", case_rt_029),
+    CaseDefinition("RT-030", "static", "External legacy unparseable import stays fail-closed", "pass", 0, "fail-closed external legacy import confirmed", case_rt_030),
 ]
 
 LIVE_CASES: List[CaseDefinition] = [
@@ -1478,8 +1567,8 @@ PROMPT_CASES: List[CaseDefinition] = [
     CaseDefinition("PR-006", "prompt", "Blocked wording quality contract", "pass", 0, "Prompt Regression Report", case_pr_006),
     CaseDefinition("PR-007", "prompt", "Premortem enforcement contract", "pass", 0, "Prompt Regression Report", case_pr_007),
     CaseDefinition("PR-008", "prompt", "Artifact-only truth and completion contract", "pass", 0, "Prompt Regression Report", case_pr_008),
-    CaseDefinition("PR-009", "prompt", "Workflow sync completeness contract", "pass", 0, "Prompt Regression Report", case_pr_009),
-    CaseDefinition("PR-010", "prompt", "Research blocked preconditions contract", "pass", 0, "Prompt Regression Report", case_pr_010),
+    CaseDefinition("PR-009", "prompt", "Source/downstream sync split contract", "pass", 0, "Prompt Regression Report", case_pr_009),
+    CaseDefinition("PR-010", "prompt", "Research blocked preconditions and Gemini allowlist contract", "pass", 0, "Prompt Regression Report", case_pr_010),
     CaseDefinition("PR-011", "prompt", "Implementation summary discipline contract", "pass", 0, "Prompt Regression Report", case_pr_011),
     CaseDefinition("PR-012", "prompt", "Conflict to decision routing contract", "pass", 0, "Prompt Regression Report", case_pr_012),
     CaseDefinition("PR-013", "prompt", "Decision artifact trigger matrix contract", "pass", 0, "Prompt Regression Report", case_pr_013),

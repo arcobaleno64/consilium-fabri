@@ -74,6 +74,7 @@ python artifacts/scripts/run_red_team_suite.py --phase static --keep-temp
 | `RT-026` | task / plan / code / verify 其中之一超過 artifact size ceiling | `guard_status_validator.py` | validation fail 並回報 artifact too large |
 | `RT-027` | `commit-range` archive fallback 超過 replay byte cap | `guard_status_validator.py` | validation fail 並回報 replay byte cap |
 | `RT-028` | `github-pr` provider response 超過 replay byte cap | `guard_status_validator.py` | validation fail 並回報 replay byte cap |
+| `RT-030` | external legacy unparseable verify fragment 匯入 | `migrate_artifact_schema.py` | import 維持 fail-closed：`deferred` + `MANUAL_CHECK_DEFERRED` + open verification debt |
 
 ### Phase 2: Live workflow 演練
 

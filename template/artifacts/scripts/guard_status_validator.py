@@ -16,10 +16,27 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 
-__version__ = "0.8.0"
+from workflow_constants import (
+    ARTIFACT_TYPES,
+    ASSURANCE_LEVELS,
+    derive_verification_readiness,
+    DECISION_CLASSES,
+    DEFAULT_ASSURANCE_LEVEL,
+    DEFAULT_PROJECT_ADAPTER,
+    IMPROVEMENT_PROFILES,
+    PROJECT_ADAPTERS,
+    resolve_verification_policy,
+    STRUCTURED_CHECKLIST_FIELDS as POLICY_STRUCTURED_CHECKLIST_FIELDS,
+    VERIFICATION_ITEM_RESULTS,
+    VERIFICATION_REASON_CODES,
+    VERIFICATION_READINESS_STATES,
+    WORKFLOW_STATES,
+)
+
+__version__ = "0.9.1"
 TAIPEI_TZ = timezone(timedelta(hours=8))
 
-STATE_ORDER = ["drafted", "researched", "planned", "coding", "testing", "verifying", "done", "blocked"]
+STATE_ORDER = list(WORKFLOW_STATES)
 VALID_STATES: Set[str] = set(STATE_ORDER)
 LEGAL_TRANSITIONS: Dict[str, Set[str]] = {
     "drafted": {"researched", "planned", "blocked"},  # planned: lightweight mode (no research needed)
@@ -120,7 +137,7 @@ RESEARCH_SOURCES_PARTIAL_DATE_PATTERN = re.compile(r"\((\d{4}(?:-\d{2})?(?:-\d{2
 MAPPING_TO_PLAN_ENTRY_PATTERN = re.compile(
     r'^- plan_item:\s*\d+\.\d+,\s*status:\s*(done|partial|skipped),\s*evidence:\s*"[^"\n]+"\s*$'
 )
-STRUCTURED_CHECKLIST_FIELDS = ("criterion", "method", "evidence", "result", "reviewer", "timestamp")
+STRUCTURED_CHECKLIST_FIELDS = POLICY_STRUCTURED_CHECKLIST_FIELDS
 PREMORTEM_MISSING_PATTERNS = (
     "## risks section not found",
     "section is empty or trivially dismissed",
@@ -130,7 +147,9 @@ OVERRIDE_STATUS_FLAG = "override_log_required"
 DEFAULT_STATUS_OWNER = "Claude"
 DEFAULT_STATUS_NEXT_AGENT = "Claude"
 BLOCKED_STATUS_NEXT_AGENT = "User"
-LIGHTWEIGHT_REQUIRED_ARTIFACTS = {"task", "research", "code", "status"}
+LIGHTWEIGHT_REQUIRED_ARTIFACTS = {"task", "code", "status"}
+DECISION_GATE_PATTERN = re.compile(r"^Gate_[A-E]$")
+NON_VERIFIED_RESULTS = {"unverified", "unverifiable", "deferred"}
 DECISION_WAIVER_GATES = {
     "Gate_A": "A",
     "Gate_B": "B",
@@ -377,6 +396,80 @@ def task_requests_lightweight(task_text: str) -> bool:
 
 def task_declares_premortem(task_text: str) -> bool:
     return "premortem" in extract_task_inline_flags(task_text)
+
+
+def collapse_whitespace(value: str) -> str:
+    return re.sub(r"\s+", " ", str(value or "")).strip()
+
+
+def extract_single_line_section(text: str, heading: str) -> str:
+    section = extract_section(text, heading)
+    if not section:
+        return ""
+    return next(
+        (collapse_whitespace(line) for line in section.splitlines() if line.strip()),
+        "",
+    )
+
+
+def normalize_assurance_level(value: str) -> str:
+    normalized = str(value or "").strip().lower()
+    return normalized if normalized in ASSURANCE_LEVELS else DEFAULT_ASSURANCE_LEVEL
+
+
+def normalize_project_adapter(value: str) -> str:
+    normalized = str(value or "").strip().lower()
+    return normalized if normalized in PROJECT_ADAPTERS else DEFAULT_PROJECT_ADAPTER
+
+
+def resolve_assurance_level(task_text: str = "", status: Optional[dict] = None) -> str:
+    flags = extract_task_inline_flags(task_text)
+    task_value = (
+        flags.get("assurance_level")
+        or extract_single_line_section(task_text, "Assurance Level")
+    )
+    if task_value:
+        return normalize_assurance_level(task_value)
+    if isinstance(status, dict):
+        return normalize_assurance_level(status.get("assurance_level", ""))
+    return DEFAULT_ASSURANCE_LEVEL
+
+
+def resolve_project_adapter(task_text: str = "", status: Optional[dict] = None) -> str:
+    flags = extract_task_inline_flags(task_text)
+    task_value = (
+        flags.get("project_adapter")
+        or extract_single_line_section(task_text, "Project Adapter")
+    )
+    if task_value:
+        return normalize_project_adapter(task_value)
+    if isinstance(status, dict):
+        return normalize_project_adapter(status.get("project_adapter", ""))
+    return DEFAULT_PROJECT_ADAPTER
+
+
+def companion_artifact_path(path: Path, artifact_type: str, task_id: str) -> Path:
+    artifacts_root = path.parent.parent
+    return artifact_path(artifacts_root, task_id, artifact_type)
+
+
+def resolve_artifact_profile(path: Path, task_id: str) -> Tuple[str, str]:
+    status_path = companion_artifact_path(path, "status", task_id)
+    task_path = companion_artifact_path(path, "task", task_id)
+    status = load_json(status_path) if status_path.exists() else {}
+    task_text = load_text(task_path) if task_path.exists() else ""
+    return resolve_assurance_level(task_text, status), resolve_project_adapter(task_text, status)
+
+
+def resolve_task_policy(
+    task_text: str = "",
+    status: Optional[dict] = None,
+    assurance_level: Optional[str] = None,
+    project_adapter: Optional[str] = None,
+) -> Dict[str, object]:
+    resolved_assurance = assurance_level or resolve_assurance_level(task_text, status)
+    resolved_adapter = project_adapter or resolve_project_adapter(task_text, status)
+    return resolve_verification_policy(resolved_assurance, resolved_adapter)
 
 
 def plan_has_non_empty_risks(plan_text: str) -> bool:
@@ -1001,6 +1094,7 @@ def validate_status_schema(status: dict, expected_task_id: str) -> ValidationRes
     if state not in VALID_STATES:
         errors.append(f"Invalid state: {state!r}")
     if status_uses_legacy_schema(status):
+        warnings.append("legacy status schema detected; run reconcile to promote state/current_owner/next_agent profile fields")
         required_keys = {"task_id", "current_state", "owner", "last_updated"}
         missing = required_keys - set(status.keys())
         if missing:
@@ -1017,7 +1111,17 @@ def validate_status_schema(status: dict, expected_task_id: str) -> ValidationRes
         elif isinstance(blockers, list) and any(str(item).strip() for item in blockers):
             warnings.append("blockers is non-empty while current_state is not blocked")
     else:
-        required_keys = {"task_id", "state", "current_owner", "next_agent", "required_artifacts", "available_artifacts", "missing_artifacts", "blocked_reason", "last_updated"}
+        required_keys = {
+            "task_id",
+            "state",
+            "current_owner",
+            "next_agent",
+            "required_artifacts",
+            "available_artifacts",
+            "missing_artifacts",
+            "blocked_reason",
+            "last_updated",
+        }
         missing = required_keys - set(status.keys())
         if missing:
             errors.append(f"status.json missing required keys: {sorted(missing)}")
@@ -1026,9 +1130,60 @@ def validate_status_schema(status: dict, expected_task_id: str) -> ValidationRes
             if not isinstance(value, list):
                 errors.append(f"status.json field '{key}' must be a list")
                 continue
-            unknown = sorted(set(value) - set(ARTIFACT_DIRS.keys()))
+            unknown = sorted(set(value) - set(ARTIFACT_TYPES))
             if unknown:
                 errors.append(f"status.json field '{key}' contains unknown artifacts: {unknown}")
+
+        assurance_raw = status.get("assurance_level", "")
+        if assurance_raw in {"", None}:
+            warnings.append(f"status.json missing 'assurance_level'; defaulting to '{DEFAULT_ASSURANCE_LEVEL}' until reconcile")
+        else:
+            assurance_level = str(assurance_raw).strip().lower()
+            if assurance_level not in ASSURANCE_LEVELS:
+                errors.append(
+                    f"status.json field 'assurance_level' must be one of {list(ASSURANCE_LEVELS)}, got '{status.get('assurance_level')}'"
+                )
+
+        project_adapter_raw = status.get("project_adapter", "")
+        if project_adapter_raw in {"", None}:
+            warnings.append(f"status.json missing 'project_adapter'; defaulting to '{DEFAULT_PROJECT_ADAPTER}' until reconcile")
+        else:
+            project_adapter = str(project_adapter_raw).strip().lower()
+            if project_adapter not in PROJECT_ADAPTERS:
+                errors.append(
+                    f"status.json field 'project_adapter' must be one of {list(PROJECT_ADAPTERS)}, got '{status.get('project_adapter')}'"
+                )
+
+        open_debts = status.get("open_verification_debts")
+        if open_debts is None:
+            warnings.append("status.json missing 'open_verification_debts'; defaulting to [] until reconcile")
+        elif not isinstance(open_debts, list):
+            errors.append("status.json field 'open_verification_debts' must be a list")
+        expected_readiness = derive_verification_readiness(
+            status.get("assurance_level", DEFAULT_ASSURANCE_LEVEL),
+            status.get("project_adapter", DEFAULT_PROJECT_ADAPTER),
+            state,
+            open_debts if isinstance(open_debts, list) else [],
+        )
+        verification_readiness = status.get("verification_readiness")
+        if verification_readiness in {"", None}:
+            warnings.append(
+                "status.json missing 'verification_readiness'; "
+                f"defaulting to '{expected_readiness}' until reconcile"
+            )
+        else:
+            readiness_value = str(verification_readiness).strip().lower()
+            if readiness_value not in VERIFICATION_READINESS_STATES:
+                errors.append(
+                    "status.json field 'verification_readiness' must be one of "
+                    f"{list(VERIFICATION_READINESS_STATES)}, got '{verification_readiness}'"
+                )
+            elif readiness_value != expected_readiness:
+                warnings.append(
+                    "verification_readiness mismatch. "
+                    f"status.json={readiness_value} computed={expected_readiness}"
+                )
+
         if state == "blocked" and not str(status.get("blocked_reason", "")).strip():
             errors.append("blocked state requires non-empty blocked_reason")
         if state != "blocked" and str(status.get("blocked_reason", "")).strip():
@@ -1128,6 +1283,7 @@ def validate_research_artifact(task_id: str, text: str, path: Path) -> Validatio
 
 def validate_improvement_artifact(text: str, path: Path, task_id: str) -> ValidationResult:
     errors: List[str] = []
+    warnings: List[str] = []
     source_match = re.search(r"^- Source Task:\s*(.+)$", text, re.MULTILINE)
     if not source_match or not source_match.group(1).strip():
         errors.append(f"{path.name}: missing non-empty Source Task field")
@@ -1136,11 +1292,42 @@ def validate_improvement_artifact(text: str, path: Path, task_id: str) -> Valida
     trigger_match = re.search(r"^- Trigger Type:\s*(.+)$", text, re.MULTILINE)
     if not trigger_match or trigger_match.group(1).strip() not in {"failure", "blocked", "inefficiency", "guard miss"}:
         errors.append(f"{path.name}: Trigger Type must be one of failure / blocked / inefficiency / guard miss")
+    profile_match = re.search(r"^- Improvement Profile:\s*(.+)$", text, re.MULTILINE)
+    if profile_match:
+        profile = profile_match.group(1).strip().lower()
+        if profile not in IMPROVEMENT_PROFILES:
+            errors.append(f"{path.name}: Improvement Profile must be one of {list(IMPROVEMENT_PROFILES)}")
+    else:
+        warnings.append(f"{path.name}: missing Improvement Profile; inferred from Trigger Type for backward compatibility")
     for heading in ("5. Preventive Action (System Level)", "6. Validation", "8. Final Rule", "9. Status"):
         value = extract_section(text, heading)
         if not value or value.lower() == "none":
             errors.append(f"{path.name}: ## {heading} must not be empty")
-    return ValidationResult(errors, [])
+    return ValidationResult(errors, warnings)
+
+
+def validate_decision_artifact(text: str, path: Path) -> ValidationResult:
+    errors: List[str] = []
+    warnings: List[str] = []
+    decision_class = extract_single_line_section(text, "Decision Class")
+    if decision_class:
+        if decision_class.lower() not in DECISION_CLASSES:
+            errors.append(f"{path.name}: Decision Class must be one of {list(DECISION_CLASSES)}")
+    else:
+        warnings.append(f"{path.name}: missing ## Decision Class; legacy decision artifact kept for compatibility")
+    affected_gate = extract_single_line_section(text, "Affected Gate")
+    if affected_gate:
+        if not DECISION_GATE_PATTERN.match(affected_gate):
+            errors.append(f"{path.name}: Affected Gate must use Gate_A..Gate_E format")
+    elif decision_class:
+        warnings.append(f"{path.name}: missing ## Affected Gate")
+    expiry = extract_single_line_section(text, "Expiry")
+    if expiry and expiry.strip().lower() not in {"none", "n/a"}:
+        errors.extend(validate_taipei_timestamp(expiry, f"{path.name} Expiry"))
+    linked_artifacts = extract_section(text, "Linked Artifacts")
+    if decision_class and not linked_artifacts:
+        warnings.append(f"{path.name}: missing ## Linked Artifacts")
+    return ValidationResult(errors, warnings)
 
 
 def validate_code_mapping_to_plan(text: str, path: Path) -> ValidationResult:
@@ -1174,37 +1361,155 @@ def parse_structured_checklist_fields(block_text: str) -> Dict[str, str]:
     return fields
 
 
-def validate_verify_checklist_schema(text: str, path: Path) -> ValidationResult:
-    section = extract_section(text, "Acceptance Criteria Checklist")
-    if not section:
-        return ValidationResult([], [])
-    warnings: List[str] = []
-    blocks = [block.strip() for block in re.split(r"\n\s*\n", section) if block.strip()]
+def parse_verify_checklist_items(section_text: str) -> List[Dict[str, str]]:
+    items: List[Dict[str, str]] = []
+    if not section_text:
+        return items
+    blocks = [block.strip() for block in re.split(r"\n\s*\n", section_text) if block.strip()]
     for block in blocks:
         fields = parse_structured_checklist_fields(block)
         if not fields:
             continue
         if not set(fields).intersection({"criterion", "method", "reviewer", "timestamp"}):
             continue
-        item_label = fields.get("criterion") or block.splitlines()[0].strip()
-        for field in STRUCTURED_CHECKLIST_FIELDS:
+        items.append(fields)
+    return items
+
+
+def collect_verify_contract(
+    text: str,
+    assurance_level: str = DEFAULT_ASSURANCE_LEVEL,
+    project_adapter: str = DEFAULT_PROJECT_ADAPTER,
+    state: str = "done",
+) -> Dict[str, object]:
+    policy = resolve_verification_policy(assurance_level, project_adapter)
+    section = extract_section(text, "Acceptance Criteria Checklist")
+    items = parse_verify_checklist_items(section)
+    open_debts: List[str] = []
+    for fields in items:
+        result_value = str(fields.get("result", "")).strip().lower()
+        criterion = str(fields.get("criterion", "")).strip() or "<unnamed criterion>"
+        if result_value in policy["status_debt_results"]:
+            open_debts.append(f"{result_value}: {criterion}")
+    declared_maturity = extract_single_line_section(text, "Overall Maturity").strip().lower()
+    return {
+        "items": items,
+        "open_verification_debts": open_debts,
+        "computed_readiness": derive_verification_readiness(
+            assurance_level,
+            project_adapter,
+            state,
+            open_debts,
+        ),
+        "declared_maturity": declared_maturity,
+        "pass_fail_result": extract_single_line_section(text, "Pass Fail Result").strip().lower(),
+    }
+
+
+def validate_verify_checklist_schema(
+    text: str,
+    path: Path,
+    assurance_level: str = DEFAULT_ASSURANCE_LEVEL,
+    project_adapter: str = DEFAULT_PROJECT_ADAPTER,
+) -> ValidationResult:
+    policy = resolve_verification_policy(assurance_level, project_adapter)
+    section = extract_section(text, "Acceptance Criteria Checklist")
+    if not section:
+        return ValidationResult([], [])
+    errors: List[str] = []
+    warnings: List[str] = []
+    verify_contract = collect_verify_contract(text, assurance_level, project_adapter)
+    checklist_items = verify_contract["items"]
+    structured_count = len(checklist_items)
+    required_fields = set(policy["verify_required_fields"])
+    required_sections = set(policy["verify_required_sections"])
+    allowed_results = set(policy["allowed_results"])
+    disallowed_results = set(policy["disallowed_results"])
+    allowed_reason_codes = set(policy["allowed_reason_codes"])
+    missing_target = errors if assurance_level in {"mvp", "production"} else warnings
+
+    for fields in checklist_items:
+        item_label = fields.get("criterion") or fields.get("method") or "<unnamed criterion>"
+        for field in sorted(required_fields):
             if not fields.get(field):
-                warnings.append(
+                missing_target.append(
                     f"{path.name}: Acceptance Criteria Checklist structured item '{item_label}' missing {field} field"
                 )
+        result_value = str(fields.get("result", "")).strip().lower()
+        if result_value and result_value not in allowed_results:
+            errors.append(
+                f"{path.name}: Acceptance Criteria Checklist structured item '{item_label}' result must be one of {list(VERIFICATION_ITEM_RESULTS)}"
+            )
+        if result_value in disallowed_results:
+            errors.append(
+                f"{path.name}: Acceptance Criteria Checklist structured item '{item_label}' result '{result_value}' is not allowed for assurance level '{policy['assurance_level']}'"
+            )
+        if result_value in NON_VERIFIED_RESULTS and not (fields.get("decision_ref") or fields.get("reason_code")):
+            target = errors if assurance_level in {"mvp", "production"} else warnings
+            target.append(
+                f"{path.name}: Acceptance Criteria Checklist structured item '{item_label}' with result '{result_value}' requires decision_ref or reason_code"
+            )
+        reason_code = str(fields.get("reason_code", "")).strip().upper()
+        if reason_code and reason_code not in allowed_reason_codes:
+            errors.append(
+                f"{path.name}: Acceptance Criteria Checklist structured item '{item_label}' reason_code must be one of {sorted(allowed_reason_codes or set(VERIFICATION_REASON_CODES))}"
+            )
         timestamp_value = fields.get("timestamp")
         if timestamp_value:
             for error in validate_taipei_timestamp(timestamp_value, f"{path.name} checklist timestamp"):
-                warnings.append(
-                    f"{path.name}: Acceptance Criteria Checklist structured item '{item_label}' has invalid timestamp: {error}"
-                )
-    return ValidationResult([], warnings)
+                target = errors if assurance_level == "production" else warnings
+                target.append(f"{path.name}: Acceptance Criteria Checklist structured item '{item_label}' has invalid timestamp: {error}")
+
+    if structured_count == 0:
+        target = errors if assurance_level in {"mvp", "production"} else warnings
+        target.append(
+            f"{path.name}: Acceptance Criteria Checklist requires at least one structured checklist item"
+        )
+
+    section_checks = {
+        "Verification Summary": bool(extract_section(text, "Verification Summary")),
+        "Acceptance Criteria Checklist": bool(section),
+        "Overall Maturity": bool(extract_single_line_section(text, "Overall Maturity")),
+        "Deferred Items": bool(extract_section(text, "Deferred Items")),
+        "Decision Refs": bool(extract_section(text, "Decision Refs")),
+        "Evidence Refs": bool(extract_section(text, "Evidence Refs")),
+        "Pass Fail Result": bool(re.search(r"## Pass Fail Result\s+\n?\s*(pass|fail)\b", text, re.IGNORECASE)),
+        "Build Guarantee": bool(extract_section(text, "Build Guarantee")),
+    }
+    for section_name in sorted(required_sections):
+        if section_checks.get(section_name):
+            continue
+        target = errors if assurance_level in {"mvp", "production"} else warnings
+        target.append(f"{path.name}: missing ## {section_name} for assurance level '{policy['assurance_level']}'")
+
+    maturity_value = extract_single_line_section(text, "Overall Maturity").lower()
+    if maturity_value and maturity_value not in VERIFICATION_READINESS_STATES:
+        errors.append(
+            f"{path.name}: Overall Maturity must be one of {list(VERIFICATION_READINESS_STATES)}"
+        )
+    elif maturity_value and maturity_value != verify_contract["computed_readiness"]:
+        warnings.append(
+            f"{path.name}: Overall Maturity mismatch. declared={maturity_value} computed={verify_contract['computed_readiness']}"
+        )
+    pass_fail_result = verify_contract["pass_fail_result"]
+    if pass_fail_result == "pass" and verify_contract["open_verification_debts"]:
+        errors.append(
+            f"{path.name}: Pass Fail Result cannot be 'pass' while checklist contains open verification debts"
+        )
+    return ValidationResult(errors, warnings)
 
 
 def validate_markdown_artifact(path: Path, artifact_type: str, task_id: str) -> ValidationResult:
     text = load_text(path)
     errors: List[str] = []
     warnings: List[str] = []
+    assurance_level = DEFAULT_ASSURANCE_LEVEL
+    project_adapter = DEFAULT_PROJECT_ADAPTER
+    if artifact_type in {"plan", "verify", "decision", "improvement"}:
+        assurance_level, project_adapter = resolve_artifact_profile(path, task_id)
+    elif artifact_type == "task":
+        assurance_level = resolve_assurance_level(text)
+        project_adapter = resolve_project_adapter(text)
     missing_markers = [marker for marker in MARKERS[artifact_type] if marker not in text]
     if missing_markers:
         errors.append(f"{path.name} missing required markers: {missing_markers}")
@@ -1229,6 +1534,17 @@ def validate_markdown_artifact(path: Path, artifact_type: str, task_id: str) -> 
         errors.append(f"{path.name} does not clearly declare Ready For Coding as yes/no")
     if artifact_type == "verify" and not re.search(r"## Pass Fail Result\s+\n?\s*(pass|fail)\b", text, re.IGNORECASE):
         errors.append(f"{path.name} does not clearly declare Pass Fail Result as pass/fail")
+    if artifact_type == "task":
+        if "## Assurance Level" not in text:
+            warnings.append(f"{path.name}: missing ## Assurance Level; defaulting to '{assurance_level}'")
+        if "## Project Adapter" not in text:
+            warnings.append(f"{path.name}: missing ## Project Adapter; defaulting to '{project_adapter}'")
+        if assurance_level not in ASSURANCE_LEVELS:
+            errors.append(f"{path.name}: invalid Assurance Level '{assurance_level}'")
+        if project_adapter not in PROJECT_ADAPTERS:
+            errors.append(f"{path.name}: invalid Project Adapter '{project_adapter}'")
+    if artifact_type == "plan" and assurance_level in {"mvp", "production"} and "## Verification Obligations" not in text:
+        errors.append(f"{path.name}: missing ## Verification Obligations for assurance level '{assurance_level}'")
     if artifact_type == "research":
         result = validate_research_artifact(task_id, text, path)
         errors.extend(result.errors)
@@ -1237,11 +1553,22 @@ def validate_markdown_artifact(path: Path, artifact_type: str, task_id: str) -> 
         result = validate_code_mapping_to_plan(text, path)
         warnings.extend(result.warnings)
     if artifact_type == "verify":
-        result = validate_verify_checklist_schema(text, path)
+        result = validate_verify_checklist_schema(
+            text,
+            path,
+            assurance_level=assurance_level,
+            project_adapter=project_adapter,
+        )
+        errors.extend(result.errors)
+        warnings.extend(result.warnings)
+    if artifact_type == "decision":
+        result = validate_decision_artifact(text, path)
+        errors.extend(result.errors)
         warnings.extend(result.warnings)
     if artifact_type == "improvement":
         result = validate_improvement_artifact(text, path, task_id)
         errors.extend(result.errors)
+        warnings.extend(result.warnings)
     return ValidationResult(errors, warnings)
 
 
@@ -1323,22 +1650,35 @@ def compute_existing_artifacts(artifacts_root: Path, task_id: str) -> Set[str]:
     return {artifact_type for artifact_type in ARTIFACT_DIRS if find_artifact_paths(artifacts_root, task_id, artifact_type)}
 
 
-def state_required_artifacts(state: str, existing: Set[str], validation_mode: str = AUTO_CLASSIFY_FULL) -> Set[str]:
-    if validation_mode == AUTO_CLASSIFY_LIGHTWEIGHT:
-        return set(LIGHTWEIGHT_REQUIRED_ARTIFACTS)
-    required = set(STATE_REQUIRED_ARTIFACTS[state])
-    if state in {"planned", "coding", "testing", "verifying", "done"} and "research" in existing:
-        required.add("research")
-    if state in {"verifying", "done"} and "test" in existing:
-        required.add("test")
-    return required
+def state_required_artifacts(
+    state: str,
+    existing: Set[str],
+    assurance_level: str = DEFAULT_ASSURANCE_LEVEL,
+    project_adapter: str = DEFAULT_PROJECT_ADAPTER,
+    validation_mode: str = AUTO_CLASSIFY_FULL,
+) -> Set[str]:
+    if assurance_level in {AUTO_CLASSIFY_FULL, AUTO_CLASSIFY_LIGHTWEIGHT} and project_adapter == DEFAULT_PROJECT_ADAPTER:
+        assurance_level = DEFAULT_ASSURANCE_LEVEL
+    policy = resolve_verification_policy(assurance_level, project_adapter)
+    return set(policy["required_artifacts_by_state"].get(state, set()))
 
 
-def infer_state_from_artifacts(existing: Set[str]) -> str:
+def infer_state_from_artifacts(
+    existing: Set[str],
+    assurance_level: str = DEFAULT_ASSURANCE_LEVEL,
+    project_adapter: str = DEFAULT_PROJECT_ADAPTER,
+    validation_mode: str = AUTO_CLASSIFY_FULL,
+) -> str:
     for candidate in reversed(STATE_ORDER):
         if candidate == "blocked":
             continue
-        if state_required_artifacts(candidate, existing).issubset(existing):
+        if state_required_artifacts(
+            candidate,
+            existing,
+            assurance_level=assurance_level,
+            project_adapter=project_adapter,
+            validation_mode=validation_mode,
+        ).issubset(existing):
             return candidate
     return "drafted"
 
@@ -1349,13 +1689,31 @@ def default_next_agent_for_state(state: str) -> str:
 
 def build_reconcile_defaults(artifacts_root: Path, task_id: str, status: dict) -> Tuple[Dict[str, object], List[str]]:
     existing = compute_existing_artifacts(artifacts_root, task_id)
-    inferred_state = infer_state_from_artifacts(existing)
+    task_path = artifact_path(artifacts_root, task_id, "task")
+    task_text = load_text(task_path) if task_path.exists() else ""
+    assurance_level = resolve_assurance_level(task_text, status)
+    project_adapter = resolve_project_adapter(task_text, status)
+    inferred_state = infer_state_from_artifacts(existing, assurance_level=assurance_level, project_adapter=project_adapter)
     warnings: List[str] = []
     defaults: Dict[str, object] = {
         "task_id": task_id,
         "available_artifacts": sorted(existing),
         "last_updated": current_taipei_timestamp(),
+        "assurance_level": assurance_level,
+        "project_adapter": project_adapter,
+        "open_verification_debts": [],
+        "verification_readiness": derive_verification_readiness(assurance_level, project_adapter, inferred_state, []),
     }
+    verify_path = artifact_path(artifacts_root, task_id, "verify")
+    if verify_path.exists():
+        verify_contract = collect_verify_contract(
+            load_text(verify_path),
+            assurance_level=assurance_level,
+            project_adapter=project_adapter,
+            state=inferred_state,
+        )
+        defaults["open_verification_debts"] = verify_contract["open_verification_debts"]
+        defaults["verification_readiness"] = verify_contract["computed_readiness"]
     current_state = resolve_status_state(status)
     effective_state = inferred_state
     if current_state:
@@ -1373,7 +1731,14 @@ def build_reconcile_defaults(artifacts_root: Path, task_id: str, status: dict) -
             effective_state = current_state
     defaults["state"] = inferred_state
     if effective_state:
-        required = sorted(state_required_artifacts(effective_state, existing))
+        required = sorted(
+            state_required_artifacts(
+                effective_state,
+                existing,
+                assurance_level=assurance_level,
+                project_adapter=project_adapter,
+            )
+        )
         defaults["required_artifacts"] = required
         defaults["missing_artifacts"] = sorted(set(required) - existing)
         defaults["blocked_reason"] = "" if effective_state != "blocked" else "blocked_reason required"
@@ -1382,35 +1747,43 @@ def build_reconcile_defaults(artifacts_root: Path, task_id: str, status: dict) -
     return defaults, warnings
 
 
-def reconcile_status(artifacts_root: Path, task_id: str) -> ValidationResult:
+def reconcile_status_file(artifacts_root: Path, task_id: str, apply: bool = True) -> ValidationResult:
     status_path = artifact_path(artifacts_root, task_id, "status")
     status = load_json(status_path)
     defaults, warnings = build_reconcile_defaults(artifacts_root, task_id, status)
     before = dict(status)
+    after = dict(status)
     changes: List[Tuple[str, object, object]] = []
     for key, value in defaults.items():
         if key in RECONCILE_PROTECTED_FIELDS:
             continue
-        if key not in status:
-            status[key] = value
+        if key not in after:
+            after[key] = value
             changes.append((key, None, value))
-    if changes:
-        status_path.write_text(json.dumps(status, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    if changes:
+    if apply and changes:
+        status_path.write_text(json.dumps(after, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    if changes and apply:
         print("[RECONCILE] Applied missing status fields")
+    elif changes:
+        print("[RECONCILE] Missing status fields detected (dry-run)")
+    else:
+        print("[RECONCILE] No missing fields to add")
+    if changes:
         for key, old_value, new_value in changes:
             print(
                 f"[DIFF] {key}: before={json.dumps(old_value, ensure_ascii=False)} "
                 f"after={json.dumps(new_value, ensure_ascii=False)}"
             )
-    else:
-        print("[RECONCILE] No missing fields to add")
-    if before.keys() != status.keys():
+    if before.keys() != after.keys():
         print(f"[RECONCILE] before_fields={sorted(before.keys())}")
-        print(f"[RECONCILE] after_fields={sorted(status.keys())}")
+        print(f"[RECONCILE] after_fields={sorted(after.keys())}")
     validation = validate_all(artifacts_root, task_id)
     validation.warnings = warnings + validation.warnings
     return validation
+
+
+def reconcile_status(artifacts_root: Path, task_id: str) -> ValidationResult:
+    return reconcile_status_file(artifacts_root, task_id, apply=True)
 
 
 def validate_artifact_presence(
@@ -1424,7 +1797,17 @@ def validate_artifact_presence(
     errors: List[str] = []
     warnings: List[str] = []
     existing = compute_existing_artifacts(artifacts_root, task_id)
-    required = state_required_artifacts(state, existing, validation_mode=validation_mode)
+    task_path = artifact_path(artifacts_root, task_id, "task")
+    task_text = load_text(task_path) if task_path.exists() else ""
+    assurance_level = resolve_assurance_level(task_text, status)
+    project_adapter = resolve_project_adapter(task_text, status)
+    required = state_required_artifacts(
+        state,
+        existing,
+        assurance_level=assurance_level,
+        project_adapter=project_adapter,
+        validation_mode=validation_mode,
+    )
     missing_required = sorted(required - existing)
     if missing_required:
         errors.append(f"Missing required artifacts for state '{state}': {missing_required}")
@@ -1439,14 +1822,35 @@ def validate_artifact_presence(
         computed_missing = required - existing
         if status_missing != computed_missing:
             warnings.append(f"missing_artifacts mismatch. status.json={sorted(status_missing)} computed={sorted(computed_missing)}")
-    artifact_types_to_validate = {"task", "research", "code"} if validation_mode == AUTO_CLASSIFY_LIGHTWEIGHT else (existing - {"status"})
+    artifact_types_to_validate = existing - {"status"}
     for artifact_type in sorted(set(artifact_types_to_validate) & existing):
         for path in find_artifact_paths(artifacts_root, task_id, artifact_type):
             result = validate_markdown_artifact(path, artifact_type, task_id)
             errors.extend(result.errors)
             warnings.extend(result.warnings)
-    if validation_mode == AUTO_CLASSIFY_LIGHTWEIGHT:
-        return ValidationResult(errors, warnings)
+    if "verify" in existing:
+        verify_path = artifact_path(artifacts_root, task_id, "verify")
+        verify_contract = collect_verify_contract(
+            load_text(verify_path),
+            assurance_level=assurance_level,
+            project_adapter=project_adapter,
+            state=state,
+        )
+        status_debts = status.get("open_verification_debts", [])
+        if isinstance(status_debts, list):
+            expected_debts = verify_contract["open_verification_debts"]
+            if status_debts != expected_debts:
+                warnings.append(
+                    "open_verification_debts mismatch. "
+                    f"status.json={status_debts} computed={expected_debts}"
+                )
+        status_readiness = str(status.get("verification_readiness", "")).strip().lower()
+        expected_readiness = str(verify_contract["computed_readiness"])
+        if status_readiness and status_readiness != expected_readiness:
+            warnings.append(
+                "verification_readiness mismatch against verify artifact. "
+                f"status.json={status_readiness} verify={expected_readiness}"
+            )
     if state in {"coding", "testing", "verifying", "done"}:
         plan_path = artifact_path(artifacts_root, task_id, "plan")
         task_path = artifact_path(artifacts_root, task_id, "task")
@@ -1523,8 +1927,9 @@ def validate_transition(from_state: str, to_state: str, artifacts_root: Optional
             result = validate_markdown_artifact(path, "improvement", task_id)
             errors.extend(result.errors)
             warnings.extend(result.warnings)
-            status_match = re.search(r"^- Status:\s*(.+)$", load_text(path), re.MULTILINE)
-            if status_match and status_match.group(1).strip() == "applied":
+            text = load_text(path)
+            status_match = re.search(r"^- Status:\s*(.+)$", text, re.MULTILINE)
+            if improvement_profile(text) == "gate-e" and status_match and status_match.group(1).strip() == "applied":
                 applied_found = True
         if not applied_found:
             errors.append(f"Gate E (PDCA): resuming from blocked requires an improvement artifact with Status: applied for {task_id}")
@@ -1613,6 +2018,17 @@ def active_decision_waivers(status: dict) -> Dict[str, dict]:
         if gate in DECISION_WAIVER_GATES and expires is not None and expires > now:
             active[gate] = entry
     return active
+
+
+def improvement_profile(text: str) -> str:
+    match = re.search(r"^- Improvement Profile:\s*(.+)$", text, re.MULTILINE)
+    if match:
+        candidate = match.group(1).strip().lower()
+        if candidate in IMPROVEMENT_PROFILES:
+            return candidate
+    trigger_match = re.search(r"^- Trigger Type:\s*(.+)$", text, re.MULTILINE)
+    trigger = trigger_match.group(1).strip().lower() if trigger_match else ""
+    return "gate-e" if trigger in {"failure", "blocked"} else "retrospective"
 
 
 def apply_decision_waivers(result: ValidationResult, status: dict) -> ValidationResult:
@@ -1713,14 +2129,14 @@ def write_transition(
     transition_result = validate_transition(from_state, to_state, artifacts_root, task_id)
     if transition_result.errors:
         return transition_result
-    full_result = validate_all(artifacts_root, task_id, strict_scope=strict_scope, validation_mode=validation_mode)
-    if full_result.errors:
-        return full_result
     status_path = artifact_path(artifacts_root, task_id, "status")
     status = load_json(status_path)
     current_state = resolve_status_state(status)
     if current_state != from_state:
         return ValidationResult([f"Refusing transition because status.json state is {current_state}, not expected {from_state}"], [])
+    full_result = validate_all(artifacts_root, task_id, strict_scope=strict_scope, validation_mode=validation_mode)
+    if full_result.errors:
+        return full_result
     target_presence = validate_artifact_presence(
         artifacts_root,
         task_id,
@@ -1732,8 +2148,20 @@ def write_transition(
     if target_presence.errors:
         return ValidationResult([f"Target state '{to_state}' requirements are not yet satisfied.", *target_presence.errors], target_presence.warnings)
     existing = compute_existing_artifacts(artifacts_root, task_id)
-    required = state_required_artifacts(to_state, existing, validation_mode=validation_mode)
+    task_path = artifact_path(artifacts_root, task_id, "task")
+    task_text = load_text(task_path) if task_path.exists() else ""
+    assurance_level = resolve_assurance_level(task_text, status)
+    project_adapter = resolve_project_adapter(task_text, status)
+    required = state_required_artifacts(
+        to_state,
+        existing,
+        assurance_level=assurance_level,
+        project_adapter=project_adapter,
+        validation_mode=validation_mode,
+    )
     status["state"] = to_state
+    status["assurance_level"] = assurance_level
+    status["project_adapter"] = project_adapter
     status["required_artifacts"] = sorted(required)
     status["available_artifacts"] = sorted(existing)
     status["missing_artifacts"] = sorted(required - existing)
@@ -1744,7 +2172,7 @@ def write_transition(
         improvement_paths = find_artifact_paths(artifacts_root, task_id, "improvement")
         for imp_path in improvement_paths:
             imp_text = load_text(imp_path)
-            if "Status: applied" in imp_text or "Status:applied" in imp_text:
+            if improvement_profile(imp_text) == "gate-e" and ("Status: applied" in imp_text or "Status:applied" in imp_text):
                 gate_e_timestamp = current_taipei_timestamp()
                 status["Gate_E_passed"] = True
                 status["Gate_E_evidence"] = [

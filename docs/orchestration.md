@@ -79,6 +79,21 @@ Artifacts 是唯一合法的 agent 間共享介面。
 - 補測試
 - 調整設定檔或部署腳本
 
+### 2.6 先定義 assurance，再決定 required artifacts
+
+每個 task 至少要宣告：
+
+- `Assurance Level`: `POC` / `MVP` / `Production`
+- `Project Adapter`: `generic` / `web-app` / `backend-service` / `batch-etl` / `cli-tool` / `docs-spec` / `resource-constrained-ui`
+
+`guard_status_validator.py` 會依 assurance profile 決定最低 required artifacts；不得再以「某 artifact 恰好存在」來反推治理強度。
+
+resolved policy 的計算固定為：先讀 `Assurance Level`，再套 `Project Adapter`；required artifacts 與 verification obligations 都以這條路徑為準。root repo tracked artifacts 需達成 zero-warning baseline，不得再依賴 legacy/schema fallback。
+
+外部 legacy artifact 匯入屬於獨立治理路徑：只能透過 `artifacts/scripts/migrate_artifact_schema.py --input-mode external-legacy` 顯式執行，且 heuristic mapping 不得回流成 root tracked artifacts 的預設行為。
+
+若 external legacy verify 沒有現成的 structured checklist，migration 只能降級成 manual-review / deferred，並必須把 confidence 與 unresolved fields 寫進 migration report；不得直接宣告 verify `pass`。
+
 ## 3. 角色分工
 
 ### 3.1 Claude Code
@@ -141,7 +156,7 @@ Codex CLI 不得：
 ### Stage 1. Intake
 
 1. 讀取現有 artifacts。
-2. 若沒有 task artifact，先建立 task artifact。
+2. 若沒有 task artifact，先建立 task artifact，並明確填寫 `Assurance Level` 與 `Project Adapter`。
 3. 建立或更新 status artifact。
 4. 判定目前狀態與缺失 artifacts。
 
@@ -163,6 +178,7 @@ Codex CLI 不得：
    - 風險
    - 非本次範圍
    - 驗收條件
+   - verification obligations
 3. 更新 status artifact 為 planned。
 
 ### Stage 4. Coding
@@ -177,14 +193,21 @@ Codex CLI 不得：
 
 1. 讀取 task artifact、plan artifact、code artifact、test artifact。
 2. 逐條對照 acceptance criteria。
-3. 建立 verify artifact。
-4. 若 verify artifact 未通過，不得標記 done。
+3. verify checklist item 必須使用 `verified` / `unverified` / `unverifiable` / `deferred`。
+4. 若 item 不是 `verified`，必須補 `decision_ref` 或 `reason_code`。
+5. 建立 verify artifact，並填寫 `Overall Maturity` 與 `Deferred Items`。
+6. 若 verify artifact 未通過，不得標記 done。
 
 ### Stage 6. Closure
 
 1. 更新 status artifact。
 2. 補齊 decision log。
-3. 明確標記：
+3. 若任務已進入 `verifying` 或 `done`，補一份短 improvement review：
+   - 新增或更新 `artifacts/improvement/TASK-XXX.improvement.md`
+   - 聚焦實際流程、冗餘步驟、易錯點、流程落差、template / prompt / guard 修正候選、以及下次預設
+   - 若該任務曾經 `blocked`，仍須保留 Gate E / PDCA 所需欄位
+4. 更新 `artifacts/improvement/PROCESS_LEDGER.md`，每個 task 只寫一行摘要，作為冷啟動入口。
+5. 明確標記：
    - 已完成
    - 未完成
    - 風險
@@ -285,64 +308,67 @@ Codex CLI 不得：
 - 應由哪個 agent 補件
 - 補件完成前不得做的事
 
-## 9. Template Sync Protocol
+## 9. Sync Contract
 
-當 workflow 架構檔案被修改時，必須同步到 `template/` 目錄、更新 Obsidian 入口，並推送至 GitHub，以維持 root / template / Obsidian 三方一致性。
+此 workflow 同時支援兩種 repo mode，由 root 是否存在 `.consilium-source-repo` 判定：
+
+- source template repo：保留 `root ↔ template ↔ Obsidian` 同步契約，作為範本來源庫。
+- downstream terminal repo：由 `template/` 複製出去的新專案；不再建立新的 `template/`，只維護 root 文件與 `OBSIDIAN.md`。
 
 ### 9.1 觸發條件
 
-以下任一檔案被修改時，觸發同步：
+以下任一檔案被修改時，觸發 sync contract 檢查：
 
 - 入口檔：`START_HERE.md`、`CLAUDE.md`、`GEMINI.md`、`CODEX.md`、`AGENTS.md`
 - Obsidian 入口：`OBSIDIAN.md`
 - 參考文件：`docs/*.md`（本檔案含在內）
 - 驗證器：`artifacts/scripts/guard_status_validator.py`、`artifacts/scripts/guard_contract_validator.py`
-- 啟動/導覽檔：`BOOTSTRAP_PROMPT.md`、`START_HERE.md`
+- 啟動/導覽檔：`BOOTSTRAP_PROMPT.md`、`README.md`、`README.zh-TW.md`
 
-### 9.2 同步流程
+### 9.2 Source Template Repo 流程
+
+當 repo 含 `.consilium-source-repo` 時，workflow 變更必須：
 
 1. **泛化**：將專案特定引用替換為通用描述或 placeholder。
-   - 具體 TASK ID 引用 → 通用描述（如「應建立 decision artifact 記錄根因與修正」）
+   - 具體 TASK ID / decision 引用 → 通用描述
    - 專案名稱 → `{{PROJECT_NAME}}`
    - Repo 名稱 → `{{REPO_NAME}}`
    - 上游組織 → `{{UPSTREAM_ORG}}`
-2. **複製**：將泛化後的內容寫入 `template/` 對應路徑，並同步更新 `OBSIDIAN.md` 與 `template/OBSIDIAN.md`。
-3. **README / Obsidian 同步判定**：若修改涉及以下任一項，必須同步更新 `START_HERE.md`、`template/START_HERE.md`、`README.md`、`README.zh-TW.md`、`template/README.md`、`template/README.zh-TW.md`、`OBSIDIAN.md` 與 `template/OBSIDIAN.md`：
-   - 檔案結構變更（新增、刪除、改名）
-   - 工作流程階段或 Gate 變更
-   - Agent 角色變更
-   - 新增功能或概念
-4. **Contract 驗證**：執行 `python artifacts/scripts/guard_contract_validator.py`，確認 root / template / Obsidian 規則未漂移。
-5. **推送**：將 `template/` 變更 commit 並推送至 GitHub repo。
+2. **同步**：將泛化後的內容寫入 `template/` 對應路徑，並同步更新 `OBSIDIAN.md` 與 `template/OBSIDIAN.md`。
+3. **README / Obsidian 判定**：若修改涉及檔案結構、workflow 階段、gate、agent 角色或新概念，必須同步更新 `START_HERE.md`、雙語 README 與 Obsidian 入口的 root/template 對應版本。
+4. **Contract 驗證**：執行 `python artifacts/scripts/guard_contract_validator.py`；`--check-readme` 會同時檢查 root 與 template 的 README 結構。
+5. **推送**：將 source repo 與 `template/` 變更一起提交與推送。
 
-### 9.3 泛化規則
+### 9.3 Downstream Terminal Repo 流程
 
-| 專案版本 | Template 版本 |
-|---|---|
-| 專案特定 TASK/Decision 引用 | 通用描述 |
-| 專案名稱 | `{{PROJECT_NAME}}` |
-| 上游組織/Repo | `{{UPSTREAM_ORG}}/{{REPO_NAME}}` |
-| 專案特定驗收條件 | 泛化或移除 |
+當 repo **不含** `.consilium-source-repo` 時，workflow 變更必須：
 
-### 9.4 禁止事項
+1. 僅維護 root 文件與 `OBSIDIAN.md`。
+2. 不得再建立新的 `template/`，也不得要求 nested template sync。
+3. 執行 `python artifacts/scripts/guard_contract_validator.py`；此模式只檢查 root / Obsidian / repository profile 與 Gemini model policy。
+4. 若修改 `CLAUDE.md`、`GEMINI.md`、`CODEX.md` 等 prompt 入口，仍必須同步更新 `artifacts/scripts/drills/prompt_regression_cases.json`。
 
-- 禁止只改本地 docs/ 而不同步 template/。
-- 禁止只改 root 或 template 而不更新 `OBSIDIAN.md` / `template/OBSIDIAN.md`。
-- 禁止推送含有專案特定引用的 template。
-- 禁止跳過 README / Obsidian 同步判定。
-- 禁止跳過 contract guard。
+### 9.4 Gemini Model Policy
+
+active workflow files 中只允許以下 Gemini allowlist：
+
+- `gemini-3.1-flash-lite-preview`
+- `gemini-3-flash-preview`
+- `gemini-3.1-pro-preview`
+
+`guard_contract_validator.py` 會掃描 `CLAUDE.md`、`BOOTSTRAP_PROMPT.md`、`docs/subagent_roles.md`、`Invoke-GeminiAgent.ps1` 及其 template 對應檔。任何 `2.x` 或未列入 allowlist 的型號都視為 contract violation。
 
 ### 9.5 責任歸屬
 
-Template sync 與 Obsidian sync 由 **Orchestrator（Claude Code）** 負責。Gemini CLI 與 Codex CLI 不直接操作 template/。
+sync contract 由 **Orchestrator（Claude Code）** 負責。Gemini CLI 與 Codex CLI 不直接決定 repo mode，也不應自行建立 downstream repo 的 nested `template/`。
 
 ### 9.6 同步責任邊界
 
-以下矩陣定義每個檔案類別的同步策略。`guard_contract_validator.py` 的 `EXACT_SYNC_FILES` 清單是程式化的 source of truth。
+以下矩陣定義 source template repo 與 downstream terminal repo 的同步策略。`guard_contract_validator.py` 是程式化 source of truth。
 
-#### Tier 1: Exact Sync（由 contract guard 強制執行）
+#### Tier 1: Exact Sync（source mode 強制）
 
-此類檔案在 root 與 template 之間必須**內容完全一致**（扣除 placeholder 泛化後）。
+此類檔案在 source template repo 的 root 與 template 之間必須**內容完全一致**（扣除 placeholder 泛化後）。downstream terminal repo 不檢查這一層。
 
 | 檔案 | 說明 |
 |---|---|
@@ -361,98 +387,91 @@ Template sync 與 Obsidian sync 由 **Orchestrator（Claude Code）** 負責。G
 | `artifacts/scripts/workflow_constants.py` | 共用常數 |
 | `artifacts/scripts/drills/prompt_regression_cases.json` | 回歸測試案例 |
 
-#### Tier 2: Placeholder-Generalized Sync（由 contract guard 規範化比對）
+#### Tier 2: Mode-Specific Prompt Entry
 
-此類檔案允許 `{{PROJECT_NAME}}`、`{{REPO_NAME}}`、`{{UPSTREAM_ORG}}` 泛化，但結構與規則必須一致。
+此類檔案允許 root 與 template 依 repo mode 有不同 wording，但必須守住各自的 required phrases。
 
-| 檔案 | 說明 |
-|---|---|
-| `CLAUDE.md` | 主控 agent 入口（含 `Repository boundaries` placeholder 區段） |
+| 檔案 | Source Template Repo | Downstream Terminal Repo |
+|---|---|---|
+| `CLAUDE.md` | 說明 `.consilium-source-repo`、template sync、placeholder 泛化 | 說明 downstream terminal repo、不得再建立新的 `template/`、只維護 root 文件 |
 
-#### Tier 3: Phrase-Checked Sync（由 contract guard 驗證關鍵短語存在）
+#### Tier 3: Section-Contract Sync
 
-此類檔案不要求逐字一致，但必須包含指定的關鍵短語（參見 `REQUIRED_PHRASES`）。
+README / OBSIDIAN 不要求逐字一致，但必須符合固定 H2 順序，且只有指定 section 可以承載必要語句與 mode-specific 禁字檢查。
 
-| 檔案 | 說明 |
-|---|---|
-| `OBSIDIAN.md` / `template/OBSIDIAN.md` | Obsidian 入口 |
-| `README.md` / `README.zh-TW.md` | 專案 README |
-| `template/README.md` / `template/README.zh-TW.md` | 範本 README |
+| 檔案 | Source Template Repo | Downstream Terminal Repo |
+|---|---|---|
+| `OBSIDIAN.md` / `template/OBSIDIAN.md` | 固定 H2 順序 + source three-way contract | 固定 H2 順序 + root-only maintenance contract |
+| `README.md` / `README.zh-TW.md` | 固定 H2 順序 + source repo / template 發佈說明 | 固定 H2 順序 + downstream root-only 維護說明 |
 
 #### Tier 4: Manual Sync（無自動化強制）
 
-此類檔案存在於 root 與 template 中，但**不在** contract guard 清單內。修改時需人工判斷是否同步。
+此類檔案存在於 root 與 template 中，但不在 exact-sync 清單內。source mode 建議保持一致；downstream mode 視專案需求自行維護。
 
 | 檔案 | Root 用途 | Template 用途 | 同步建議 |
 |---|---|---|---|
-| `.gitignore` | 專案 ignore 規則 | 範本 ignore 規則 | 應保持一致 |
-| `.coveragerc` | 測試 coverage 設定 | 範本 coverage 設定 | 應保持一致 |
-| `requirements.txt` | Python 依賴聲明 | 範本依賴聲明 | 應保持一致 |
-| `LICENSE` | 授權 | 範本授權 | 應保持一致 |
-| `.github/workflows/workflow-guards.yml` | CI pipeline | 範本 CI pipeline | 應保持一致 |
-| `.github/agents/*.agent.md` | GitHub Agents 設定 | 範本 Agents 設定 | 應保持一致 |
-| `.github/repository-profile.json` | 專案 profile（有獨立驗證） | 範本 profile | 獨立驗證 |
-| `artifacts/scripts/*.py`（非 Tier 1） | 輔助腳本 | 範本輔助腳本 | 應保持一致 |
-| `artifacts/scripts/*.ps1` | PowerShell wrapper | 範本 wrapper | 應保持一致 |
-| `docs/templates/*/TEMPLATE.md` | Subagent 範本 | 範本 subagent 範本 | 應保持一致 |
+| `.gitignore` | 專案 ignore 規則 | 範本 ignore 規則 | source mode 應保持一致 |
+| `.coveragerc` | 測試 coverage 設定 | 範本 coverage 設定 | source mode 應保持一致 |
+| `requirements.txt` | Python 依賴聲明 | 範本依賴聲明 | source mode 應保持一致 |
+| `LICENSE` | 授權 | 範本授權 | source mode 應保持一致 |
+| `.github/workflows/workflow-guards.yml` | CI pipeline | 範本 CI pipeline | source mode 應保持一致 |
+| `.github/agents/*.agent.md` | GitHub Agents 設定 | 範本 Agents 設定 | source mode 應保持一致 |
+| `.github/repository-profile.json` | 專案 profile（有獨立驗證） | 範本 profile | source mode 獨立驗證；downstream 只需 root |
+| `artifacts/scripts/*.py`（非 Tier 1） | 輔助腳本 | 範本輔助腳本 | source mode 應保持一致 |
+| `artifacts/scripts/*.ps1` | PowerShell wrapper | 範本 wrapper | source mode 應保持一致 |
+| `docs/templates/*/TEMPLATE.md` | Subagent 範本 | 範本 subagent 範本 | source mode 應保持一致 |
 
 #### Tier 5: Project-Specific（不同步）
 
-此類檔案僅存在於 root 或 template 有不同內容，不需要同步。
+此類檔案屬於任務執行或本地環境內容，不在 sync contract 內。
 
 | 檔案 | 說明 |
 |---|---|
 | `artifacts/(tasks\|research\|plans\|code\|verify\|status\|decisions\|improvement\|red_team)/*` | 專案執行 artifacts |
-| `docs/repo_structure_workflow_maturity_assessment.md` | 專案評估（template 為空白範本） |
+| `docs/repo_structure_workflow_maturity_assessment.md` | 專案評估（template 可為空白範本） |
 | `docs/red_team_scorecard.generated.md` | 生成的計分卡 |
 | `artifacts/scripts/test_guard_units.py` | Unit test（測試框架函式） |
 | `.env`、`.vscode/settings.json`、`.claude/settings.local.json` | 本地環境設定 |
 | `temp_test.ps1`、`test_e2e.ps1` | 暫存測試腳本 |
 | `external/*` | 外部 repo |
 
-## 10. Template Enforcement: README Structure Lock
+## 10. README / Repository Profile Contract
 
 ### 10.1 新專案啟動規則
 
-當新專案透過 template/ 範本初始化時，必須：
+當新專案透過 source repo 的 `template/` 初始化後，產出的 repo 立即視為 downstream terminal repo，必須：
 
-1. 按 template/README.md 的結構複製 README 內容
-2. 語言原則：
-   - README.md 保持英文（或按 template 指定語言）
-   - 必須同時產生 README.zh-TW.md（繁體中文版本）
-3. 內容調整限制：
-   - 僅允許調整「章節內容」，不得改變「章節標題或順序」
-   - 例外：若原結構不適用當前專案，必須記錄在 decision artifact，並由 Guard 檢查例外合法性
-4. 檔案清單同步：
-   - 若產品代碼改變，README 中的「Files Likely Affected」類似段落必須同步更新
+1. 依範本 README 結構建立 `README.md` 與 `README.zh-TW.md`
+2. 僅調整章節內容，不改變 H2 標題與順序
+3. 若結構不適用當前專案，必須記錄於 decision artifact
+4. 不再建立新的 `template/`
 
-### 10.2 審核機制
+### 10.2 `--check-readme` 模式
 
-`guard_contract_validator.py` 新增 `--check-readme` 模式。檢查項目：
+`guard_contract_validator.py --check-readme` 的檢查邏輯：
 
-1. README.md 與 template/README.md 的 H2 標題順序一致
-2. README.zh-TW.md 存在且完整
-3. 雙語版本的「邊界內容」對應性
-4. 若有偏差，`--allow-readme-drift` 需配 decision artifact
+1. 所有 repo mode 都檢查 root 的 `README.md` / `README.zh-TW.md` H2 數量是否一致，且 root README section contract 必須成立
+2. source template repo 另外檢查 `template/README.md` / `template/README.zh-TW.md`
+3. source template repo 若缺 template README，或高風險 sections 出現 source/downstream 混線 wording，視為 contract violation
 
 ### 10.3 邊界內容定義
 
-- 「邊界內容」= 所有 H2 標題及其直屬段落（H3 以下）
+- 「邊界內容」= 所有 H2 標題及其直屬段落
 - 可調整部分：文字用語、代碼範例、連結、專案特定細節
 - 不可調整部分：H2 標題名稱、表格結構、必填欄位名稱
 
 ### 10.4 中英文版本的對應規則
 
-- README.zh-TW.md 與 README.md 必須保持結構一致
-- 翻譯變異允許（例句、措詞精簡化），但標題與組織必須對應
-- 若中文版有結構差異，必須記同一個 exception waiver
+- `README.zh-TW.md` 與 `README.md` 必須保持結構一致
+- 翻譯差異允許，但標題與組織必須對應
+- 若中文版有結構差異，必須記錄同一個 decision waiver
 
-### 10.5 Repository About/Topics Guard
+### 10.5 Repository About / Topics Guard
 
-新專案必須在以下檔案定義 repository profile，並由 `guard_contract_validator.py` 驗證：
+repository profile 由 `guard_contract_validator.py` 驗證：
 
-- `/.github/repository-profile.json`
-- `/template/.github/repository-profile.json`
+- source template repo：`/.github/repository-profile.json` 與 `/template/.github/repository-profile.json`
+- downstream terminal repo：只要求 `/.github/repository-profile.json`
 
 規則：
 

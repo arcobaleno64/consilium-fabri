@@ -41,8 +41,14 @@
   /verify
   /decisions
   /improvement
+  /registry
+  /metrics
   /status
 ```
+
+`artifacts/status/` 只保留 `TASK-*.status.json` 與必要的狀態輔助檔；跨 task 匯總輸出應放到 `artifacts/registry/` 或 `artifacts/metrics/`。
+
+`artifacts/test/legacy_verify_corpus/` 保留給 external legacy verify import 的共享 regression fixtures；unit tests 與 red-team drills 應優先共用這份 corpus，而不是各自維護平行樣本。
 
 ### 1.3 任務識別碼
 
@@ -75,7 +81,7 @@
 | verify | `.verify.md` | Claude 或 verifier | 對照驗收條件判定 pass/fail |
 | decision | `.decision.md` | Claude | 記錄衝突、決策理由、取捨 |
 | status | `.status.json` | Claude | 提供機讀狀態與下一步 |
-| improvement | `.improvement.md` | Claude | PDCA 改進記錄：失敗分析、矯正與預防措施 |
+| improvement | `.improvement.md` | Claude | PDCA 改進記錄：失敗分析、矯正與預防措施，以及 verify / done 後的輕量流程復盤 |
 
 ## 3. 必填通用欄位
 
@@ -163,6 +169,10 @@
 
 ## Out of Scope
 
+## Assurance Level
+
+## Project Adapter
+
 ## Current Status Summary
 ```
 
@@ -173,12 +183,23 @@
 - `Constraints`: 必須明確列出不可違反條件。
 - `Acceptance Criteria`: 必須條列且可驗證。
 - `Out of Scope`: 避免 Codex 擴大實作範圍。
+- `Assurance Level`: 目前允許 `POC`、`MVP`、`Production`；決定最低驗證強度與 required artifacts。
+- `Project Adapter`: 目前允許 `generic`、`web-app`、`backend-service`、`batch-etl`、`cli-tool`、`docs-spec`、`resource-constrained-ui`；用於承接 runtime-specific 驗證規則。
 
 最低驗收標準：
 
 - 驗收條件不可空白。
 - 至少一條 `Out of Scope` 或明確寫 `None`。
 - `Constraints` 不可省略。
+
+### Assurance / Adapter Rule Resolution
+
+`Assurance Level` 與 `Project Adapter` 的唯一權威規則表位於 `artifacts/scripts/workflow_constants.py`。
+
+- resolver 固定先套 `Assurance Level` baseline，再套 `Project Adapter` override，最後產生單一 resolved policy。
+- `required artifacts`、verify required fields / sections、allowed `reason_code`、`verification_readiness` 都必須讀 resolved policy，不得從 artifact 偶然存在與否反推。
+- `docs-spec` 是目前唯一已明確特化的 adapter：它會在 `testing / verifying / done` 移除 `test` requirement，並允許 `NOT_APPLICABLE_BY_ADAPTER`。
+- 其餘 adapter 目前都明確繼承 `generic`；若未補專屬規則，表示它們暫時只共享 generic baseline，而不是已完整驗證通用性。
 
 ---
 
@@ -266,6 +287,8 @@
 
 ## Validation Strategy
 
+## Verification Obligations
+
 ## Out of Scope
 
 ## Ready For Coding
@@ -278,6 +301,7 @@
 - `Proposed Changes`: 條列具體改動。
 - `Risks`: 不可省略。必須執行 premortem 分析（見 `docs/premortem_rules.md`）。每條風險必須包含 R 編號 + Risk / Trigger / Detection / Mitigation / Severity 五欄位。Severity 只能填 `blocking` 或 `non-blocking`。一般任務至少 2 條風險；安全性 / 依賴升級 / upstream PR 至少 4 條且至少 1 條 blocking。品質規則見 `docs/premortem_rules.md` §4。`guard_status_validator.py` 在 `planned → coding` 時會自動檢查。
 - `Validation Strategy`: 必須說明如何驗證成功。
+- `Verification Obligations`: 明列這個 task 在 `verify` 與 `status.open_verification_debts` 層需要結清或明示 deferred 的驗證責任。
 - `Ready For Coding`: 只能填 `yes` 或 `no`。
 
 最低驗收標準：
@@ -428,9 +452,19 @@
 - Status:
 - Last Updated:
 
+## Verification Summary
+
 ## Acceptance Criteria Checklist
 
+## Overall Maturity
+
+## Deferred Items
+
 ## Evidence
+
+## Evidence Refs
+
+## Decision Refs
 
 ## Build Guarantee
 
@@ -444,9 +478,21 @@
 欄位規則：
 
 - `Acceptance Criteria Checklist`: 必須逐條對照 task artifact。
-- `Acceptance Criteria Checklist` item schema: `required_fields: [criterion, method, evidence, result, reviewer, timestamp]`
+- `Acceptance Criteria Checklist` item schema: `required_fields_by_assurance`
+  - `POC`: `criterion`, `method`, `evidence`, `result`
+  - `MVP`: `criterion`, `method`, `evidence`, `result`
+  - `Production`: `criterion`, `method`, `evidence`, `result`, `reviewer`, `timestamp`
+- `Acceptance Criteria Checklist` item `result` 必須使用：`verified`、`unverified`、`unverifiable`、`deferred`。
+- 若 `result` 為 `unverified`、`unverifiable` 或 `deferred`，必須同時記錄 `decision_ref` 或 `reason_code`。
+- `Acceptance Criteria Checklist` item `reason_code` 與 disallowed results 必須讀 resolved policy，不得在 validator / migration script 各自維護另一套清單。
 - `Acceptance Criteria Checklist` item schema: `timestamp` 必須為 `Asia/Taipei` 的 ISO 8601 並帶 `+08:00`。
+- `Verification Summary`: 用一段短文交代本次 verify 的覆蓋範圍與主要限制。
+- `Overall Maturity`: 目前允許 `poc`、`mvp`、`production-blocked`、`production-ready`。
+- `Deferred Items`: 沒有時寫 `None`；若有 deferred/unverifiable 項目，需與 checklist / decision refs 對應。
+- `Deferred Items` 與 `status.open_verification_debts` 必須能由 checklist item 中落在 `status_debt_results` 的 `result` 推導；不得再用 `Remaining Gaps` 承載正式 debt 狀態。
 - `Evidence`: 指向 code/test/research/decision artifacts。
+- `Evidence Refs`: 列 repo-relative artifact path，方便機器檢查存在性。
+- `Decision Refs`: 列 repo-relative decision path；沒有時寫 `None`。
 - `Build Guarantee` (FUP-2)：針對本 task 修改過的**每一個** build 單元，明列 build 指令、exit code、與 output tail。
   - .NET 任務：對每個被修改的 `.csproj` 執行 `dotnet build <csproj> -c Debug` 並貼出結尾段落（含「建置成功/錯誤」或等價 summary）。
   - 非 .NET 任務（python / node / etc.）：列對應 build / type-check / lint 指令與結果。
@@ -454,6 +500,11 @@
   - **禁止**以「測試專案 build 成功」替代「被測專案 build 成功」—— 兩者不等價。若發生此類事故，應建立 decision artifact 記錄根因與修正。
 - `Pass Fail Result`: 只能填 `pass` 或 `fail`。
 - `Remaining Gaps`: 沒有時寫 `None`。
+- `status.verification_readiness` 與 `status.open_verification_debts` 必須能由 verify artifact 的 structured checklist 推導，不可脫鉤。
+- root repo tracked artifacts 不得依賴 legacy verify/status compatibility fallback；fallback 只保留給外部或歷史輸入。
+- `artifacts/scripts/migrate_artifact_schema.py` 預設以 `--input-mode root-tracked` 執行；此模式只允許對 root tracked artifacts 做 deterministic normalization，不得把 heuristic import 當成日常治理路徑。
+- 若要匯入外部 legacy artifact，必須顯式使用 `--input-mode external-legacy`。此模式允許 heuristic mapping，但 migration report 必須揭露 strategy / confidence / unresolved fields。
+- `external-legacy` 模式下，只有已具 structured checklist 的 verify artifact 可直接保留原結果；heading block、checkbox list 與無法辨識的 legacy verify 一律必須降為 manual-review / deferred 路徑，不得直接升成 authoritative `pass`。
 
 最低驗收標準：
 
@@ -481,6 +532,12 @@
 - Status: done
 - Last Updated:
 
+## Decision Class
+
+## Affected Gate
+
+## Scope
+
 ## Issue
 
 ## Options Considered
@@ -490,6 +547,10 @@
 ## Reasoning
 
 ## Implications
+
+## Expiry
+
+## Linked Artifacts
 
 ## Follow Up
 ```
@@ -512,6 +573,14 @@
 - 驗收未通過，需決定回退或補改
 - 對話內容與 artifact 衝突
 - 使用 `--allow-scope-drift` 將 drift 降級為 warning
+
+`Decision Class` 目前固定 taxonomy：
+
+- `scope-drift-waiver`
+- `risk-acceptance`
+- `defer`
+- `reject`
+- `conflict-resolution`
 
 `## Guard Exception` 規則：
 
@@ -539,6 +608,9 @@ JSON schema 範例：
   "required_artifacts": ["task", "research", "plan"],
   "available_artifacts": ["task", "research", "plan"],
   "missing_artifacts": [],
+  "assurance_level": "mvp",
+  "project_adapter": "generic",
+  "open_verification_debts": [],
   "blocked_reason": "",
   "last_updated": "2026-04-09T14:30:00+08:00"
 }
@@ -561,6 +633,9 @@ JSON schema 範例：
 - `state`: 必須符合 workflow state machine。
 - `required_artifacts`: 此狀態進入下一步所需類型。
 - `missing_artifacts`: 實際缺件清單。
+- `assurance_level`: `poc`、`mvp`、`production` 之一。status guard 依此決定最低 required artifacts。
+- `project_adapter`: `generic`、`web-app`、`backend-service`、`batch-etl`、`cli-tool`、`docs-spec`、`resource-constrained-ui` 之一。
+- `open_verification_debts`: 尚未結清的 verify obligations；沒有時填 `[]`。
 - `blocked_reason`: 若 state 為 `blocked`，不可空白。
 - `Gate_E_passed` (新增)：Gate E 驗證是否通過。只有 state 為 `done` 且曾經歷 blocked 時才填寫。值為 `true` 或 `false`。
 - `Gate_E_evidence` (新增)：proof of Gate E；當 `Gate_E_passed: true` 時必填。格式為 array of paths / artifact IDs（例如 `["artifacts/decisions/TASK-001.decision.md", "artifacts/improvement/TASK-001.improvement.md"]`）。
@@ -591,14 +666,17 @@ JSON schema 範例：
 
 檔名：`artifacts/improvement/TASK-001.improvement.md`
 
-用途：在任務發生 failure、blocked、或流程缺陷後，執行 PDCA Act 階段——分析根因、執行矯正、提出系統層級預防措施。
+用途：`improvement` artifact 同時承接兩種場景：
+
+1. **Gate E / PDCA**：任務發生 failure、blocked、或流程缺陷後，分析根因、執行矯正、提出系統層級預防措施。
+2. **Post-run review**：任務已跑到 `verify` 或 `done` 後，用 human-first 方式快速記錄流程實際怎麼走、哪些步驟浪費、哪些地方最容易重犯。
 
 命名規則：
 
 - 主要改進：`TASK-001.improvement.md`
 - 同一任務多次改進：`TASK-001-IMP-002.improvement.md`
 
-必填區段：
+必填區段（Gate E / validator-compatible profile）：
 
 ```md
 # Process Improvement
@@ -608,6 +686,7 @@ JSON schema 範例：
 - Artifact Type: improvement
 - Source Task:
 - Trigger Type: (failure / blocked / inefficiency / guard miss)
+- Improvement Profile: (gate-e / retrospective)
 - Owner: Claude
 - Status: draft
 - Last Updated:
@@ -639,6 +718,7 @@ JSON schema 範例：
 欄位規則：
 
 - `Trigger Type`: 必須為 `failure`、`blocked`、`inefficiency` 或 `guard miss` 之一。
+- `Improvement Profile`: `gate-e` 用於 blocked/failure 後的恢復治理；`retrospective` 用於 verify/done 後的常規復盤。
 - `## Risk Analysis` (新增)：追蹤 premortem 預測與實際風險的映射。
   - `Predicted Risks`: 從 plan artifact 中的 `## Risks` 區段複製所有 R 編號（例如 `[R1, R2, R3]`）。
   - `Realized Risks`: 此次故障中實際觸發的風險編號。必須是 Predicted Risks 的子集或超集。若為超集，說明是 missed risk。
@@ -650,14 +730,50 @@ JSON schema 範例：
 - `## 8. Final Rule`: 將改進轉成一句可執行規則。
 - `## 9. Status`: `draft` → `approved` → `applied`。
 
+輕量復盤區段（post-run review profile）：
+
+```md
+## What Actually Happened
+
+## Steps That Felt Redundant
+
+## Error-Prone Steps
+
+## Surprises / Mismatches
+
+## Template / Workflow Fix Candidates
+
+## Next Time Default
+```
+
+使用原則：
+
+- 任務完成到 `verify` 或 `done` 後，建議補一份短 improvement artifact，即使該任務沒有進入 `blocked`。
+- 若 improvement artifact 需要同時滿足 **Gate E** 與 **日常復盤**，請保留上方 validator-compatible 區段，並在 `## 9. Status` 後追加上述 6 個 human-first 區段。
+- `## What Actually Happened` 應描述實際流程，而不是理想流程。
+- `## Steps That Felt Redundant` 應只寫真正造成浪費的步驟，不列無關背景。
+- `## Error-Prone Steps` 應指出最可能重犯的操作、判斷或 handoff。
+- `## Surprises / Mismatches` 用於記錄「文件寫的流程」與「實際跑出來的流程」之間的落差。
+- `## Template / Workflow Fix Candidates` 應明確標示該改 template、prompt、guard、還是單純操作說明。
+- `## Next Time Default` 應把本次學到的更佳預設寫成一句可直接重用的操作準則。
+
+Repo-level quick index：
+
+- `artifacts/improvement/PROCESS_LEDGER.md` 是 repo-level operational note，不屬於 validator 強制 artifact。
+- 用途：作為冷啟動入口，快速回顧最近流程實際做了什麼、哪裡浪費、哪裡容易出錯。
+- 欄位固定為 `Date`、`Task`、`Outcome`、`Top Waste`、`Top Risk`、`Fix Candidate`、`Applied?`。
+- 建議閱讀順序：先看 `PROCESS_LEDGER.md`，再看最近 3 份 `TASK-XXX.improvement.md`，需要細節時再回跳 `verify` / `decision` / `status`。
+
 工作流規則：
 
 - **Gate E (PDCA)**：任何任務從 `blocked` 恢復前，必須先建立且通過驗證的 improvement artifact。`guard_status_validator.py` 在 `blocked → *` 轉移時自動檢查。
 - 恢復前的 improvement artifact 必須為 `Status: applied`。`draft` 或 `approved` 不足以解除 blocked。
+- **Routine review**：任務完成 `verify` 或 `done` 後，建議追加一份短 improvement artifact 並更新 `PROCESS_LEDGER.md`，但這不會改變 Gate E 的 validator 規則。
 
 最低驗收標準：
 
 - 不可只描述問題而無預防措施。
+- 不可把整份 command log 或 raw terminal output 直接貼進 improvement artifact；應只保留短結論與必要 artifact path。
 - Preventive Action 不可只寫「注意一下」，必須是可被 guard / prompt / template 執行的具體改動。
 - Final Rule 必須是一句可直接加入 CLAUDE.md 或 guard script 的規則。
 - `Validation` 不可空白，必須說明如何驗證該改善已落地。

@@ -29,6 +29,7 @@
 - New here? Read [`START_HERE.md`](START_HERE.md) first.
 - Use **Python 3.11** and install local dev dependencies with `python -m pip install -r requirements-dev.txt`.
 - Initialize required external integrations before local validation: `git submodule update --init --recursive`.
+- If you need a fast view of what recent workflow runs actually did, start with `artifacts/improvement/PROCESS_LEDGER.md`.
 
 ---
 
@@ -76,7 +77,7 @@ Consilium Fabri exists to compress those failure modes into an explicit operatin
     </td>
     <td width="33%" valign="top">
       <h3>Gate Validation</h3>
-      <p>Workflow gates and the validator enforce legal state transitions, required artifacts, and verification expectations so work cannot move forward on confidence alone.</p>
+      <p>Workflow gates and the validator enforce legal state transitions, required artifacts, and verification expectations, with Assurance Level / Project Adapter driving the minimum verification bar instead of ad hoc judgment.</p>
     </td>
   </tr>
 </table>
@@ -109,7 +110,8 @@ Consilium Fabri exists to compress those failure modes into an explicit operatin
 - `guard_contract_validator.py` is built in
 - legal state transitions can be checked automatically
 - required artifacts, metadata, and research / PDCA contracts can be checked automatically
-- root / `template/` / Obsidian workflow drift can be checked automatically
+- required artifacts and verify intensity can now be profiled by `Assurance Level` and `Project Adapter`
+- source template repos can check root / `template/` / Obsidian workflow drift automatically, while downstream terminal repos stay root-only
 - it reduces the risk of work being declared done without being genuinely verified
 
 ### 5. A More Disciplined Context Loading Strategy
@@ -122,14 +124,14 @@ Consilium Fabri exists to compress those failure modes into an explicit operatin
 - long-lived Markdown defaults to Traditional Chinese (Taiwan) unless a specific exception is needed
 - commands, file paths, placeholders, schema literals, and status values remain in English
 - recorded times and `Last Updated` values must use `Asia/Taipei` in ISO 8601 format with `+08:00`
-- root docs, `template/` docs, and Obsidian entry docs must stay semantically aligned
+- source template repos keep root docs, `template/` docs, and Obsidian entry docs semantically aligned; downstream terminal repos keep only root docs and `OBSIDIAN.md` aligned
 
 ### 7. Clear Guard Boundaries
 - `guard_status_validator.py` validates task / artifact / state rules
 - plan/code scope drift is now a default hard failure: dirty task-owned files are checked against actual git changed files, clean tasks can replay pinned `commit-range` evidence, use an `archive fallback` via `Archive Path` / `Archive SHA256` when git objects are gone, or use `github-pr` evidence against the GitHub PR files API; `github-pr` replay defaults to `https://api.github.com`, custom GitHub Enterprise hosts must be allowlisted via `CONSILIUM_ALLOWED_GITHUB_API_HOSTS`, task/status text and JSON artifacts now fail closed on explicit byte ceilings, archive fallback files and provider responses now fail on replay byte caps before parsing, `Snapshot SHA256` still guards the reconstructed file list, `GITHUB_TOKEN` / `GH_TOKEN` covers private or rate-limited GitHub access, and `--allow-scope-drift` still only downgrades true drift, not corrupted evidence
-- `guard_contract_validator.py` validates workflow docs, bootstrap rules, template sync, and Obsidian sync
+- `guard_contract_validator.py` validates workflow docs, bootstrap rules, sync contracts, Gemini model allowlists, and Obsidian sync
 - when `CLAUDE.md` / `GEMINI.md` / `CODEX.md` changes, prompt regression cases must be updated together
-- a workflow rule change is incomplete until README, `template/`, and Obsidian entry docs are updated together
+- in source template repos, a workflow rule change is incomplete until README, `template/`, and Obsidian entry docs are updated together; downstream terminal repos update only root docs and `OBSIDIAN.md`
 
 ### 8. Built-In Red-Team Exercises
 - `docs/red_team_runbook.md` defines the static attacks, live drills, and replay workflow
@@ -180,6 +182,8 @@ Done
 
 The model is simple on purpose: each stage produces the artifact that justifies the next stage. That keeps collaboration inspectable and prevents "magic progress" that only exists inside a chat transcript.
 
+After a task reaches `verify` or `done`, add a short `artifacts/improvement/TASK-XXX.improvement.md` review and write the one-line summary into `artifacts/improvement/PROCESS_LEDGER.md`. For cold starts, read the ledger first, then the most recent three improvement artifacts, and jump back to `verify` / `decision` / `status` only when you need evidence.
+
 ---
 
 ## Architecture Snapshot
@@ -229,24 +233,30 @@ python -m pytest artifacts/scripts/test_guard_units.py artifacts/scripts/test_se
 ### Quick Start — New Project
 
 ```bash
-# 1. Clone the template into your project
-git clone https://github.com/arcobaleno64/consilium-fabri.git my-project
-cd my-project
+# 1. Clone the source template repo locally
+git clone https://github.com/arcobaleno64/consilium-fabri.git consilium-fabri
 
-# 1.5. Initialize required external integrations under external/
+# 2. Create your downstream project and copy template contents into its root
+#    (do not keep a nested template/)
+cd consilium-fabri
+#    This source repo is identified by the `.consilium-source-repo` sentinel.
+# copy template/* into your target repository root
+# cd <your-project-root>
+
+# 2.5. Initialize required external integrations under external/
 git submodule update --init --recursive
 
-# 2. Replace placeholders in CLAUDE.md (remove fork section if not needed)
+# 3. Replace placeholders in CLAUDE.md (remove fork section if not needed)
 #    {{PROJECT_NAME}}, {{REPO_NAME}}, {{UPSTREAM_ORG}}
 
-# 3. Bootstrap validation
+# 4. Bootstrap validation
 python artifacts/scripts/guard_status_validator.py --task-id TASK-900 --auto-classify
 python artifacts/scripts/update_repository_profile.py
 python artifacts/scripts/guard_contract_validator.py --check-readme
 python artifacts/scripts/guard_contract_validator.py
 python artifacts/scripts/prompt_regression_validator.py --root .
 
-# 4. (Optional) Run the red-team suite
+# 5. (Optional) Run the red-team suite
 python artifacts/scripts/run_red_team_suite.py --phase all
 ```
 
@@ -254,7 +264,7 @@ See `BOOTSTRAP_PROMPT.md` for the full bootstrapping guide.
 
 ### Quick Start — Existing Project
 
-Copy the `template/` directory contents into your repository root, replace placeholders, and run the same bootstrap validation commands above.
+Copy the `template/` directory contents into your repository root, replace placeholders, treat the new repo as a downstream terminal repo, and run the same bootstrap validation commands above. Do not create a nested `template/`.
 
 Before local development or validation, run `git submodule update --init --recursive` so the required integrations under `external/` are present and the workspace matches CI.
 
@@ -295,7 +305,7 @@ Before local development or validation, run `git submodule update --init --recur
 │   ├── code/                  # Code artifacts
 │   ├── verify/                # Verification artifacts
 │   ├── decisions/             # Decision artifacts
-│   ├── improvement/           # Improvement artifacts
+│   ├── improvement/           # Improvement artifacts + PROCESS_LEDGER cold-start index
 │   ├── status/                # Machine-readable status + decision registry
 │   ├── red_team/              # Red-team exercise reports
 │   └── scripts/               # Validator and automation scripts
@@ -323,7 +333,7 @@ Before local development or validation, run `git submodule update --init --recur
 │       ├── workflow-guards.yml    # Main CI pipeline (SHA-pinned actions)
 │       └── security-scan.yml     # pip-audit + repo-local secret/static scans
 │
-├── template/                  # Clean template for new projects (sync target)
+├── template/                  # Clean template for new projects (source-template repos only)
 └── external/                  # Required external integrations (initialize submodules)
 ```
 
@@ -335,8 +345,9 @@ Before local development or validation, run `git submodule update --init --recur
 |---|---|
 | `python artifacts/scripts/guard_status_validator.py --task-id TASK-XXX` | Validate task state, artifacts, and scope drift |
 | `python artifacts/scripts/guard_status_validator.py --task-id TASK-XXX --auto-classify` | Auto-classify task as lightweight or full-gate |
-| `python artifacts/scripts/guard_contract_validator.py` | Validate root ↔ template ↔ Obsidian sync |
-| `python artifacts/scripts/guard_contract_validator.py --check-readme` | Validate README structure compliance |
+| `python artifacts/scripts/migrate_artifact_schema.py --input-mode external-legacy --root .` | Import external legacy artifacts through explicit heuristic mode; the default root-tracked path remains strict |
+| `python artifacts/scripts/guard_contract_validator.py` | Validate sync contract; source mode checks root ↔ template ↔ Obsidian, downstream mode checks root ↔ Obsidian |
+| `python artifacts/scripts/guard_contract_validator.py --check-readme` | Validate README section contract and bilingual structure |
 | `python artifacts/scripts/prompt_regression_validator.py --root .` | Run prompt regression test cases |
 | `python artifacts/scripts/repo_security_scan.py --root . secrets` | Run repo-local high-confidence secret scan |
 | `python artifacts/scripts/repo_security_scan.py --root . static` | Run focused static control-plane rules |
@@ -368,6 +379,7 @@ Before local development or validation, run `git submodule update --init --recur
 
 - The default `workflow-guards` CI now runs with explicit read-only GitHub token permissions, disables persisted checkout credentials, cancels superseded runs per branch or pull request, and applies a job timeout to reduce avoidable runner exposure.
 - `artifacts/scripts/load_env.ps1` and its `template/` counterpart now parse quoted `.env` values, ignore blank and commented lines, accept optional `export` prefixes, and preserve existing process environment variables by default.
+- `artifacts/scripts/migrate_artifact_schema.py` defaults to `root-tracked` mode. Use `--input-mode external-legacy` only when importing external historical artifacts; non-structured legacy verify inputs are intentionally downgraded to manual-review / deferred instead of being promoted directly to `pass`.
 - `artifacts/scripts/run_red_team_suite.py` cleans up `.codex-red-team/` fixtures after each run by default; use `--keep-temp` only when you need to inspect a failing fixture locally.
 - Use `pwsh -NoProfile -File artifacts/scripts/load_env.ps1 -Quiet` for silent loading in local automation, or add `-Force` only when you intentionally want `.env` values to overwrite variables that already exist in the current process.
 
