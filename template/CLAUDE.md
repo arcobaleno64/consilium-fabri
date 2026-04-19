@@ -38,10 +38,11 @@ Artifact 紀律：
 
 Template sync protocol：
 
-- 修改任何 workflow file（CLAUDE.md、GEMINI.md、CODEX.md、AGENTS.md、docs/*.md、artifacts/scripts/guard_status_validator.py、artifacts/scripts/guard_contract_validator.py、artifacts/scripts/run_red_team_suite.py、BOOTSTRAP_PROMPT.md、OBSIDIAN.md）後，必須同步變更到 `template/`，並推送到 GitHub。
-- 寫入 `template/` 前，先將專案特定引用泛化為 placeholders。
-- 若檔案結構、gates、agent roles 或 features 有變動，也必須同步更新 `README.md`、`README.zh-TW.md`、`template/README.md`、`template/README.zh-TW.md`、`OBSIDIAN.md` 與 `template/OBSIDIAN.md`。
-- 任一同步缺漏（包含 Obsidian 入口）都視為 workflow 變更未完成。
+- 本 repo 是 downstream terminal repo。
+- 不得再建立新的 `template/`。
+- 這類 downstream repo 不再建立新的 `template/`，只維護 root 文件與 `OBSIDIAN.md`。
+- workflow 規則變更後，執行 `artifacts/scripts/guard_contract_validator.py` 驗證 root / Obsidian / repository profile 契約。
+- 若檔案結構、gates、agent roles 或 features 有變動，也必須同步更新 `README.md`、`README.zh-TW.md` 與 `OBSIDIAN.md`。
 - 完整同步規則請見 `docs/orchestration.md` §9。
 
 文件載入規範：

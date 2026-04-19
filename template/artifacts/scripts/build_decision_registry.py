@@ -9,6 +9,8 @@ from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable
 
+from workflow_constants import DECISION_CLASSES
+
 TAIPEI = timezone(timedelta(hours=8))
 TASK_PATTERN = re.compile(r"^(TASK-[A-Za-z0-9-]+)\.decision\.md$")
 SECTION_PATTERN = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
@@ -17,6 +19,7 @@ LAST_UPDATED_PATTERN = re.compile(r"^- Last Updated:\s*(.+?)\s*$", re.MULTILINE)
 FIELD_PATTERNS = {
     "affects": re.compile(r"^(?:-\s*)?Affects:\s*(.*)$", re.MULTILINE),
     "related_research": re.compile(r"^(?:-\s*)?Related Research:\s*(.*)$", re.MULTILINE),
+    "linked_artifacts": re.compile(r"^(?:-\s*)?Linked Artifacts:\s*(.*)$", re.MULTILINE),
 }
 
 
@@ -25,9 +28,12 @@ class RegistryEntry:
     task_id: str
     source_file: str
     decision_type: str
+    decision_class: str
+    affected_gate: str
     summary: str
     plan_refs: list[str]
     research_refs: list[str]
+    linked_artifacts: list[str]
     date: str
     parse_status: str
 
@@ -36,9 +42,12 @@ class RegistryEntry:
             "task_id": self.task_id,
             "source_file": self.source_file,
             "decision_type": self.decision_type,
+            "decision_class": self.decision_class,
+            "affected_gate": self.affected_gate,
             "summary": self.summary,
             "plan_refs": self.plan_refs,
             "research_refs": self.research_refs,
+            "linked_artifacts": self.linked_artifacts,
             "date": self.date,
             "parse_status": self.parse_status,
         }
@@ -88,9 +97,10 @@ def extract_metadata_date(text: str) -> str:
 
 
 def extract_decision_type(text: str, sections: dict[str, str]) -> str:
-    decision_type = first_paragraph(sections.get("decision type"))
+    decision_type = first_paragraph(sections.get("decision class")) or first_paragraph(sections.get("decision type"))
     if decision_type:
-        return decision_type
+        normalized = collapse_whitespace(decision_type)
+        return normalized if normalized in DECISION_CLASSES else normalized
 
     line_match = TYPE_LINE_PATTERN.search(text)
     if line_match:
@@ -107,6 +117,10 @@ def extract_summary(sections: dict[str, str]) -> str:
         if paragraph:
             return paragraph[:200]
     return ""
+
+
+def extract_affected_gate(sections: dict[str, str]) -> str:
+    return first_paragraph(sections.get("affected gate"))
 
 
 def extract_field_tokens(text: str, label: str) -> list[str]:
@@ -193,6 +207,15 @@ def normalize_refs(tokens: list[str], artifact_dir: str) -> list[str]:
     return dedupe_preserving_order([token for token in normalized if token])
 
 
+def normalize_linked_artifacts(tokens: list[str]) -> list[str]:
+    linked: list[str] = []
+    for token in tokens:
+        candidate = token.replace("\\", "/").lstrip("./").strip()
+        if candidate:
+            linked.append(candidate)
+    return dedupe_preserving_order(linked)
+
+
 def fallback_same_task_ref(root: Path, artifact_dir: str, task_id: str) -> list[str]:
     suffix = "plan" if artifact_dir == "plans" else "research"
     relative = Path("artifacts") / artifact_dir / f"{task_id}.{suffix}.md"
@@ -204,9 +227,12 @@ def build_entry(root: Path, decision_path: Path) -> RegistryEntry:
     sections = parse_sections(raw_text)
     task_id = extract_task_id(decision_path)
     decision_type = extract_decision_type(raw_text, sections)
+    decision_class = decision_type
+    affected_gate = extract_affected_gate(sections)
     summary = extract_summary(sections)
     plan_refs = normalize_refs(extract_field_tokens(raw_text, "affects"), "plans")
     research_refs = normalize_refs(extract_field_tokens(raw_text, "related_research"), "research")
+    linked_artifacts = normalize_linked_artifacts(extract_field_tokens(raw_text, "linked_artifacts"))
     if not plan_refs:
         plan_refs = fallback_same_task_ref(root, "plans", task_id)
     if not research_refs:
@@ -218,9 +244,12 @@ def build_entry(root: Path, decision_path: Path) -> RegistryEntry:
         task_id=task_id,
         source_file=decision_path.relative_to(root).as_posix(),
         decision_type=decision_type,
+        decision_class=decision_class,
+        affected_gate=affected_gate,
         summary=summary,
         plan_refs=plan_refs,
         research_refs=research_refs,
+        linked_artifacts=linked_artifacts,
         date=date,
         parse_status=parse_status,
     )
@@ -240,7 +269,7 @@ def main() -> int:
     args = parse_args()
     root = Path(args.root).resolve()
     registry = build_registry(root)
-    output_path = root / "artifacts" / "status" / "decision_registry.json"
+    output_path = root / "artifacts" / "registry" / "decision_registry.json"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(registry, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return 0

@@ -5,7 +5,7 @@
 - Artifact Type: plan
 - Owner: Codex CLI
 - Status: ready
-- Last Updated: 2026-04-19T23:04:00+08:00
+- Last Updated: 2026-04-19T23:16:59+08:00
 
 ## Scope
 
@@ -26,10 +26,33 @@
 - artifacts/scripts/migrate_artifact_schema.py
 - artifacts/scripts/workflow_constants.py
 - artifacts/scripts/guard_status_validator.py
+- artifacts/scripts/guard_contract_validator.py
+- artifacts/scripts/build_decision_registry.py
+- artifacts/scripts/drills/prompt_regression_cases.json
+- .consilium-source-repo
+- AGENTS.md
+- BOOTSTRAP_PROMPT.md
+- CLAUDE.md
+- OBSIDIAN.md
+- START_HERE.md
+- docs/lightweight_mode_rules.md
+- docs/subagent_roles.md
+- docs/workflow_state_machine.md
 - template/artifacts/scripts/legacy_verify_corpus.py
 - template/artifacts/scripts/migrate_artifact_schema.py
 - template/artifacts/scripts/workflow_constants.py
 - template/artifacts/scripts/guard_status_validator.py
+- template/artifacts/scripts/guard_contract_validator.py
+- template/artifacts/scripts/build_decision_registry.py
+- template/artifacts/scripts/drills/prompt_regression_cases.json
+- template/AGENTS.md
+- template/BOOTSTRAP_PROMPT.md
+- template/CLAUDE.md
+- template/OBSIDIAN.md
+- template/START_HERE.md
+- template/docs/lightweight_mode_rules.md
+- template/docs/subagent_roles.md
+- template/docs/workflow_state_machine.md
 - artifacts/scripts/test_guard_units.py
 - template/artifacts/scripts/test_guard_units.py
 - artifacts/scripts/run_red_team_suite.py
@@ -73,6 +96,7 @@
 - 建立 four-shape external legacy corpus，並將 migrate regression 改為 golden-style assertions，直接鎖定 `strategy`、`confidence`、`manual_review_required`、`Deferred Items` 與 checklist result。
 - 在 red-team suite 新增 external import case，證明 unparseable legacy fragment 進入 `external-legacy` 後只能落成 manual-review / deferred。
 - shared workflow validators 補 fail-closed coverage hardening：`workflow_constants.py` 對壞 rule tables 回傳 validation errors 而不是 `KeyError`，`guard_status_validator.py` 補回 `reconcile_status_file(..., apply=...)` 相容入口。
+- root / `template/` workflow contract 一併收斂：同步 `guard_contract_validator.py`、`build_decision_registry.py`、prompt regression corpus，以及 7 個入口文件與關聯 docs，避免本地依賴 dirty files 才能通過 CI。
 - 重跑 root / `template/` 全量 guard tests、migration dry-run、contract / context / status validators、static / all red-team，並更新 generated report / scorecard。
 
 ## Risks

@@ -175,26 +175,36 @@
   },
   {
     "id": "PR-009",
-    "title": "Workflow Sync Completeness",
-    "description": "Workflow prompt must require root/template sync, placeholder generalization, and README/Obsidian updates for workflow changes.",
+    "title": "Source Downstream Sync Split",
+    "description": "Workflow prompt must distinguish source template repos from downstream terminal repos, including template sync only in source mode.",
     "assertions": [
       {
         "file": "CLAUDE.md",
         "must_contain_all": [
-          "修改任何 workflow file",
-          "必須同步變更到 `template/`",
-          "專案特定引用泛化為 placeholders",
-          "必須同步更新 `README.md`",
+          ".consilium-source-repo",
+          "source template repo",
+          "修改以下檔案後，必須同步到 `template/` + 推送",
+          "template/OBSIDIAN.md",
           "任一同步缺漏（包含 Obsidian 入口）都視為 workflow 變更未完成"
         ],
-        "note": "Claude must require complete workflow sync instead of partial edits."
+        "note": "Source repo Claude prompt must preserve template sync duties."
+      },
+      {
+        "file": "template/CLAUDE.md",
+        "must_contain_all": [
+          "downstream terminal repo",
+          "不得再建立新的 `template/`",
+          "只維護 root 文件",
+          "guard_contract_validator.py"
+        ],
+        "note": "Downstream Claude prompt must refuse nested template creation."
       }
     ]
   },
   {
     "id": "PR-010",
-    "title": "Research Blocked Preconditions",
-    "description": "Gemini prompt must refuse free-form research when task scope, query scope, or source credibility is missing.",
+    "title": "Research Blocked Preconditions And Gemini Allowlist",
+    "description": "Gemini prompt must block bad research inputs, and active workflow files must only reference the 3-step Gemini allowlist.",
     "assertions": [
       {
         "file": "GEMINI.md",
@@ -206,6 +216,32 @@
           "已知來源彼此矛盾"
         ],
         "note": "Gemini must block when research prerequisites or trustworthy sources are missing."
+      },
+      {
+        "file": "docs/subagent_roles.md",
+        "must_contain_all": [
+          "gemini-3.1-flash-lite-preview",
+          "gemini-3-flash-preview",
+          "gemini-3.1-pro-preview"
+        ],
+        "must_not_contain_any": [
+          "gemini-2.0",
+          "gemini-2.5"
+        ],
+        "note": "Workflow docs must only describe the allowlisted Gemini models."
+      },
+      {
+        "file": "artifacts/scripts/Invoke-GeminiAgent.ps1",
+        "must_contain_all": [
+          "gemini-3.1-flash-lite-preview",
+          "gemini-3-flash-preview",
+          "gemini-3.1-pro-preview"
+        ],
+        "must_not_contain_any": [
+          "gemini-2.0",
+          "gemini-2.5"
+        ],
+        "note": "Gemini wrapper must not fall back to 2.x models."
       }
     ]
   },

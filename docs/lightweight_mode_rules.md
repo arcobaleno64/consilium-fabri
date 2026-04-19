@@ -2,6 +2,9 @@
 
 本文件定義小型任務的簡化流程，避免 artifact-first 系統變成官僚地獄。
 
+lightweight mode 的 assurance baseline 一律對應 `POC + generic`，不得再維護獨立於 resolved policy 的口語規則。
+auto-classify 只保留為入口便利與升級判定；required artifacts、verify obligations、`verification_readiness` 一律走 resolved policy。
+
 ## 1. 適用條件
 
 僅當符合以下全部條件時可使用：
@@ -26,13 +29,14 @@
 
 在 lightweight mode 中可省略或精簡：
 
-- research artifact（若不需查資料）
-- test artifact（若已有既有測試覆蓋）
-- verify artifact 的詳細內容（低風險時可使用最精簡格式，但 **verify artifact 本身不可省略**）
+- research artifact（若 resolved policy 在當前 state 未要求，且任務不需查資料）
+- test artifact（若 resolved policy 在當前 state 未要求，且既有驗證已足夠）
+- verify artifact 的內容密度（低風險時可維持 `POC + generic` 的最小 required fields，但 structured checklist 不可省略）
 
-> **重要**：`guard_status_validator.py` 對 `done` 狀態強制要求 verify artifact 存在且 Pass Fail Result = pass。
+> **重要**：`guard_status_validator.py` 對 `done` 狀態仍以 resolved policy 強制要求 verify artifact，且 verify 必須提供 structured checklist 與可推導的 `verification_readiness` / `open_verification_debts`。
 > 若省略 verify artifact，任務將無法透過 validator 合法轉移至 `done`。
 > 「可精簡」是指 verify artifact 的內容可以簡短，而不是整份文件不存在。
+> verify checklist 的 `result` / `reason_code` / `Overall Maturity` 仍必須遵守 resolved policy，只是 `POC + generic` 的 required fields 較少。
 
 ## 4. 不可省略
 

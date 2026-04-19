@@ -5,7 +5,7 @@
 - Artifact Type: code
 - Owner: Codex CLI
 - Status: ready
-- Last Updated: 2026-04-19T23:04:00+08:00
+- Last Updated: 2026-04-19T23:16:59+08:00
 
 ## Files Changed
 
@@ -18,8 +18,20 @@
 - `artifacts/scripts/migrate_artifact_schema.py`
 - `artifacts/scripts/workflow_constants.py`
 - `artifacts/scripts/guard_status_validator.py`
+- `artifacts/scripts/guard_contract_validator.py`
+- `artifacts/scripts/build_decision_registry.py`
+- `artifacts/scripts/drills/prompt_regression_cases.json`
 - `artifacts/scripts/test_guard_units.py`
 - `artifacts/scripts/run_red_team_suite.py`
+- `.consilium-source-repo`
+- `AGENTS.md`
+- `BOOTSTRAP_PROMPT.md`
+- `CLAUDE.md`
+- `OBSIDIAN.md`
+- `START_HERE.md`
+- `docs/lightweight_mode_rules.md`
+- `docs/subagent_roles.md`
+- `docs/workflow_state_machine.md`
 - `artifacts/test/legacy_verify_corpus/manifest.json`
 - `artifacts/test/legacy_verify_corpus/structured-checklist-complete.verify.md`
 - `artifacts/test/legacy_verify_corpus/heading-block-partial.verify.md`
@@ -47,8 +59,19 @@
 - `template/artifacts/scripts/migrate_artifact_schema.py`
 - `template/artifacts/scripts/workflow_constants.py`
 - `template/artifacts/scripts/guard_status_validator.py`
+- `template/artifacts/scripts/guard_contract_validator.py`
+- `template/artifacts/scripts/build_decision_registry.py`
+- `template/artifacts/scripts/drills/prompt_regression_cases.json`
 - `template/artifacts/scripts/test_guard_units.py`
 - `template/artifacts/scripts/run_red_team_suite.py`
+- `template/AGENTS.md`
+- `template/BOOTSTRAP_PROMPT.md`
+- `template/CLAUDE.md`
+- `template/OBSIDIAN.md`
+- `template/START_HERE.md`
+- `template/docs/lightweight_mode_rules.md`
+- `template/docs/subagent_roles.md`
+- `template/docs/workflow_state_machine.md`
 - `template/artifacts/test/legacy_verify_corpus/manifest.json`
 - `template/artifacts/test/legacy_verify_corpus/structured-checklist-complete.verify.md`
 - `template/artifacts/test/legacy_verify_corpus/heading-block-partial.verify.md`
@@ -67,9 +90,10 @@
 - 在 `migrate_artifact_schema.py` 收緊 structured 判定，只把真正包含 `criterion` / `method` / `evidence` / `result` 的 checklist block 視為 high-confidence structured；heading block 不再被誤升級。
 - 在 `migrate_artifact_schema.py` 收緊 `Evidence Refs` 推斷：command-style evidence lines 不再被誤當成 path refs；root tracked verify 若已明示 `Evidence Refs`，migration 不再追加推斷值。
 - shared workflow validators 補 fail-closed hardening：`workflow_constants.py` 現在對缺 profile / adapter rule / policy key 會回傳 validation errors；`guard_status_validator.py` 補回 `reconcile_status_file(..., apply=...)` 相容入口與 dry-run diff。
+- `guard_contract_validator.py` 擴充 source/downstream repo contract、README / OBSIDIAN 結構檢查、Gemini policy 限制與 prompt-regression sync 檢查；`build_decision_registry.py` 補 decision class / affected gate / linked artifacts normalization，並把 registry 產物移到 `artifacts/registry/`。
 - 新增 red-team static case `RT-030`，以 unparseable external legacy fragment 驗證 external import 仍維持 fail-closed。
 - 套用一次 migration 到 root tracked historical verifies，清掉 14 份舊 `Evidence Refs` canonicalization drift，讓 root baseline 回到可重跑 `changed_files=0`。
-- 同步 root / `template/` docs、runner、generated report 與 scorecard，避免 corpus / red-team inventory drift。
+- 同步 root / `template/` docs、entry docs、runner、prompt corpus、generated report 與 scorecard，避免 corpus / contract / red-team inventory drift。
 
 ## Mapping To Plan
 
@@ -87,6 +111,7 @@
   - command-style evidence ref filtering regression
   - `workflow_constants.py` fail-closed validation error coverage
   - `guard_status_validator.py` decision warning / reconcile dry-run compatibility coverage
+  - `guard_contract_validator.py` source/downstream contract, README / OBSIDIAN wording, prompt sync 與 decision registry linked-artifact coverage
   - `RT-030` runner smoke test
 - `template/artifacts/scripts/test_guard_units.py`
   - synced with root full suite (`992 passed`)

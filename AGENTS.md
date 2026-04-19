@@ -14,7 +14,7 @@
 
 | File | 用途 | ~Tokens | 載入時機 |
 |---|---|---|---|
-| `docs/orchestration.md` | 系統提示：目標、原則、流程階段、gate、同步規範 | 2200 | Claude：session 開始；template 同步前 |
+| `docs/orchestration.md` | 系統提示：目標、原則、流程階段、gate、同步規範 | 2200 | Claude：session 開始；sync contract 判定前 |
 | `docs/artifact_schema.md` | 8 種 artifact schema（§5.1-§5.8） | 3300 | 寫任何 artifact 前 |
 | `docs/subagent_roles.md` | 7 種 agent 角色定義（§3-§9） | 3000 | 派發 subagent 前 |
 | `docs/workflow_state_machine.md` | 8 個狀態 + 合法轉移 | 600 | 狀態轉移前 |
@@ -33,7 +33,7 @@
 - 專有名詞、檔名、CLI 指令、環境變數、`artifact type`、狀態值、placeholder、schema literal 保留英文原字。
 - 不得更動會被 agent、validator、腳本依賴的精確字串，例如 `## Metadata`、`Task ID`、`Artifact Type`、`Owner`、`Status`、`Last Updated` 與各種狀態值。
 - 所有規範中的紀錄時間、`Last Updated` 與相關時間戳，一律使用 `Asia/Taipei`，採 ISO 8601 並帶 `+08:00`。
-- `root`、`template/` 與 Obsidian 入口文件必須保持語義一致；若 `template/` 需以 placeholder 泛化，允許字面不同，但不得規則漂移。
+- source template repo（含 `.consilium-source-repo`）中，`root`、`template/` 與 Obsidian 入口文件必須保持語義一致；由 `template/` 複製出的 downstream terminal repo 不再建立新的 `template/`，只維護 root 文件與 `OBSIDIAN.md`。
 - GitHub 對外入口以 `README.md` / `README.zh-TW.md` 為準；Obsidian 入口以 `OBSIDIAN.md` 為準。
 - 歷史 artifacts、實驗輸出、外部 repo 內 Markdown 不在追溯改寫範圍內。
 
@@ -48,7 +48,7 @@
 | **Verification** | `docs/artifact_schema.md` §5.5-§5.6, `docs/workflow_state_machine.md` | -- | -- |
 | **Closure** | `docs/workflow_state_machine.md` | -- | -- |
 | **Red Team Exercise** | `docs/red_team_runbook.md`, `docs/red_team_scorecard.md`, `docs/red_team_backlog.md` | -- | -- |
-| **Template Sync / Obsidian Sync** | `docs/orchestration.md` §9 | -- | -- |
+| **Sync Contract** | `docs/orchestration.md` §9 | -- | -- |
 
 ## 交叉引用慣例
 

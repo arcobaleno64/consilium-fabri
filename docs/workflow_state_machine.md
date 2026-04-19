@@ -4,6 +4,8 @@
 
 沒有 state machine 的系統，本質上就是聊天。
 
+狀態機只定義**合法轉移**；每個狀態真正需要哪些 artifacts，必須再由 `Assurance Level` 與 `Project Adapter` 決定，不能只靠某個 artifact 是否剛好存在來推導。
+
 ## 1. 狀態總覽
 
 | 狀態 | 說明 |

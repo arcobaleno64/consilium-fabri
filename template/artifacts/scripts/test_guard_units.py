@@ -24,6 +24,8 @@ import build_decision_registry as bdr
 import aggregate_red_team_scorecard as ars
 import validate_scorecard_deltas as vsd
 import validate_context_stack as vcs
+import migrate_artifact_schema as mas
+import legacy_verify_corpus as lvc
 import workflow_constants as wc
 
 
@@ -230,6 +232,379 @@ class TestNormalizeText:
 class TestContractSyncFiles:
     def test_requirements_dev_is_exact_sync(self):
         assert "requirements-dev.txt" in gcv.EXACT_SYNC_FILES
+
+
+class TestDetectRepoMode:
+    def test_source_mode_when_sentinel_exists(self, tmp_path):
+        (tmp_path / gcv.SOURCE_REPO_SENTINEL).write_text("source repo", encoding="utf-8")
+        assert gcv.detect_repo_mode(tmp_path) == gcv.SOURCE_REPO_MODE
+
+    def test_downstream_mode_without_sentinel(self, tmp_path):
+        assert gcv.detect_repo_mode(tmp_path) == gcv.DOWNSTREAM_REPO_MODE
+
+
+class TestWorkflowPolicyContract:
+    def test_rule_tables_contract_passes(self):
+        assert gcv.validate_workflow_policy_contract() == []
+
+
+class TestRootArtifactStrictness:
+    def _seed_repo(self, tmp_path):
+        for relative in (
+            "artifacts/tasks",
+            "artifacts/decisions",
+            "artifacts/verify",
+            "artifacts/status",
+        ):
+            (tmp_path / relative).mkdir(parents=True, exist_ok=True)
+        (tmp_path / "artifacts" / "tasks" / "TASK-001.task.md").write_text(
+            textwrap.dedent("""\
+                # Task: TASK-001
+                ## Metadata
+                - Task ID: TASK-001
+                - Artifact Type: task
+                - Owner: Claude
+                - Status: approved
+                - Last Updated: 2026-01-15T10:00:00+08:00
+                ## Objective
+                Goal
+                ## Background
+                None
+                ## Inputs
+                None
+                ## Constraints
+                Keep scope fixed
+                ## Acceptance Criteria
+                - A
+                ## Dependencies
+                None
+                ## Out of Scope
+                - None
+                ## Assurance Level
+                POC
+                ## Project Adapter
+                generic
+                ## Current Status Summary
+                Planned
+            """),
+            encoding="utf-8",
+        )
+        (tmp_path / "artifacts" / "decisions" / "TASK-001.decision.md").write_text(
+            textwrap.dedent("""\
+                # Decision Log: TASK-001
+                ## Metadata
+                - Task ID: TASK-001
+                - Artifact Type: decision
+                - Owner: Claude
+                - Status: done
+                - Last Updated: 2026-01-15T10:00:00+08:00
+                ## Decision Class
+                risk-acceptance
+                ## Affected Gate
+                Gate_D
+                ## Scope
+                Verification governance
+                ## Issue
+                Issue
+                ## Options Considered
+                - A
+                ## Chosen Option
+                A
+                ## Reasoning
+                Because
+                ## Implications
+                None
+                ## Expiry
+                None
+                ## Linked Artifacts
+                - `artifacts/tasks/TASK-001.task.md`
+                ## Follow Up
+                None
+            """),
+            encoding="utf-8",
+        )
+        (tmp_path / "artifacts" / "verify" / "TASK-001.verify.md").write_text(
+            textwrap.dedent("""\
+                # Verification: TASK-001
+                ## Metadata
+                - Task ID: TASK-001
+                - Artifact Type: verify
+                - Owner: Claude
+                - Status: pass
+                - Last Updated: 2026-01-15T10:00:00+08:00
+                ## Verification Summary
+                Covered
+                ## Acceptance Criteria Checklist
+                - **criterion**: A
+                - **method**: Artifact review
+                - **evidence**: `artifacts/tasks/TASK-001.task.md`
+                - **result**: verified
+                ## Overall Maturity
+                poc
+                ## Deferred Items
+                None
+                ## Evidence
+                - `artifacts/tasks/TASK-001.task.md`
+                ## Evidence Refs
+                - `artifacts/tasks/TASK-001.task.md`
+                ## Decision Refs
+                - `artifacts/decisions/TASK-001.decision.md`
+                ## Build Guarantee
+                None (no .csproj modified)
+                ## Pass Fail Result
+                pass
+                ## Recommendation
+                None
+            """),
+            encoding="utf-8",
+        )
+        (tmp_path / "artifacts" / "status" / "TASK-001.status.json").write_text(
+            json.dumps(
+                {
+                    "task_id": "TASK-001",
+                    "state": "done",
+                    "current_owner": "Claude",
+                    "next_agent": "Claude",
+                    "required_artifacts": ["task", "code", "verify", "status"],
+                    "available_artifacts": ["decision", "status", "task", "verify"],
+                    "missing_artifacts": ["code"],
+                    "blocked_reason": "",
+                    "last_updated": "2026-01-15T10:00:00+08:00",
+                    "assurance_level": "poc",
+                    "project_adapter": "generic",
+                    "open_verification_debts": [],
+                    "verification_readiness": "poc",
+                },
+                ensure_ascii=False,
+                indent=2,
+            ) + "\n",
+            encoding="utf-8",
+        )
+
+    def test_root_artifact_strictness_passes_on_structured_repo(self, tmp_path):
+        self._seed_repo(tmp_path)
+        assert gcv.validate_root_artifact_strictness(tmp_path) == []
+
+    def test_root_artifact_strictness_flags_legacy_warning(self, tmp_path):
+        self._seed_repo(tmp_path)
+        status_path = tmp_path / "artifacts" / "status" / "TASK-001.status.json"
+        payload = json.loads(status_path.read_text(encoding="utf-8"))
+        payload.pop("verification_readiness")
+        status_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        errors = gcv.validate_root_artifact_strictness(tmp_path)
+        assert any("verification_readiness" in error for error in errors)
+
+
+class TestArtifactSchemaMigration:
+    LEGACY_CORPUS_CASE_IDS = (
+        "structured-checklist-complete",
+        "heading-block-partial",
+        "checkbox-list-mixed",
+        "unparseable-fragment",
+    )
+
+    def _seed_repo(self, tmp_path):
+        for relative in (
+            "artifacts/tasks",
+            "artifacts/decisions",
+            "artifacts/verify",
+            "artifacts/status",
+        ):
+            (tmp_path / relative).mkdir(parents=True, exist_ok=True)
+        (tmp_path / "artifacts" / "tasks" / "TASK-001.task.md").write_text(
+            textwrap.dedent("""\
+                # Task: TASK-001
+                ## Metadata
+                - Task ID: TASK-001
+                - Artifact Type: task
+                - Owner: Claude
+                - Status: approved
+                - Last Updated: 2026-01-15T10:00:00+08:00
+                ## Objective
+                Goal
+                ## Background
+                None
+                ## Inputs
+                None
+                ## Constraints
+                Keep scope fixed
+                ## Acceptance Criteria
+                - [x] A
+                ## Dependencies
+                None
+                ## Out of Scope
+                - None
+                ## Current Status Summary
+                Planned
+            """),
+            encoding="utf-8",
+        )
+        (tmp_path / "artifacts" / "decisions" / "TASK-001.decision.md").write_text(
+            textwrap.dedent("""\
+                # Decision Log: TASK-001
+                ## Metadata
+                - Task ID: TASK-001
+                - Artifact Type: decision
+                - Owner: Claude
+                - Status: done
+                - Last Updated: 2026-01-15T10:00:00+08:00
+                ## Issue
+                Verify migration
+                ## Chosen Option
+                Keep migration conservative
+                ## Reasoning
+                Preserve traceability
+            """),
+            encoding="utf-8",
+        )
+        (tmp_path / "artifacts" / "verify" / "TASK-001.verify.md").write_text(
+            textwrap.dedent("""\
+                # Verification: TASK-001
+                ## Metadata
+                - Task ID: TASK-001
+                - Artifact Type: verify
+                - Owner: Claude
+                - Status: pass
+                - Last Updated: 2026-01-15T10:00:00+08:00
+                ## Acceptance Criteria Checklist
+                - [x] A
+                ## Evidence
+                - `artifacts/tasks/TASK-001.task.md`
+                ## Build Guarantee
+                None (no .csproj modified)
+                ## Pass Fail Result
+                pass
+                ## Remaining Gaps
+                None
+            """),
+            encoding="utf-8",
+        )
+        (tmp_path / "artifacts" / "status" / "TASK-001.status.json").write_text(
+            json.dumps(
+                {
+                    "task_id": "TASK-001",
+                    "current_state": "verify_ready",
+                    "owner": "Claude",
+                    "last_updated": "2026-01-15T10:00:00+08:00",
+                    "artifacts": {"task": "artifacts/tasks/TASK-001.task.md"},
+                    "next_action": "Migrate",
+                    "blockers": [],
+                    "available_artifacts": ["decision", "status", "task", "verify"],
+                    "assurance_level": "poc",
+                    "project_adapter": "generic",
+                    "open_verification_debts": [],
+                    "state": "done",
+                    "required_artifacts": ["task", "code", "verify", "status"],
+                    "missing_artifacts": ["code"],
+                    "blocked_reason": "",
+                    "current_owner": "Claude",
+                    "next_agent": "Claude",
+                },
+                ensure_ascii=False,
+                indent=2,
+            ) + "\n",
+            encoding="utf-8",
+        )
+
+    def _write_verify_from_corpus(self, tmp_path, case_id):
+        case = lvc.load_corpus_case(case_id)
+        verify_path = tmp_path / "artifacts" / "verify" / "TASK-001.verify.md"
+        verify_path.write_text(case.text.replace("TASK-LEGACY", "TASK-001"), encoding="utf-8")
+        return case, verify_path
+
+    def test_dry_run_does_not_modify_files(self, tmp_path):
+        self._seed_repo(tmp_path)
+        before = (tmp_path / "artifacts" / "verify" / "TASK-001.verify.md").read_text(encoding="utf-8")
+        report = mas.migrate_repository(tmp_path, apply=False)
+        after = (tmp_path / "artifacts" / "verify" / "TASK-001.verify.md").read_text(encoding="utf-8")
+        assert report.changed_count() > 0
+        assert before == after
+
+    def test_apply_is_idempotent(self, tmp_path):
+        self._seed_repo(tmp_path)
+        first = mas.migrate_repository(tmp_path, apply=True)
+        second = mas.migrate_repository(tmp_path, apply=True)
+        assert first.changed_count() > 0
+        assert second.changed_count() == 0
+        verify_text = (tmp_path / "artifacts" / "verify" / "TASK-001.verify.md").read_text(encoding="utf-8")
+        assert "## Overall Maturity" in verify_text
+        assert "- **result**: verified" in verify_text
+        status_payload = json.loads((tmp_path / "artifacts" / "status" / "TASK-001.status.json").read_text(encoding="utf-8"))
+        assert "current_state" not in status_payload
+        assert status_payload["verification_readiness"] == "poc"
+
+    def test_legacy_verify_corpus_manifest_is_complete(self):
+        cases = {case.case_id for case in lvc.load_corpus_cases()}
+        assert cases == set(self.LEGACY_CORPUS_CASE_IDS)
+
+    @pytest.mark.parametrize("case_id", LEGACY_CORPUS_CASE_IDS)
+    def test_external_legacy_corpus_cases(self, tmp_path, case_id):
+        self._seed_repo(tmp_path)
+        case, verify_path = self._write_verify_from_corpus(tmp_path, case_id)
+        report = mas.migrate_repository(tmp_path, apply=True, input_mode=mas.EXTERNAL_LEGACY_MODE)
+        verify_text = verify_path.read_text(encoding="utf-8")
+        checklist_items = gsv.parse_verify_checklist_items(gsv.extract_section(verify_text, "Acceptance Criteria Checklist"))
+        verify_contract = gsv.collect_verify_contract(verify_text, assurance_level="poc", project_adapter="generic", state="done")
+        assert report.changed_count() > 0
+        assert case.summary_fragment in verify_text
+        assert checklist_items
+        assert all(item.get("result") == case.expected_checklist_result for item in checklist_items)
+        if case.expected_reason_code:
+            assert all(item.get("reason_code") == case.expected_reason_code for item in checklist_items)
+        else:
+            assert all(not item.get("reason_code") for item in checklist_items)
+        if case.expected_unresolved_fields:
+            unresolved_fields = ", ".join(case.expected_unresolved_fields)
+            assert f"[WARN] unresolved fields: {unresolved_fields}" in verify_text
+        else:
+            assert "[WARN] unresolved fields:" not in verify_text
+        if case.manual_review_required:
+            assert "Manual review required before treating this verify artifact as authoritative." in verify_text
+            assert verify_contract["open_verification_debts"]
+        else:
+            assert "Manual review required before treating this verify artifact as authoritative." not in verify_text
+            assert not verify_contract["open_verification_debts"]
+        assert f"## Pass Fail Result\n{case.expected_pass_fail_result}" in verify_text
+
+    def test_parse_args_accepts_external_legacy_mode(self):
+        args = mas.parse_args(["--input-mode", mas.EXTERNAL_LEGACY_MODE])
+        assert args.input_mode == mas.EXTERNAL_LEGACY_MODE
+
+    def test_evidence_refs_ignore_command_lines(self, tmp_path):
+        self._seed_repo(tmp_path)
+        verify_path = tmp_path / "artifacts" / "verify" / "TASK-001.verify.md"
+        verify_path.write_text(
+            textwrap.dedent("""\
+                # Verification: TASK-001
+                ## Metadata
+                - Task ID: TASK-001
+                - Artifact Type: verify
+                - Owner: Claude
+                - Status: pass
+                - Last Updated: 2026-01-15T10:00:00+08:00
+                ## Acceptance Criteria Checklist
+                - **criterion**: A
+                - **method**: Artifact review
+                - **evidence**: `artifacts/tasks/TASK-001.task.md`
+                - **result**: verified
+                ## Evidence
+                - `python -m pytest artifacts/scripts/test_guard_units.py` -> `991 passed`
+                - `artifacts/tasks/TASK-001.task.md`
+                ## Build Guarantee
+                None (no .csproj modified)
+                ## Pass Fail Result
+                pass
+                ## Remaining Gaps
+                None
+            """),
+            encoding="utf-8",
+        )
+        mas.migrate_repository(tmp_path, apply=True, input_mode=mas.ROOT_TRACKED_MODE)
+        verify_text = verify_path.read_text(encoding="utf-8")
+        evidence_refs = gsv.parse_list_items(gsv.extract_section(verify_text, "Evidence Refs"))
+        normalized_refs = [gsv.normalize_path_token(item) for item in evidence_refs]
+        assert "artifacts/tasks/TASK-001.task.md" in normalized_refs
+        assert not any("pytest" in item for item in evidence_refs)
 
 
 # ─────────────────────────────────────────────
@@ -465,6 +840,18 @@ class TestWorkflowConstants:
         assert wc.TOPIC_PATTERN.match("developer-tools")
         assert not wc.TOPIC_PATTERN.match("UPPERCASE")
         assert not wc.TOPIC_PATTERN.match("has space")
+
+    def test_resolve_policy_for_docs_spec_removes_test(self):
+        policy = wc.resolve_verification_policy("mvp", "docs-spec")
+        assert "test" not in policy["required_artifacts_by_state"]["done"]
+
+    def test_resolve_policy_for_web_app_requires_build_guarantee(self):
+        policy = wc.resolve_verification_policy("production", "web-app")
+        assert policy["requires_build_guarantee"] is True
+        assert "Build Guarantee" in policy["verify_required_sections"]
+
+    def test_rule_tables_are_self_consistent(self):
+        assert wc.validate_workflow_rule_tables() == []
 
 
 # ─────────────────────────────────────────────
@@ -718,26 +1105,26 @@ class TestStateRequiredArtifacts:
     def test_drafted(self):
         assert gsv.state_required_artifacts("drafted", set()) == {"task", "status"}
 
-    def test_planned_with_research(self):
+    def test_planned_defaults_without_research(self):
         existing = {"task", "research", "plan", "status"}
-        required = gsv.state_required_artifacts("planned", existing)
-        assert "research" in required
-
-    def test_planned_without_research(self):
-        existing = {"task", "plan", "status"}
         required = gsv.state_required_artifacts("planned", existing)
         assert "research" not in required
 
+    def test_planned_production_requires_research(self):
+        existing = {"task", "plan", "status"}
+        required = gsv.state_required_artifacts("planned", existing, assurance_level="production")
+        assert "research" in required
+
     def test_lightweight_mode(self):
         result = gsv.state_required_artifacts("done", set(), validation_mode="lightweight")
-        assert result == {"task", "research", "code", "status"}
+        assert result == {"task", "code", "verify", "status"}
 
-    def test_verifying_with_test(self):
+    def test_verifying_mvp_requires_test(self):
         existing = {"task", "plan", "code", "test", "status"}
-        required = gsv.state_required_artifacts("verifying", existing)
+        required = gsv.state_required_artifacts("verifying", existing, assurance_level="mvp")
         assert "test" in required
 
-    def test_verifying_without_test(self):
+    def test_verifying_default_does_not_require_test(self):
         existing = {"task", "code", "status"}
         required = gsv.state_required_artifacts("verifying", existing)
         assert "test" not in required
@@ -1624,6 +2011,22 @@ class TestValidateStatusSchema:
         assert not result.ok
         assert any("blockers" in e for e in result.errors)
 
+    def test_invalid_verification_readiness(self):
+        status = self._modern_status()
+        status["verification_readiness"] = "bad-state"
+        result = gsv.validate_status_schema(status, "TASK-001")
+        assert not result.ok
+        assert any("verification_readiness" in e for e in result.errors)
+
+    def test_production_ready_with_open_debts_warns(self):
+        status = self._modern_status(state="done")
+        status["assurance_level"] = "production"
+        status["project_adapter"] = "generic"
+        status["open_verification_debts"] = ["TASK-001#AC-2"]
+        status["verification_readiness"] = "production-ready"
+        result = gsv.validate_status_schema(status, "TASK-001")
+        assert any("verification_readiness mismatch" in w for w in result.warnings)
+
 
 # ─────────────────────────────────────────────
 # validate_premortem
@@ -1734,11 +2137,34 @@ class TestGcvNormalizeText:
 
 
 # ─────────────────────────────────────────────
+# detect_repo_mode / required_phrases_for_mode
+# ─────────────────────────────────────────────
+
+
+class TestGcvRepoMode:
+    def test_detect_source_mode_with_sentinel(self, tmp_path):
+        (tmp_path / gcv.SOURCE_REPO_SENTINEL).write_text("source repo", encoding="utf-8")
+        assert gcv.detect_repo_mode(tmp_path) == gcv.SOURCE_REPO_MODE
+
+    def test_detect_downstream_mode_without_sentinel(self, tmp_path):
+        assert gcv.detect_repo_mode(tmp_path) == gcv.DOWNSTREAM_REPO_MODE
+
+    def test_required_phrases_for_downstream_excludes_template_only_entries(self):
+        phrase_map = gcv.required_phrases_for_mode(gcv.DOWNSTREAM_REPO_MODE)
+        assert "template/CLAUDE.md" not in phrase_map
+        assert "template/README.md" not in phrase_map
+        assert "CLAUDE.md" in phrase_map
+
+
+# ─────────────────────────────────────────────
 # validate_exact_sync
 # ─────────────────────────────────────────────
 
 
 class TestValidateExactSync:
+    def _mark_source_repo(self, tmp_path):
+        (tmp_path / gcv.SOURCE_REPO_SENTINEL).write_text("source repo", encoding="utf-8")
+
     def _setup_sync_pair(self, tmp_path, relative, root_content, template_content=None):
         """Create a root file and its template counterpart."""
         root_file = tmp_path / relative
@@ -1749,12 +2175,14 @@ class TestValidateExactSync:
         tmpl_file.write_text(template_content or root_content, encoding="utf-8")
 
     def test_all_in_sync(self, tmp_path):
+        self._mark_source_repo(tmp_path)
         for rel in gcv.EXACT_SYNC_FILES:
             self._setup_sync_pair(tmp_path, rel, f"content of {rel}")
         errors = gcv.validate_exact_sync(tmp_path)
         assert errors == []
 
     def test_root_missing(self, tmp_path):
+        self._mark_source_repo(tmp_path)
         # Create template only, skip root
         for rel in gcv.EXACT_SYNC_FILES:
             tmpl = tmp_path / "template" / rel
@@ -1764,6 +2192,7 @@ class TestValidateExactSync:
         assert all("Missing root file" in e for e in errors)
 
     def test_template_missing(self, tmp_path):
+        self._mark_source_repo(tmp_path)
         for rel in gcv.EXACT_SYNC_FILES:
             root_f = tmp_path / rel
             root_f.parent.mkdir(parents=True, exist_ok=True)
@@ -1772,6 +2201,7 @@ class TestValidateExactSync:
         assert all("Missing template file" in e for e in errors)
 
     def test_drift_detected(self, tmp_path):
+        self._mark_source_repo(tmp_path)
         for rel in gcv.EXACT_SYNC_FILES:
             self._setup_sync_pair(tmp_path, rel, f"content of {rel}")
         # Introduce drift in the first file
@@ -1782,12 +2212,21 @@ class TestValidateExactSync:
         assert "Contract drift" in errors[0]
 
     def test_whitespace_and_placeholder_normalized(self, tmp_path):
+        self._mark_source_repo(tmp_path)
         for rel in gcv.EXACT_SYNC_FILES:
             self._setup_sync_pair(
                 tmp_path, rel,
                 "root  content  {{PROJECT_NAME}}",
                 "root content {{PROJECT_NAME}}",
             )
+        errors = gcv.validate_exact_sync(tmp_path)
+        assert errors == []
+
+    def test_downstream_mode_skips_template_exact_sync(self, tmp_path):
+        for rel in gcv.EXACT_SYNC_FILES:
+            root_f = tmp_path / rel
+            root_f.parent.mkdir(parents=True, exist_ok=True)
+            root_f.write_text("x", encoding="utf-8")
         errors = gcv.validate_exact_sync(tmp_path)
         assert errors == []
 
@@ -1799,7 +2238,8 @@ class TestValidateExactSync:
 
 class TestValidateRequiredPhrases:
     def test_all_present(self, tmp_path):
-        for rel, phrases in gcv.REQUIRED_PHRASES.items():
+        (tmp_path / gcv.SOURCE_REPO_SENTINEL).write_text("source repo", encoding="utf-8")
+        for rel, phrases in gcv.required_phrases_for_mode(gcv.SOURCE_REPO_MODE).items():
             f = tmp_path / rel
             f.parent.mkdir(parents=True, exist_ok=True)
             f.write_text(" ".join(phrases), encoding="utf-8")
@@ -1807,11 +2247,13 @@ class TestValidateRequiredPhrases:
         assert errors == []
 
     def test_missing_file(self, tmp_path):
+        (tmp_path / gcv.SOURCE_REPO_SENTINEL).write_text("source repo", encoding="utf-8")
         errors = gcv.validate_required_phrases(tmp_path)
         assert all("Missing required file" in e for e in errors)
 
     def test_missing_phrase(self, tmp_path):
-        for rel, phrases in gcv.REQUIRED_PHRASES.items():
+        (tmp_path / gcv.SOURCE_REPO_SENTINEL).write_text("source repo", encoding="utf-8")
+        for rel, phrases in gcv.required_phrases_for_mode(gcv.SOURCE_REPO_MODE).items():
             f = tmp_path / rel
             f.parent.mkdir(parents=True, exist_ok=True)
             # Write all phrases except the first one
@@ -1819,6 +2261,14 @@ class TestValidateRequiredPhrases:
         errors = gcv.validate_required_phrases(tmp_path)
         assert len(errors) > 0
         assert all("missing required phrase" in e for e in errors)
+
+    def test_downstream_mode_uses_downstream_claude_phrases(self, tmp_path):
+        for rel, phrases in gcv.required_phrases_for_mode(gcv.DOWNSTREAM_REPO_MODE).items():
+            f = tmp_path / rel
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_text(" ".join(phrases), encoding="utf-8")
+        errors = gcv.validate_required_phrases(tmp_path)
+        assert errors == []
 
 
 # ─────────────────────────────────────────────
@@ -1839,16 +2289,19 @@ class TestValidateRepositoryProfile:
         path.write_text(json.dumps(data), encoding="utf-8")
 
     def test_valid(self, tmp_path):
+        (tmp_path / gcv.SOURCE_REPO_SENTINEL).write_text("source repo", encoding="utf-8")
         for rel in gcv.REPOSITORY_PROFILE_FILES:
             self._write_profile(tmp_path, rel, self._valid_profile())
         errors = gcv.validate_repository_profile(tmp_path)
         assert errors == []
 
     def test_missing_file(self, tmp_path):
+        (tmp_path / gcv.SOURCE_REPO_SENTINEL).write_text("source repo", encoding="utf-8")
         errors = gcv.validate_repository_profile(tmp_path)
         assert all("Missing required repository profile" in e for e in errors)
 
     def test_invalid_json(self, tmp_path):
+        (tmp_path / gcv.SOURCE_REPO_SENTINEL).write_text("source repo", encoding="utf-8")
         for rel in gcv.REPOSITORY_PROFILE_FILES:
             path = tmp_path / rel
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -1857,6 +2310,7 @@ class TestValidateRepositoryProfile:
         assert all("not valid JSON" in e for e in errors)
 
     def test_about_empty(self, tmp_path):
+        (tmp_path / gcv.SOURCE_REPO_SENTINEL).write_text("source repo", encoding="utf-8")
         profile = self._valid_profile()
         profile["about"] = ""
         for rel in gcv.REPOSITORY_PROFILE_FILES:
@@ -1865,6 +2319,7 @@ class TestValidateRepositoryProfile:
         assert any("non-empty string" in e for e in errors)
 
     def test_about_too_short(self, tmp_path):
+        (tmp_path / gcv.SOURCE_REPO_SENTINEL).write_text("source repo", encoding="utf-8")
         profile = self._valid_profile()
         profile["about"] = "Short"
         for rel in gcv.REPOSITORY_PROFILE_FILES:
@@ -1873,6 +2328,7 @@ class TestValidateRepositoryProfile:
         assert any("80-200 chars" in e for e in errors)
 
     def test_about_too_long(self, tmp_path):
+        (tmp_path / gcv.SOURCE_REPO_SENTINEL).write_text("source repo", encoding="utf-8")
         profile = self._valid_profile()
         profile["about"] = "X" * 201
         for rel in gcv.REPOSITORY_PROFILE_FILES:
@@ -1881,6 +2337,7 @@ class TestValidateRepositoryProfile:
         assert any("80-200 chars" in e for e in errors)
 
     def test_topics_not_list(self, tmp_path):
+        (tmp_path / gcv.SOURCE_REPO_SENTINEL).write_text("source repo", encoding="utf-8")
         profile = self._valid_profile()
         profile["topics"] = "not-a-list"
         for rel in gcv.REPOSITORY_PROFILE_FILES:
@@ -1889,6 +2346,7 @@ class TestValidateRepositoryProfile:
         assert any("must define list" in e for e in errors)
 
     def test_topics_too_few(self, tmp_path):
+        (tmp_path / gcv.SOURCE_REPO_SENTINEL).write_text("source repo", encoding="utf-8")
         profile = self._valid_profile()
         profile["topics"] = ["topic-1", "topic-2"]
         for rel in gcv.REPOSITORY_PROFILE_FILES:
@@ -1897,6 +2355,7 @@ class TestValidateRepositoryProfile:
         assert any("6-12 items" in e for e in errors)
 
     def test_topics_too_many(self, tmp_path):
+        (tmp_path / gcv.SOURCE_REPO_SENTINEL).write_text("source repo", encoding="utf-8")
         profile = self._valid_profile()
         profile["topics"] = [f"topic-{i}" for i in range(13)]
         for rel in gcv.REPOSITORY_PROFILE_FILES:
@@ -1905,6 +2364,7 @@ class TestValidateRepositoryProfile:
         assert any("6-12 items" in e for e in errors)
 
     def test_topics_duplicates(self, tmp_path):
+        (tmp_path / gcv.SOURCE_REPO_SENTINEL).write_text("source repo", encoding="utf-8")
         profile = self._valid_profile()
         profile["topics"] = list(gcv.REQUIRED_TOPICS) + [list(gcv.REQUIRED_TOPICS)[0]]
         for rel in gcv.REPOSITORY_PROFILE_FILES:
@@ -1913,6 +2373,7 @@ class TestValidateRepositoryProfile:
         assert any("duplicates" in e for e in errors)
 
     def test_topics_invalid_format(self, tmp_path):
+        (tmp_path / gcv.SOURCE_REPO_SENTINEL).write_text("source repo", encoding="utf-8")
         profile = self._valid_profile()
         profile["topics"] = list(gcv.REQUIRED_TOPICS) + ["UPPER_CASE"]
         for rel in gcv.REPOSITORY_PROFILE_FILES:
@@ -1921,6 +2382,7 @@ class TestValidateRepositoryProfile:
         assert any("lowercase-kebab-case" in e for e in errors)
 
     def test_topics_missing_required(self, tmp_path):
+        (tmp_path / gcv.SOURCE_REPO_SENTINEL).write_text("source repo", encoding="utf-8")
         profile = self._valid_profile()
         profile["topics"] = [f"custom-topic-{i}" for i in range(7)]
         for rel in gcv.REPOSITORY_PROFILE_FILES:
@@ -1928,9 +2390,14 @@ class TestValidateRepositoryProfile:
         errors = gcv.validate_repository_profile(tmp_path)
         assert any("missing required topics" in e for e in errors)
 
+    def test_downstream_mode_only_requires_root_profile(self, tmp_path):
+        self._write_profile(tmp_path, ".github/repository-profile.json", self._valid_profile())
+        errors = gcv.validate_repository_profile(tmp_path)
+        assert errors == []
+
 
 # ─────────────────────────────────────────────
-# extract_h2_headers / validate_readme_structure
+# extract_h2_headers / parse_h2_sections / validate_readme_structure
 # ─────────────────────────────────────────────
 
 
@@ -1945,40 +2412,266 @@ class TestExtractH2Headers:
         assert gcv.extract_h2_headers("plain text") == []
 
 
+class TestParseH2Sections:
+    def test_basic(self):
+        sections = gcv.parse_h2_sections("## One\nalpha\n## Two\nbeta\n")
+        assert sections == [("One", "alpha"), ("Two", "beta")]
+
+    def test_ignores_h2_inside_code_fence(self):
+        text = "## One\n```md\n## Fake\n```\nreal\n## Two\nbeta\n"
+        sections = gcv.parse_h2_sections(text)
+        assert sections == [("One", "```md\n## Fake\n```\nreal"), ("Two", "beta")]
+
+
+class TestValidateMarkdownContracts:
+    def _build_doc(self, headers, section_content):
+        lines = []
+        for header in headers:
+            lines.append(f"## {header}")
+            lines.append(section_content.get(header, f"{header} body"))
+            lines.append("")
+        return "\n".join(lines).strip() + "\n"
+
+    def _write_source_repo_docs(self, tmp_path):
+        (tmp_path / gcv.SOURCE_REPO_SENTINEL).write_text("source repo", encoding="utf-8")
+        docs = {
+            "README.md": self._build_doc(
+                gcv.README_HEADERS_EN,
+                {
+                    "Architecture Snapshot": "template/ + .github/ + OBSIDIAN.md + external/",
+                    "Getting Started": "source template repo .consilium-source-repo downstream terminal repo",
+                    "Validator Commands": "source mode checks root ↔ template ↔ Obsidian",
+                },
+            ),
+            "README.zh-TW.md": self._build_doc(
+                gcv.README_HEADERS_ZH,
+                {
+                    "架構速覽": "template/ + .github/ + OBSIDIAN.md + external/",
+                    "開始使用": "source template repo .consilium-source-repo downstream terminal repo",
+                    "驗證指令": "source mode 檢查 root ↔ template ↔ Obsidian",
+                },
+            ),
+            "template/README.md": self._build_doc(
+                gcv.README_HEADERS_EN,
+                {
+                    "Architecture Snapshot": ".github/ + OBSIDIAN.md + external/",
+                    "Getting Started": "downstream terminal repo nested `template/`",
+                    "Validator Commands": "downstream mode checks root ↔ Obsidian",
+                },
+            ),
+            "template/README.zh-TW.md": self._build_doc(
+                gcv.README_HEADERS_ZH,
+                {
+                    "架構速覽": ".github/ + OBSIDIAN.md + external/",
+                    "開始使用": "downstream terminal repo nested `template/`",
+                    "驗證指令": "downstream mode 檢查 root ↔ Obsidian",
+                },
+            ),
+            "OBSIDIAN.md": self._build_doc(
+                gcv.OBSIDIAN_HEADERS,
+                {
+                    "同步範圍": "source template repo template 對應文件 downstream terminal repo",
+                    "Workflow 摘要": (
+                        "source template repo 的 workflow 規則變更後，必須同步更新 root、`template/` 與 Obsidian 入口，並通過 contract guard。\n"
+                        "downstream terminal repo 的 workflow 規則變更後，只維護 root 文件與 `OBSIDIAN.md`，並通過 contract guard。"
+                    ),
+                    "GitHub / Template 對應": "template/START_HERE.md template/OBSIDIAN.md",
+                },
+            ),
+            "template/OBSIDIAN.md": self._build_doc(
+                gcv.OBSIDIAN_HEADERS,
+                {
+                    "同步範圍": "只維護 root 文件與 `OBSIDIAN.md` 不再建立新的 `template/`",
+                    "Workflow 摘要": "downstream terminal repo 的 workflow 規則變更後，只維護 root 文件與 `OBSIDIAN.md`，並通過 contract guard。",
+                    "GitHub / Template 對應": "本 repo 不建立 nested `template/`",
+                },
+            ),
+        }
+        for relative, content in docs.items():
+            path = tmp_path / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+
+    def _write_downstream_repo_docs(self, tmp_path):
+        docs = {
+            "README.md": self._build_doc(
+                gcv.README_HEADERS_EN,
+                {
+                    "Architecture Snapshot": ".github/ + OBSIDIAN.md + external/",
+                    "Getting Started": "downstream terminal repo nested `template/`",
+                    "Validator Commands": "downstream mode checks root ↔ Obsidian",
+                },
+            ),
+            "README.zh-TW.md": self._build_doc(
+                gcv.README_HEADERS_ZH,
+                {
+                    "架構速覽": ".github/ + OBSIDIAN.md + external/",
+                    "開始使用": "downstream terminal repo nested `template/`",
+                    "驗證指令": "downstream mode 檢查 root ↔ Obsidian",
+                },
+            ),
+            "OBSIDIAN.md": self._build_doc(
+                gcv.OBSIDIAN_HEADERS,
+                {
+                    "同步範圍": "只維護 root 文件與 `OBSIDIAN.md` 不再建立新的 `template/`",
+                    "Workflow 摘要": "downstream terminal repo 的 workflow 規則變更後，只維護 root 文件與 `OBSIDIAN.md`，並通過 contract guard。",
+                    "GitHub / Template 對應": "本 repo 不建立 nested `template/`",
+                },
+            ),
+        }
+        for relative, content in docs.items():
+            path = tmp_path / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+
+    def test_source_mode_passes_when_contract_matches(self, tmp_path):
+        self._write_source_repo_docs(tmp_path)
+        assert gcv.validate_markdown_contracts(tmp_path) == []
+
+    def test_readme_h2_order_mismatch_fails(self, tmp_path):
+        self._write_downstream_repo_docs(tmp_path)
+        (tmp_path / "README.md").write_text(
+            self._build_doc(
+                ["Start Here", "Product Positioning", "Architecture Snapshot"] + gcv.README_HEADERS_EN[3:7] + ["Workflow Overview"] + gcv.README_HEADERS_EN[8:],
+                {
+                    "Architecture Snapshot": ".github/ + OBSIDIAN.md + external/",
+                    "Getting Started": "downstream terminal repo nested `template/`",
+                    "Validator Commands": "downstream mode checks root ↔ Obsidian",
+                },
+            ),
+            encoding="utf-8",
+        )
+        errors = gcv.validate_markdown_contracts(tmp_path)
+        assert any("README.md H2 order mismatch" in e for e in errors)
+
+    def test_source_root_readme_missing_sentinel_phrase_fails(self, tmp_path):
+        self._write_source_repo_docs(tmp_path)
+        path = tmp_path / "README.md"
+        path.write_text(path.read_text(encoding="utf-8").replace(".consilium-source-repo", "sentinel"), encoding="utf-8")
+        errors = gcv.validate_markdown_contracts(tmp_path)
+        assert any("README.md section 'Getting Started' missing required phrase: .consilium-source-repo" in e for e in errors)
+
+    def test_missing_required_section_fails(self, tmp_path):
+        self._write_downstream_repo_docs(tmp_path)
+        path = tmp_path / "README.md"
+        content = path.read_text(encoding="utf-8")
+        content = content.replace("## Validator Commands\n", "## Validator Command Removed\n", 1)
+        path.write_text(content, encoding="utf-8")
+        errors = gcv.validate_markdown_contracts(tmp_path)
+        assert any("README.md missing required section: Validator Commands" in e for e in errors)
+
+    def test_downstream_readme_source_architecture_wording_fails(self, tmp_path):
+        self._write_downstream_repo_docs(tmp_path)
+        path = tmp_path / "README.md"
+        path.write_text(path.read_text(encoding="utf-8").replace(".github/ + OBSIDIAN.md + external/", "template/ + .github/ + OBSIDIAN.md + external/"), encoding="utf-8")
+        errors = gcv.validate_markdown_contracts(tmp_path)
+        assert any("README.md section 'Architecture Snapshot' contains forbidden phrase: template/ + .github/ + OBSIDIAN.md + external/" in e for e in errors)
+
+    def test_source_template_readme_missing_downstream_wording_fails(self, tmp_path):
+        self._write_source_repo_docs(tmp_path)
+        path = tmp_path / "template" / "README.md"
+        path.write_text(path.read_text(encoding="utf-8").replace("downstream terminal repo", "terminal repo"), encoding="utf-8")
+        errors = gcv.validate_markdown_contracts(tmp_path)
+        assert any("template/README.md section 'Getting Started' missing required phrase: downstream terminal repo" in e for e in errors)
+
+    def test_downstream_obsidian_source_only_wording_fails(self, tmp_path):
+        self._write_downstream_repo_docs(tmp_path)
+        path = tmp_path / "OBSIDIAN.md"
+        path.write_text(path.read_text(encoding="utf-8").replace("本 repo 不建立 nested `template/`", "template/START_HERE.md template/OBSIDIAN.md"), encoding="utf-8")
+        errors = gcv.validate_markdown_contracts(tmp_path)
+        assert any("OBSIDIAN.md section 'GitHub / Template 對應' contains forbidden phrase: template/START_HERE.md" in e for e in errors)
+
+    def test_required_phrase_in_wrong_obsidian_section_still_fails(self, tmp_path):
+        self._write_source_repo_docs(tmp_path)
+        path = tmp_path / "OBSIDIAN.md"
+        original = path.read_text(encoding="utf-8")
+        moved = original.replace("template/START_HERE.md template/OBSIDIAN.md", "")
+        moved = moved.replace("source template repo template 對應文件 downstream terminal repo", "source template repo template 對應文件 downstream terminal repo template/START_HERE.md template/OBSIDIAN.md")
+        path.write_text(moved, encoding="utf-8")
+        errors = gcv.validate_markdown_contracts(tmp_path)
+        assert any("OBSIDIAN.md section 'GitHub / Template 對應' missing required phrase: template/START_HERE.md" in e for e in errors)
+
+    def test_missing_required_file_fails(self, tmp_path):
+        self._write_downstream_repo_docs(tmp_path)
+        (tmp_path / "OBSIDIAN.md").unlink()
+        errors = gcv.validate_markdown_contracts(tmp_path)
+        assert any("Missing required file: OBSIDIAN.md" in e for e in errors)
+
+
 class TestValidateReadmeStructure:
+    def _write_source_repo_docs(self, tmp_path):
+        TestValidateMarkdownContracts()._write_source_repo_docs(tmp_path)
+
+    def _write_downstream_repo_docs(self, tmp_path):
+        TestValidateMarkdownContracts()._write_downstream_repo_docs(tmp_path)
+
     def test_matching(self, tmp_path):
-        en = tmp_path / "README.md"
-        zh = tmp_path / "README.zh-TW.md"
-        en.write_text("## Overview\n## Usage\n", encoding="utf-8")
-        zh.write_text("## 概述\n## 使用方式\n", encoding="utf-8")
+        self._write_downstream_repo_docs(tmp_path)
         errors = gcv.validate_readme_structure(tmp_path)
         assert errors == []
 
     def test_section_count_mismatch(self, tmp_path):
-        en = tmp_path / "README.md"
+        self._write_downstream_repo_docs(tmp_path)
         zh = tmp_path / "README.zh-TW.md"
-        en.write_text("## One\n## Two\n## Three\n", encoding="utf-8")
-        zh.write_text("## 一\n## 二\n", encoding="utf-8")
+        zh.write_text("## 從這裡開始\ntext\n## 產品定位\ntext\n", encoding="utf-8")
         errors = gcv.validate_readme_structure(tmp_path)
         assert any("structure mismatch" in e for e in errors)
 
     def test_missing_en(self, tmp_path):
-        zh = tmp_path / "README.zh-TW.md"
-        zh.write_text("## Test\n", encoding="utf-8")
+        self._write_downstream_repo_docs(tmp_path)
+        (tmp_path / "README.md").unlink()
         errors = gcv.validate_readme_structure(tmp_path)
         assert any("Missing README.md" in e for e in errors)
 
     def test_template_level(self, tmp_path):
-        # Root files present and matching
-        (tmp_path / "README.md").write_text("## A\n", encoding="utf-8")
-        (tmp_path / "README.zh-TW.md").write_text("## B\n", encoding="utf-8")
-        # Template mismatch
-        tmpl = tmp_path / "template"
-        tmpl.mkdir()
-        (tmpl / "README.md").write_text("## A\n## B\n", encoding="utf-8")
-        (tmpl / "README.zh-TW.md").write_text("## A\n", encoding="utf-8")
+        self._write_source_repo_docs(tmp_path)
+        tmpl_zh = tmp_path / "template" / "README.zh-TW.md"
+        tmpl_zh.write_text("## 從這裡開始\ntext\n", encoding="utf-8")
         errors = gcv.validate_readme_structure(tmp_path)
         assert any("template" in e and "mismatch" in e for e in errors)
+
+    def test_source_mode_missing_template_readmes_fails(self, tmp_path):
+        self._write_source_repo_docs(tmp_path)
+        (tmp_path / "template" / "README.md").unlink()
+        (tmp_path / "template" / "README.zh-TW.md").unlink()
+        errors = gcv.validate_readme_structure(tmp_path)
+        assert any("Missing README.md in template" in e for e in errors)
+        assert any("Missing README.zh-TW.md in template" in e for e in errors)
+
+    def test_downstream_mode_skips_template_readme_check(self, tmp_path):
+        self._write_downstream_repo_docs(tmp_path)
+        tmpl = tmp_path / "template"
+        tmpl.mkdir()
+        (tmpl / "README.md").write_text("## Start Here\n", encoding="utf-8")
+        (tmpl / "README.zh-TW.md").write_text("## 從這裡開始\n## 產品定位\n", encoding="utf-8")
+        errors = gcv.validate_readme_structure(tmp_path)
+        assert errors == []
+
+
+class TestValidateAllowedGeminiModels:
+    def test_allowed_models_pass(self, tmp_path):
+        for rel in gcv.ACTIVE_GEMINI_POLICY_FILES:
+            path = tmp_path / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(
+                " ".join(sorted(gcv.ALLOWED_GEMINI_MODELS)),
+                encoding="utf-8",
+            )
+        errors = gcv.validate_allowed_gemini_models(tmp_path)
+        assert errors == []
+
+    def test_disallowed_model_token_fails(self, tmp_path):
+        path = tmp_path / "BOOTSTRAP_PROMPT.md"
+        path.write_text("gemini-2.5-flash gemini-3.1-flash-lite-preview", encoding="utf-8")
+        errors = gcv.validate_allowed_gemini_models(tmp_path)
+        assert any("unsupported Gemini model reference" in e for e in errors)
+
+    def test_disallowed_model_fragment_fails(self, tmp_path):
+        path = tmp_path / "docs" / "subagent_roles.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("Gemini 2.0 flash is forbidden here.", encoding="utf-8")
+        errors = gcv.validate_allowed_gemini_models(tmp_path)
+        assert any("disallowed Gemini model fragment" in e for e in errors)
 
 
 # ─────────────────────────────────────────────
@@ -2412,7 +3105,15 @@ class TestValidateCodeMappingToPlan:
 class TestValidateVerifyChecklistSchema:
     def _make_verify(self, tmp_path, checklist_section):
         p = tmp_path / "verify.md"
-        content = f"# Verification: TASK-001\n## Acceptance Criteria Checklist\n{checklist_section}\n## Pass Fail Result\npass\n"
+        content = (
+            "# Verification: TASK-001\n"
+            "## Verification Summary\nCovered by targeted checklist.\n"
+            "## Acceptance Criteria Checklist\n"
+            f"{checklist_section}\n"
+            "## Overall Maturity\npoc\n"
+            "## Deferred Items\nNone\n"
+            "## Pass Fail Result\npass\n"
+        )
         p.write_text(content, encoding="utf-8")
         return p
 
@@ -2427,7 +3128,7 @@ class TestValidateVerifyChecklistSchema:
             - **criterion**: Build passes
             - **method**: CI pipeline
             - **evidence**: Pipeline #42 green
-            - **result**: pass
+            - **result**: verified
             - **reviewer**: Claude
             - **timestamp**: 2026-01-15T10:00:00+08:00
         """)
@@ -2450,13 +3151,115 @@ class TestValidateVerifyChecklistSchema:
             - **criterion**: Build passes
             - **method**: CI
             - **evidence**: ok
-            - **result**: pass
+            - **result**: verified
             - **reviewer**: Claude
             - **timestamp**: bad-timestamp
         """)
         p = self._make_verify(tmp_path, section)
         result = gsv.validate_verify_checklist_schema(p.read_text(encoding="utf-8"), p)
         assert any("timestamp" in w.lower() for w in result.warnings)
+
+    def test_production_rejects_deferred(self, tmp_path):
+        section = textwrap.dedent("""\
+            - **criterion**: Runtime behavior confirmed
+            - **method**: Manual run
+            - **evidence**: Pending device access
+            - **result**: deferred
+            - **reviewer**: Claude
+            - **timestamp**: 2026-01-15T10:00:00+08:00
+            - **reason_code**: MANUAL_CHECK_DEFERRED
+        """)
+        p = tmp_path / "verify.md"
+        p.write_text(
+            textwrap.dedent(f"""\
+                # Verification: TASK-001
+                ## Verification Summary
+                Runtime verification pending.
+                ## Acceptance Criteria Checklist
+                {section}
+                ## Overall Maturity
+                production-blocked
+                ## Deferred Items
+                Device access pending
+                ## Decision Refs
+                None
+                ## Evidence Refs
+                None
+                ## Build Guarantee
+                build ok
+                ## Pass Fail Result
+                fail
+            """),
+            encoding="utf-8",
+        )
+        result = gsv.validate_verify_checklist_schema(
+            p.read_text(encoding="utf-8"),
+            p,
+            assurance_level="production",
+        )
+        assert any("not allowed" in e for e in result.errors)
+
+    def test_docs_spec_allows_adapter_reason_code(self, tmp_path):
+        section = textwrap.dedent("""\
+            - **criterion**: Rendered markdown review
+            - **method**: Manual inspection
+            - **evidence**: Static diff
+            - **result**: deferred
+            - **reason_code**: NOT_APPLICABLE_BY_ADAPTER
+        """)
+        p = self._make_verify(tmp_path, section)
+        result = gsv.validate_verify_checklist_schema(
+            p.read_text(encoding="utf-8"),
+            p,
+            assurance_level="poc",
+            project_adapter="docs-spec",
+        )
+        assert not any("reason_code" in e for e in result.errors)
+
+    def test_poc_requires_structured_items_warning(self, tmp_path):
+        p = self._make_verify(tmp_path, "- [x] Legacy checkbox item")
+        result = gsv.validate_verify_checklist_schema(p.read_text(encoding="utf-8"), p)
+        assert any("requires at least one structured checklist item" in w for w in result.warnings)
+
+    def test_pass_cannot_coexist_with_open_debts(self, tmp_path):
+        section = textwrap.dedent("""\
+            - **criterion**: Runtime behavior confirmed
+            - **method**: Manual run
+            - **evidence**: Pending environment
+            - **result**: deferred
+            - **reason_code**: MANUAL_CHECK_DEFERRED
+        """)
+        p = self._make_verify(tmp_path, section)
+        result = gsv.validate_verify_checklist_schema(p.read_text(encoding="utf-8"), p)
+        assert any("Pass Fail Result cannot be 'pass'" in e for e in result.errors)
+
+
+class TestCollectVerifyContract:
+    def test_collects_open_verification_debts(self, tmp_path):
+        verify = tmp_path / "verify.md"
+        verify.write_text(
+            textwrap.dedent("""\
+                # Verification: TASK-001
+                ## Verification Summary
+                Summary
+                ## Acceptance Criteria Checklist
+                - **criterion**: Device run completed
+                - **method**: Manual execution
+                - **evidence**: Device unavailable
+                - **result**: deferred
+                - **reason_code**: MANUAL_CHECK_DEFERRED
+                ## Overall Maturity
+                poc
+                ## Deferred Items
+                - deferred: Device run completed
+                ## Pass Fail Result
+                fail
+            """),
+            encoding="utf-8",
+        )
+        contract = gsv.collect_verify_contract(verify.read_text(encoding="utf-8"))
+        assert contract["open_verification_debts"] == ["deferred: Device run completed"]
+        assert contract["computed_readiness"] == "poc"
 
 
 # ─────────────────────────────────────────────
@@ -3381,7 +4184,7 @@ def _build_verify_artifact(tmp_path, task_id, result="pass"):
         - **Criterion**: Tests pass
         - **Method**: pytest
         - **Evidence**: All green
-        - **Result**: pass
+        - **Result**: verified
         - **Reviewer**: Claude
         - **Timestamp**: {_ts()}
         ## Pass Fail Result
@@ -3732,7 +4535,7 @@ class TestValidateArtifactPresence:
         result = gsv.validate_artifact_presence(
             tmp_path, task_id, "coding", status,
             validation_mode=gsv.AUTO_CLASSIFY_LIGHTWEIGHT)
-        assert not any("Missing required" in e for e in result.errors)
+        assert any("Missing required artifacts" in e for e in result.errors)
 
     def test_available_artifacts_mismatch_warning(self, tmp_path):
         task_id = "TASK-001"
@@ -3950,11 +4753,13 @@ class TestStateRequiredArtifacts:
 
     def test_lightweight_mode(self):
         result = gsv.state_required_artifacts("done", set(), gsv.AUTO_CLASSIFY_LIGHTWEIGHT)
-        assert result == set(gsv.LIGHTWEIGHT_REQUIRED_ARTIFACTS)
+        assert result == {"task", "code", "verify", "status"}
 
     def test_research_retained_if_exists(self):
         result = gsv.state_required_artifacts("planned", {"research"})
-        assert "research" in result
+        assert "research" not in result
+        production = gsv.state_required_artifacts("planned", {"research"}, assurance_level="production")
+        assert "research" in production
 
 
 class TestInferStateFromArtifacts:
@@ -6934,14 +7739,26 @@ class TestGsvComputeSnapshotSha256:
 class TestGsvValidateVerifyChecklist:
     def test_valid_checklist(self, tmp_path):
         text = textwrap.dedent("""\
+            ## Verification Summary
+            Covered.
+
             ## Acceptance Criteria Checklist
 
             - Criterion: Tests pass
             - Method: pytest
             - Reviewer: Claude
             - Evidence: All tests green
-            - Result: pass
+            - Result: verified
             - Timestamp: 2026-01-15T10:00:00+08:00
+
+            ## Overall Maturity
+            poc
+
+            ## Deferred Items
+            None
+
+            ## Pass Fail Result
+            pass
         """)
         path = tmp_path / "verify.md"
         path.write_text(text, encoding="utf-8")
@@ -6950,9 +7767,18 @@ class TestGsvValidateVerifyChecklist:
 
     def test_missing_fields(self, tmp_path):
         text = textwrap.dedent("""\
+            ## Verification Summary
+            Covered.
+
             ## Acceptance Criteria Checklist
 
             - Criterion: Tests pass
+
+            ## Overall Maturity
+            poc
+
+            ## Deferred Items
+            None
         """)
         path = tmp_path / "verify.md"
         result = gsv.validate_verify_checklist_schema(text, path)
@@ -7065,17 +7891,19 @@ class TestGsvValidatePremortimDeeper:
 class TestGsvStateRequiredArtifacts:
     def test_lightweight_mode(self):
         required = gsv.state_required_artifacts("done", set(), validation_mode=gsv.AUTO_CLASSIFY_LIGHTWEIGHT)
-        assert required == set(gsv.LIGHTWEIGHT_REQUIRED_ARTIFACTS)
+        assert required == {"task", "code", "verify", "status"}
 
     def test_full_mode_done_with_research(self):
         required = gsv.state_required_artifacts("done", {"research"})
-        assert "research" in required
+        assert "research" not in required
+        production = gsv.state_required_artifacts("done", {"research"}, assurance_level="production")
+        assert "research" in production
 
     def test_full_mode_done_with_test(self):
         required = gsv.state_required_artifacts("done", {"test"}, validation_mode=gsv.AUTO_CLASSIFY_FULL)
-        # test should not be required at done unless test artifact exists
-        # Actually the logic adds test only for verifying/done
-        assert "test" in required
+        assert "test" not in required
+        mvp = gsv.state_required_artifacts("done", {"test"}, assurance_level="mvp", validation_mode=gsv.AUTO_CLASSIFY_FULL)
+        assert "test" in mvp
 
 
 class TestGsvInferStateFromArtifacts:
@@ -7822,7 +8650,7 @@ class TestGsvVerifyChecklistStructuredMissingField:
             "- **Criterion**: Feature works\n"
             "- **Method**: Manual test\n"
             "- **Evidence**: Screenshot attached\n"
-            "- **Result**: pass\n"
+            "- **Result**: verified\n"
             "- **Reviewer**: Alice\n"
             "- **Timestamp**: 2026-01-15T10:00:00+08:00\n"
         )
@@ -8047,14 +8875,21 @@ class TestGsvVerifyChecklistNonMatchingFields:
     """Cover line 1134 — structured block with no matching key fields."""
     def test_block_with_only_evidence_result(self, tmp_path):
         text = (
+            "## Verification Summary\n"
+            "Covered.\n\n"
             "## Acceptance Criteria Checklist\n\n"
             "- **Evidence**: Screenshot\n"
-            "- **Result**: pass\n"
+            "- **Result**: verified\n"
+            "\n## Overall Maturity\n"
+            "poc\n\n"
+            "## Deferred Items\n"
+            "None\n\n"
+            "## Pass Fail Result\n"
+            "pass\n"
         )
         path = tmp_path / "TASK-001.verify.md"
         result = gsv.validate_verify_checklist_schema(text, path)
-        # No warnings because the block doesn't have any of criterion/method/reviewer/timestamp
-        assert not result.warnings
+        assert any("requires at least one structured checklist item" in w for w in result.warnings)
 
 
 class TestGsvValidateAllStrictScopePlanCodeDrift:
@@ -10059,8 +10894,8 @@ class TestRrtsCaseRT021to023:
         assert isinstance(r, rrts.CaseResult) and r.case_id == "RT-023"
 
 
-class TestRrtsCaseRT024to028:
-    """Test static case functions RT-024 through RT-028 with mocked subprocess."""
+class TestRrtsCaseRT024to029:
+    """Test static case functions RT-024 through RT-029 with mocked subprocess."""
 
     @pytest.fixture(autouse=True)
     def _mock_run(self, monkeypatch):
@@ -10098,6 +10933,16 @@ class TestRrtsCaseRT024to028:
     def test_rt_028(self):
         r = rrts.case_rt_028()
         assert isinstance(r, rrts.CaseResult) and r.case_id == "RT-028"
+
+    def test_rt_029(self):
+        r = rrts.case_rt_029()
+        assert isinstance(r, rrts.CaseResult) and r.case_id == "RT-029"
+
+
+class TestRrtsCaseRT030:
+    def test_rt_030(self):
+        r = rrts.case_rt_030()
+        assert isinstance(r, rrts.CaseResult) and r.case_id == "RT-030"
 
 
 class TestRrtsCaseLive:

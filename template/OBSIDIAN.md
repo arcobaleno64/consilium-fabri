@@ -8,7 +8,7 @@
 - 專有名詞、檔名、CLI 指令、環境變數、placeholder、schema literal、狀態值保留英文原字。
 - 不得更動會被 agent、validator、腳本依賴的精確字串，例如 `## Metadata`、`Task ID`、`Artifact Type`、`Owner`、`Status`、`Last Updated`。
 - 所有紀錄時間、`Last Updated` 與相關時間戳一律使用 `Asia/Taipei`，採 ISO 8601 並帶 `+08:00`。
-- root、`template/` 與 Obsidian 入口文件必須保持語義一致；若 template 因 placeholder 泛化而字面不同，仍需維持同一套規則。
+- 本 repo 屬於 downstream terminal repo，只維護 root 文件與 `OBSIDIAN.md`；若回到 source template repo，才需要另外維護 `template/` 對應文件。
 
 ## 建議閱讀順序
 
@@ -26,22 +26,29 @@
 - `Lightweight Mode` → `docs/lightweight_mode_rules.md`
 - `Workflow Orchestration` → `docs/orchestration.md`
 - `Artifact Schema` → `docs/artifact_schema.md`
-- `Decision Registry` → `artifacts/status/decision_registry.json`
+- `Process Ledger` → `artifacts/improvement/PROCESS_LEDGER.md`
+- `Decision Registry` → `artifacts/registry/decision_registry.json`
+- `Metrics` → `artifacts/metrics/`
 - `Red Team Runbook` → `docs/red_team_runbook.md`
 
 ## 同步範圍
 
-- 需同步：入口檔（含 `START_HERE.md`）、`docs/*.md`、README、Obsidian 入口、`artifacts/scripts/guard_status_validator.py`、`artifacts/scripts/guard_contract_validator.py`、`artifacts/scripts/run_red_team_suite.py`、template 對應文件。
+- downstream terminal repo 只維護 root 文件與 `OBSIDIAN.md`。
+- 需同步：入口檔（含 `START_HERE.md`）、`docs/*.md`、README、Obsidian 入口、`artifacts/scripts/guard_status_validator.py`、`artifacts/scripts/guard_contract_validator.py`、`artifacts/scripts/run_red_team_suite.py`。
+- downstream terminal repo 不再建立新的 `template/`。
 - 不追溯改寫：`artifacts/` 內歷史任務記錄、`template/experiments/` 產出、外部 repo 與備份目錄中的 Markdown。
 
 ## Workflow 摘要
 
 - Research artifact 是 fact-only 契約，不得包含 `Recommendation` 或 solution 設計。
+- task artifact 應明確宣告 `Assurance Level` 與 `Project Adapter`；status guard 會依 profile 計算最低 required artifacts。
 - `blocked` 任務恢復前，必須先有 `Status: applied` 的 improvement artifact；status.json 新增 `Gate_E_passed`, `Gate_E_evidence`, `Gate_E_timestamp` 欄位追蹤 Gate E 驗證狀態。
+- verify checklist item 現在使用 `verified` / `unverified` / `unverifiable` / `deferred`；若不是 `verified`，必須有 `decision_ref` 或 `reason_code`。
+- 任務完成 `verify` 或 `done` 後，建議補一份短 improvement review，並更新 `artifacts/improvement/PROCESS_LEDGER.md`；冷啟動時先看 ledger，再看最近 3 份 improvement artifact。
 - README 結構規則（見 `docs/orchestration.md` §10）：新專案必須同時產生 README.md 與 README.zh-TW.md，結構須遵循 template 並只調整內容；`guard_contract_validator.py` 提供 `--check-readme` 檢查合規性。
 - plan/code scope drift 預設由 status guard 視為 fail；若 task 專屬檔案位於 dirty worktree，guard 會直接比對實際 git changed files；若 task 已 clean，則可用帶有 pinned commits、Changed Files Snapshot 與 Snapshot SHA256 的 `commit-range` diff evidence 重放 historical diff、在 git objects 遺失時改走 archive fallback，或用 `github-pr` evidence 透過 GitHub PR files API 重建 changed files。private / rate-limited GitHub 存取可使用 `GITHUB_TOKEN` / `GH_TOKEN`；只有附顯式 decision waiver 時才可使用 `--allow-scope-drift`，且僅能降級真正的 drift。
 - `CLAUDE.md` / `GEMINI.md` / `CODEX.md` 有變更時，必須同步更新 `artifacts/scripts/drills/prompt_regression_cases.json`。
-- workflow 規則變更後，必須同步更新 root、`template/` 與 Obsidian 入口，並通過 contract guard。
+- downstream terminal repo 的 workflow 規則變更後，只維護 root 文件與 `OBSIDIAN.md`，並通過 contract guard。
 - 紅隊演練入口是 `docs/red_team_runbook.md`，重跑命令是 `python artifacts/scripts/run_red_team_suite.py`；靜態案例現新增邊界版本測試（如 RT-004B）確保防治邏輯合理。
 - `python artifacts/scripts/run_red_team_suite.py` 預設會在每次執行後清理 `.codex-red-team/` fixture；若需要保留現場供除錯，可加上 `--keep-temp`。
 - Prompt regression 固定入口是 `python artifacts/scripts/prompt_regression_validator.py --root .`，固定測例在 `artifacts/scripts/drills/prompt_regression_cases.json`。
@@ -49,7 +56,7 @@
 
 ## Decision Registry
 
-- registry 檔案位置：`artifacts/status/decision_registry.json`
+- registry 檔案位置：`artifacts/registry/decision_registry.json`
 - 重新產生命令：`python artifacts/scripts/build_decision_registry.py --root .`
 
 | 欄位 | 說明 |
@@ -62,5 +69,5 @@
 ## GitHub / Template 對應
 
 - GitHub 對外入口：`START_HERE.md`、`README.md`、`README.zh-TW.md`
-- Template 對應：`template/START_HERE.md`、`template/AGENTS.md`、`template/CLAUDE.md`、`template/GEMINI.md`、`template/CODEX.md`、`template/BOOTSTRAP_PROMPT.md`
-- Obsidian 對應：`template/OBSIDIAN.md`
+- Source repo template 對應：僅在 source template repo 中存在
+- 本 repo 不建立 nested `template/`

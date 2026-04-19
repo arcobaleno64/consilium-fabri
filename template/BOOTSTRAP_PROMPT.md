@@ -28,16 +28,19 @@ Workflow template 位於：【填入 artifact-harness repo clone 路徑，或直
 請從該目錄複製完整架構到專案根目錄，然後：
 1. 替換 CLAUDE.md 中的 placeholder（{{PROJECT_NAME}}, {{REPO_NAME}}, {{UPSTREAM_ORG}}）
 2. 若無 fork 模式，移除 CLAUDE.md 的 "Repository boundaries" 區段
+2a. 複製完成後，此 repo 視為 downstream terminal repo，不需要也不得再產生新的 `template/`
 2b. 小任務可用 `python artifacts/scripts/guard_status_validator.py --task-id TASK-900 --auto-classify` 試跑判定流程。
    當 task 含 `lightweight: true`，或沒有 plan artifact 且仍在 `drafted` / `researched`，guard 會走 lightweight gate。
    一旦偵測 `premortem:` 或 plan 的 `## Risks` 非空，guard 會自動升級回 full gate。
 3. 更新 repository About/topics profile：
   - 執行 `python artifacts/scripts/update_repository_profile.py --project-name "【專案名稱】" --project-summary "【專案簡述】"`
   - 若需要客製 topics，可加 `--topics "multi-agent,developer-tools,workflow-template,..."`
-4. **新增**：確認 README.md 與 README.zh-TW.md 版本都存在且結構遵循 template/README.md
+4. **新增**：確認 README.md 與 README.zh-TW.md 版本都存在且結構遵循範本 README 結構
   - 執行 `python artifacts/scripts/guard_contract_validator.py --check-readme` 確認 README 結構合規
 5. 執行 `python artifacts/scripts/guard_status_validator.py --task-id TASK-900` 確認 [OK]
-6. 執行 `python artifacts/scripts/guard_contract_validator.py` 確認 root / template / Obsidian / repository profile 未漂移
+6. 執行 `python artifacts/scripts/guard_contract_validator.py` 確認 contract 未漂移
+  - source template repo（含 `.consilium-source-repo`）會檢查 root / template / Obsidian / repository profile
+  - downstream terminal repo 只檢查 root / Obsidian / repository profile，不再要求 nested `template/`
 7. 執行 `python artifacts/scripts/prompt_regression_validator.py --root .` 確認 Prompt regression 測例通過
 8. 若要做完整流程壓力測試，可再執行 `python artifacts/scripts/run_red_team_suite.py --phase all`
 
@@ -46,6 +49,7 @@ Workflow template 位於：【填入 artifact-harness repo clone 路徑，或直
 - Orchestrator：Claude Code（你）
 - Research agent：Gemini CLI
   - 模型：gemini-3.1-flash-lite-preview（預設），有問題時可升級至 gemini-3-flash-preview，若仍無法解決則動用 gemini-3.1-pro-preview
+  - 只允許上述 3-step allowlist，不得降回 2.x 或其他更舊模型
   - 認證方式：由 CLI 內部 OAuth 處理，不依賴 `GEMINI_API_KEY` 環境變數（若未登入請先執行 `gemini auth`）
   - 呼叫方式：gemini -m gemini-3.1-flash-lite-preview --approval-mode=yolo -p "<prompt>"
   - 入口檔：GEMINI.md（品質硬規則已內嵌，不需額外載入）
@@ -60,7 +64,8 @@ Workflow template 位於：【填入 artifact-harness repo clone 路徑，或直
 - Research 外包 Gemini CLI 時，dispatch prompt 必須包含 GEMINI.md 的品質規則
 - 進入 coding 前必須完成 premortem 分析（docs/premortem_rules.md）
 - 完成後必須有 verify artifact 含 Build Guarantee
-- 任何 workflow 規則變更都必須同步更新 `OBSIDIAN.md` 與 `template/OBSIDIAN.md`
+- source template repo 的 workflow 規則變更必須同步更新 `template/` 對應文件、`OBSIDIAN.md` 與 `template/OBSIDIAN.md`
+- downstream terminal repo 的 workflow 規則變更只維護 root 文件與 `OBSIDIAN.md`
 - 紅隊演練入口固定為 `docs/red_team_runbook.md`，重跑命令固定為 `python artifacts/scripts/run_red_team_suite.py`
 - Prompt regression 固定命令為 `python artifacts/scripts/prompt_regression_validator.py --root .`
 - 長期維護 Markdown 以繁體中文（臺灣）為主；命令、路徑、環境變數、schema literal 與 placeholder 保持英文
@@ -90,7 +95,7 @@ TASK-001：【任務目標】
 專案：【名稱】，位於 【路徑】，使用 【語言/框架】。
 
 範本來源：【填入 artifact-harness repo clone 路徑，或直接在專案目錄中 clone】
-請複製範本到專案、移除 CLAUDE.md 的 fork 區段、驗證 TASK-900，並執行 contract guard。
+請複製範本到專案、移除 CLAUDE.md 的 fork 區段、確認它成為 downstream terminal repo、驗證 TASK-900，並執行 contract guard。
 
 第一個任務：【描述】
 ```
