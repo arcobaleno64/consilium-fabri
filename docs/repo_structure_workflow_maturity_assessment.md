@@ -72,8 +72,8 @@
 | Supply-chain hardening | `dependabot.yml`、`security-scan.yml`、SHA-pinned actions | ✅ NEW | Dependabot 自動 PR、pip-audit CI 掃描、Actions SHA pin（v6.0.2/v6.2.0）|
 | Release automation | `publish-release.ps1`、`github_publish_common.ps1` | ✅ NEW | gh CLI 發佈腳本含 preflight 檢查，與 push-wiki.ps1 共用認證模組 |
 | Lightweight mode | `docs/lightweight_mode_rules.md` | ✅ | v2.1 新增 drafted→planned 轉移、釐清 verify artifact 不可省略 |
-| KPI 追蹤 | `kpi_sprint2.json`、`kpi_sprint6.json` | ✅ NEW | 跨 sprint 效能與品質指標 |
-| Decision Registry | `build_decision_registry.py` → `decision_registry.json` | ✅ | 決策可追溯 |
+| KPI 追蹤 | `artifacts/metrics/kpi_sprint2.json`、`artifacts/metrics/kpi_sprint6.json` | ✅ NEW | 跨 sprint 效能與品質指標 |
+| Decision Registry | `build_decision_registry.py` → `artifacts/registry/decision_registry.json` | ✅ | 決策可追溯 |
 
 ### 即時 Dashboard 摘要（2026-04-17T12:01:16+08:00）
 
@@ -430,7 +430,7 @@
 | Custom Agents | `.github/agents/`（2 個 agent 定義） | 可重用的 agent 人格與工具邊界 |
 | GitHub Skills | `.github/skills/`（9 個 skill） | 可組合的專業能力模組 |
 | Wiki | `wiki/`（9 頁） + `push-wiki.ps1` | 對外文件化 |
-| KPI Sprint Tracking | `kpi_sprint2.json`、`kpi_sprint6.json` | 跨 sprint 量化改善證據 |
+| KPI Sprint Tracking | `artifacts/metrics/kpi_sprint2.json`、`artifacts/metrics/kpi_sprint6.json` | 跨 sprint 量化改善證據 |
 | Memory Bank Prompts | `.github/prompts/`（5 個 prompt） | context-review、remember-capture、pack-context 等 |
 | Writing Style Unification | commit `aeada64` | 全部 MD 統一繁中（臺灣）、去 emoji |
 
