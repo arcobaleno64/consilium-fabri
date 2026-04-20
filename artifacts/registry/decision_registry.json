@@ -1,13 +1,13 @@
 {
-  "generated_at": "2026-04-19T08:52:29+08:00",
+  "generated_at": "2026-04-20T21:09:07+08:00",
   "total": 10,
   "entries": [
     {
       "task_id": "TASK-900",
       "source_file": "artifacts/decisions/TASK-900.decision.md",
-      "decision_type": "guard_exception",
-      "decision_class": "guard_exception",
-      "affected_gate": "",
+      "decision_type": "scope-drift-waiver",
+      "decision_class": "scope-drift-waiver",
+      "affected_gate": "Gate_B",
       "summary": "採用受控 guard exception，僅在 `--allow-scope-drift` 模式下針對明確檔案集合豁免 scope drift。",
       "plan_refs": [
         "artifacts/plans/TASK-900.plan.md"
@@ -22,9 +22,9 @@
     {
       "task_id": "TASK-901",
       "source_file": "artifacts/decisions/TASK-901.decision.md",
-      "decision_type": "general_decision",
-      "decision_class": "general_decision",
-      "affected_gate": "",
+      "decision_type": "risk-acceptance",
+      "decision_class": "risk-acceptance",
+      "affected_gate": "Gate_A",
       "summary": "Stop the workflow and record `TASK-901` as blocked until Gemini credentials are available.",
       "plan_refs": [],
       "research_refs": [],
@@ -35,9 +35,9 @@
     {
       "task_id": "TASK-902",
       "source_file": "artifacts/decisions/TASK-902.decision.md",
-      "decision_type": "guard_exception",
-      "decision_class": "guard_exception",
-      "affected_gate": "",
+      "decision_type": "scope-drift-waiver",
+      "decision_class": "scope-drift-waiver",
+      "affected_gate": "Gate_B",
       "summary": "使用 decision-based guard exception，僅在 `--allow-scope-drift` 下豁免明確列出的 drift files。",
       "plan_refs": [
         "artifacts/plans/TASK-902.plan.md"
@@ -52,9 +52,9 @@
     {
       "task_id": "TASK-950",
       "source_file": "artifacts/decisions/TASK-950.decision.md",
-      "decision_type": "guard_exception",
-      "decision_class": "guard_exception",
-      "affected_gate": "",
+      "decision_type": "scope-drift-waiver",
+      "decision_class": "scope-drift-waiver",
+      "affected_gate": "Gate_B",
       "summary": "停止推進、記錄 decision，並要求最終 artifacts 只保留 fact-only research 與 plan-scoped code 結果。",
       "plan_refs": [
         "artifacts/plans/TASK-950.plan.md"
@@ -69,9 +69,9 @@
     {
       "task_id": "TASK-951",
       "source_file": "artifacts/decisions/TASK-951.decision.md",
-      "decision_type": "guard_exception",
-      "decision_class": "guard_exception",
-      "affected_gate": "",
+      "decision_type": "scope-drift-waiver",
+      "decision_class": "scope-drift-waiver",
+      "affected_gate": "Gate_E",
       "summary": "停止 resume，直到 improvement artifact 為 `Status: applied`，再由 verify artifact 記錄 blocked / resume 鏈。",
       "plan_refs": [
         "artifacts/plans/TASK-951.plan.md"
@@ -86,9 +86,9 @@
     {
       "task_id": "TASK-955",
       "source_file": "artifacts/decisions/TASK-955.decision.md",
-      "decision_type": "general_decision",
-      "decision_class": "general_decision",
-      "affected_gate": "",
+      "decision_type": "risk-acceptance",
+      "decision_class": "risk-acceptance",
+      "affected_gate": "Gate_B",
       "summary": "採用 `commit-range` snapshot 作為第一版 historical diff evidence，並把 `--allow-scope-drift` 的例外收斂為必須附 decision artifact 的結構化 guard waiver。",
       "plan_refs": [
         "artifacts/plans/TASK-955.plan.md"
@@ -101,9 +101,9 @@
     {
       "task_id": "TASK-956",
       "source_file": "artifacts/decisions/TASK-956.decision.md",
-      "decision_type": "general_decision",
-      "decision_class": "general_decision",
-      "affected_gate": "",
+      "decision_type": "risk-acceptance",
+      "decision_class": "risk-acceptance",
+      "affected_gate": "Gate_D",
       "summary": "保留 repo-local `commit-range` 路徑，並加入 immutable commit pinning、changed-files snapshot 與 checksum 驗證。",
       "plan_refs": [
         "artifacts/plans/TASK-956.plan.md"
@@ -116,9 +116,9 @@
     {
       "task_id": "TASK-957",
       "source_file": "artifacts/decisions/TASK-957.decision.md",
-      "decision_type": "general_decision",
-      "decision_class": "general_decision",
-      "affected_gate": "",
+      "decision_type": "risk-acceptance",
+      "decision_class": "risk-acceptance",
+      "affected_gate": "Gate_B",
       "summary": "採用 GitHub PR files endpoint，將新 evidence type 定義為 `github-pr`，並保留可覆蓋的 `API Base URL` 以支援本地 fixture 與 GHES 類環境。",
       "plan_refs": [
         "artifacts/plans/TASK-957.plan.md"
@@ -133,9 +133,9 @@
     {
       "task_id": "TASK-958",
       "source_file": "artifacts/decisions/TASK-958.decision.md",
-      "decision_type": "general_decision",
-      "decision_class": "general_decision",
-      "affected_gate": "",
+      "decision_type": "risk-acceptance",
+      "decision_class": "risk-acceptance",
+      "affected_gate": "Gate_B",
       "summary": "採用純文字 changed-files archive 作為第一版 archive fallback，並在文件中明文化它是當 local git objects retention 不足時的備援路徑。",
       "plan_refs": [
         "artifacts/plans/TASK-958.plan.md"
@@ -148,10 +148,10 @@
     {
       "task_id": "TASK-999",
       "source_file": "artifacts/decisions/TASK-999.decision.md",
-      "decision_type": "roadmap",
-      "decision_class": "roadmap",
-      "affected_gate": "",
-      "summary": "下季（Q3 2026）三項優先事項：Decision Registry 深化、Artifact Lineage 擴充、Agent 成本策略。本決策以 S6 KPI 實測數據（avg_validation_ms=290.754、false_positive_rate_pct=0.0）為依據，確認現有 guard 基礎穩固後，將工程能量聚焦在可觀測性與成本控制兩個面向。",
+      "decision_type": "risk-acceptance",
+      "decision_class": "risk-acceptance",
+      "affected_gate": "Gate_A",
+      "summary": "優先執行選項 1（Decision Registry 深化）、2（Artifact Lineage 擴充）、3（Agent 成本策略）。",
       "plan_refs": [
         "artifacts/plans/TASK-999.plan.md"
       ],
