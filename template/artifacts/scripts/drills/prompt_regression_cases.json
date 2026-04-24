@@ -159,7 +159,7 @@
   {
     "id": "PR-008",
     "title": "Artifact-Only Truth And Completion Contract",
-    "description": "Claude prompt must rely on artifacts as the only truth source and reject completion without artifacts, verification, and evidence.",
+    "description": "Claude prompt must rely on artifacts as the only truth source and reject completion without artifacts, verification evidence, and task completion.",
     "assertions": [
       {
         "file": "CLAUDE.md",
@@ -167,9 +167,11 @@
           "不得依賴 memory 或先前對話。只能信任 artifacts。",
           "No artifact = not done.",
           "No verification = not done.",
-          "No evidence = not valid."
+          "No evidence = not valid.",
+          "確認 verification evidence 到位",
+          "呼叫 task_complete 工具"
         ],
-        "note": "Claude must treat artifacts as the only truth source and completion boundary."
+        "note": "Claude must treat artifacts as the only truth source and completion boundary, with evidence checked before task completion."
       }
     ]
   },

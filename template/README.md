@@ -384,8 +384,10 @@ This project includes a layered context management system for VS Code Copilot:
 
 - **`.github/copilot-instructions.md`** — Global stable rules, auto-loaded by VS Code
 - **`.github/memory-bank/`** — Stable reference knowledge (artifact rules, workflow gates, prompt patterns, project facts)
-- **`.github/prompts/`** — Task-scoped prompts (pack-context, context-review, remember-capture)
-- **`.github/skills/`** — Reusable skill definitions (always-ask-next)
+- **`.github/prompts/`** — Optional task-scoped Copilot prompt files (pack-context, context-review, remember-capture), not completion hooks
+- **`.github/skills/`** — Optional GitHub Copilot agent skills for task-specific capabilities, not forced lifecycle hooks
+
+Note: Codex repository skills are discovered from `.agents/skills`; `.github/skills` remains for GitHub Copilot skills unless a separate migration is planned.
 
 Agents load documentation by role and phase, not all at once. See `AGENTS.md` for the phase-loading matrix.
 

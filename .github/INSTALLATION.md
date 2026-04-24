@@ -2,13 +2,14 @@
 
 ### 已實施清單
 
-.github/copilot-instructions.md（全局穩定規則）  
-.github/prompts/memory-bank.instructions.md（記憶體管理規範）  
-.github/prompts/pack-context.prompt.md（上下文收斂工具）  
-.github/prompts/always-ask-next.skill.md（任務完成提示）  
-.github/skills/always-ask-next/SKILL.md（Skill 元數據）  
-.github/memory-bank/（5 個檔案，知識庫）  
-CLAUDE.md 優化（從 2600 行減至 168 行）
+- `.github/copilot-instructions.md`（全局穩定規則）
+- `.github/prompts/memory-bank.instructions.md`（記憶體管理規範）
+- `.github/prompts/pack-context.prompt.md`（上下文收斂工具）
+- `.github/prompts/context-review.prompt.md`（修改前預檢）
+- `.github/prompts/remember-capture.prompt.md`（經驗沉澱流程）
+- `.github/skills/`（可選任務導向 skill，不作為強制 lifecycle hook）
+- `.github/memory-bank/`（5 個參考檔 + README，知識庫）
+- `CLAUDE.md` 優化（從 2600 行減至 168 行）
 
 ---
 
@@ -55,8 +56,8 @@ git add validate_mvp_context.py
 git commit -m "chore: setup MVP context system with layered instructions + memory-bank
 
 - New: .github/copilot-instructions.md (global rules)
-- New: .github/prompts/ (3 prompt/skill files)
-- New: .github/skills/always-ask-next/ (skill metadata)
+- New: .github/prompts/ (4 optional prompt files)
+- New: .github/skills/ (optional task-specific skill metadata)
 - New: .github/memory-bank/ (5 reference docs)
 - Refactor: CLAUDE.md optimized (2600 lines reduced to 168 lines)
 - New: validate_mvp_context.py (structure validator)
@@ -94,10 +95,12 @@ Copilot 將自動從 `.github/memory-bank/` 找到答案。
 
 #### 任務完成時
 
-Always-ask-next 會自動觸發：
-- 總結工作內容
-- 提示 3 個相關的下一步選項
-- 讓你決定方向
+完成回報應聚焦於：
+- 工作內容摘要
+- 已執行的驗證與結果
+- 剩餘風險或 TODO
+
+`.github/prompts/` 與 `.github/skills/` 僅作為可選任務能力，不作為強制 completion hook。若需要下一步，由使用者明確指定。
 
 ---
 
@@ -136,21 +139,6 @@ cp .github/copilot-instructions.md \
 # Windows: %APPDATA%\Code\User\prompts\
 ```
 
-#### Q: Always-ask-next 沒有觸發
-
-**A**: 確認 Skill 被辨識
-
-```
-.github/skills/always-ask-next/SKILL.md 中的 metadata 區段：
----
-Category: Workflow UX / Task Completion
-Status: production
----
-```
-
-
----
-
 ### 核心概念複習
 
 | 概念 | 存儲位置 | 用途 |
@@ -161,7 +149,8 @@ Status: production
 | Prompt 範式 | .github/memory-bank/prompt-patterns.md | 派發 agent 前 |
 | 技術棧 | .github/memory-bank/project-facts.md | 設定環境變數時 |
 | 上下文收斂 | .github/prompts/pack-context.prompt.md | 大任務前 |
-| 任務完成提示 | .github/prompts/always-ask-next.skill.md | 完成任務後 |
+| 修改前預檢 | .github/prompts/context-review.prompt.md | 修改前 |
+| 經驗沉澱 | .github/prompts/remember-capture.prompt.md | 記錄新規則時 |
 
 ---
 
@@ -172,7 +161,7 @@ Status: production
 - [ ] CLAUDE.md 讀取頻率是否下降？
 - [ ] 是否有在用 pack-context？
 - [ ] 是否在詢問 memory-bank？
-- [ ] always-ask-next 是否有幫助？
+- [ ] prompts / skills 是否仍維持 task-specific，而非強制 hook？
 
 若有問題或發現新規則，立即更新 `.github/memory-bank/`（無需改 CLAUDE.md）。
 
@@ -191,4 +180,4 @@ Status: production
 
 **總結**：
 
-新系統的優勢是「**模塊化 + 按需載入**」。你不再依賴一份 2600 行的龐大指令檔，取而代之是一份 168 行的核心指南 + 10 份專用參考檔。工作流更新可以直接改 memory-bank，無需動核心指令。
+新系統的優勢是「**模塊化 + 按需載入**」。你不再依賴一份 2600 行的龐大指令檔，取而代之是一份 168 行的核心指南 + 多份專用參考檔。工作流更新可以直接改 memory-bank，無需動核心指令。

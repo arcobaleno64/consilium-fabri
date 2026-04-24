@@ -391,8 +391,10 @@ python artifacts/scripts/run_red_team_suite.py --phase all
 
 - **`.github/copilot-instructions.md`** — 全域穩定規則，VS Code 自動載入
 - **`.github/memory-bank/`** — 穩定參考知識（artifact 規則、workflow gate、prompt 模式、專案事實）
-- **`.github/prompts/`** — 任務導向的 prompt（pack-context、context-review、remember-capture）
-- **`.github/skills/`** — 可重複使用的 skill 定義（always-ask-next）
+- **`.github/prompts/`** — 可選的 Copilot prompt files（pack-context、context-review、remember-capture），不作為 completion hook
+- **`.github/skills/`** — 可選的 GitHub Copilot agent skills，用於任務導向能力，不作為強制 lifecycle hook
+
+註：Codex 官方 repo skill 探索使用 `.agents/skills`；除非另行規劃遷移，`.github/skills` 僅保留作為 GitHub Copilot skills。
 
 Agent 依角色與階段載入所需文件，不會一次全部讀取。詳見 `AGENTS.md` 的階段載入矩陣。
 
