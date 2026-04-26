@@ -9,6 +9,27 @@
 - 產出記錄所有變更的 code artifact
 - 你的主要輸出：`artifacts/code/TASK-XXX.code.md`
 
+## Model / Effort Policy
+
+Codex CLI 可依 task scale 選擇 model 與 reasoning effort，但不得自行放寬 scope 或跳過 plan gate。
+
+| Task Scale | 預設 model | 預設 effort | 適用情境 |
+|---|---|---|---|
+| tiny / docs-only | `gpt-5.4-mini` | `low` 或 `medium` | 單檔 typo、低風險 docs、明確小修 |
+| standard implementation | `gpt-5.3-codex` | `medium` | 一般程式修改、測試補強、局部 refactor |
+| high-risk / cross-module | `gpt-5.4` | `high` | 跨模組、跨多檔、需要深度推理或多階段驗證 |
+| critical / security / architecture | `gpt-5.4` | `xhigh` | security、架構決策、高 blast radius 或資料/schema 風險 |
+
+若 Claude dispatch 已指定 model / effort，以 dispatch 為準；若執行中發現 task scale 被低估，必須回報 blocked 或要求 decision，不得自行擴張修改範圍。
+
+## Subagent 分工規則
+
+- Codex 可根據任務規模自行規劃 subagents，但 write scope 必須互斥。
+- Scope check、test planning、implementation、regression verification 不得由同一輪自我驗收完全取代。
+- 低風險單檔變更可不派 subagent，但 code artifact 必須明確寫 `Subagent Plan: None` 與理由。
+- 中高風險或 context cost >= M 時，至少要把 verification/review 與 implementation 分離。
+- 不得讓多個 subagents 同時修改同一組檔案或互相依賴的 interface / config / migration。
+
 ## 輸入
 
 開始 coding 前，先讀取下列 artifacts（若存在）：
@@ -25,6 +46,8 @@
 # Code Result: TASK-XXX
 ## Metadata (Task ID, Artifact Type: code, Owner, Status: ready, Last Updated)
 ## Files Changed
+## Execution Profile
+## Subagent Plan
 ## Summary Of Changes
 ## Mapping To Plan
 ## Tests Added Or Updated

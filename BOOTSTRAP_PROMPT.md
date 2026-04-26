@@ -46,22 +46,29 @@ Workflow template 位於：【填入 artifact-harness repo clone 路徑，或直
 
 ## 4. Agent 配置
 
-- Orchestrator：Claude Code（你）
-- Research agent：Gemini CLI
+- Orchestrator：Claude Code（你；CLI-first，預設負責 orchestration、決策、驗收與最後整合）
+- Research / Memory Curator agent：Gemini CLI
   - 模型：gemini-3.1-flash-lite-preview（預設），有問題時可升級至 gemini-3-flash-preview，若仍無法解決則動用 gemini-3.1-pro-preview
   - 只允許上述 3-step allowlist，不得降回 2.x 或其他更舊模型
   - 認證方式：由 CLI 內部 OAuth 處理，不依賴 `GEMINI_API_KEY` 環境變數（若未登入請先執行 `gemini auth`）
   - 呼叫方式：gemini -m gemini-3.1-flash-lite-preview --approval-mode=yolo -p "<prompt>"
-  - 入口檔：GEMINI.md（品質硬規則已內嵌，不需額外載入）
-- Implementation agent：Codex CLI（或 Claude 自行實作，視任務規模）
+  - 入口檔：GEMINI.md（品質硬規則與 Memory Bank Curator draft-only 邊界已內嵌，不需額外載入）
+- Tavily-assisted research：只有 dispatch 明確允許時才能由 Gemini 間接使用本機 Tavily CLI；需先確認 CLI 可用並記錄 command、query、retrieved date、URLs；不可用時標記 blocked / UNVERIFIED
+- Implementation agent：Codex CLI（已規劃實作、測試補強、跨檔 workflow docs 預設交給 Codex）
   - 入口檔：CODEX.md
+  - Task scale / model policy：tiny/docs-only → gpt-5.4-mini low/medium；standard implementation → gpt-5.3-codex medium；high-risk/cross-module → gpt-5.4 high；critical/security/architecture → gpt-5.4 xhigh
+  - Code artifact 必須記錄 `Execution Profile` 與 `Subagent Plan`
 
 ## 5. 工作規範
 
 - 遵循 CLAUDE.md 的所有規則（artifact-first、gate-guarded、premortem）
+- Claude Code 預設 CLI-first；只有明確 VS Code / Copilot 環境或任務本身涉及 VS Code / Copilot 設定時，才使用或建議 VS Code extension
+- Routing 依 Task Type、Risk Score 0-10、Context Cost S/M/L 判斷；risk >= 3 或 context cost >= M 預設交給 Codex，research / spec comparison / Tavily-assisted research / Memory Bank Curator draft 預設交給 Gemini
+- Claude 只在 scope 不明、角色衝突、decision、驗收、最後整合，或 risk <= 2 且 context cost = S 的極小變更時直接實作
 - 文件按需載入：參考 AGENTS.md 的階段載入矩陣，不要一次讀完所有 docs/
 - 每個 task 必須走完 Intake → Research → Planning → Coding → Verification 流程
-- Research 外包 Gemini CLI 時，dispatch prompt 必須包含 GEMINI.md 的品質規則
+- Research 外包 Gemini CLI 時，dispatch prompt 必須包含 GEMINI.md 的品質規則；Memory Bank Curator 外包 Gemini 時只能要求 read-only `Remember Capture` draft，不得要求其寫入 `.github/memory-bank/`
+- Tavily 結果只能保存在 research artifact draft 的 `## Tavily Cache` / `## Source Cache`；是否寫入 `.github/memory-bank/` 必須再經 Remember Capture 與 Claude 驗收
 - 進入 coding 前必須完成 premortem 分析（docs/premortem_rules.md）
 - 完成後必須有 verify artifact 含 Build Guarantee
 - source template repo 的 workflow 規則變更必須同步更新 `template/` 對應文件、`OBSIDIAN.md` 與 `template/OBSIDIAN.md`

@@ -69,7 +69,7 @@ Consilium Fabri exists to compress those failure modes into an explicit operatin
   <tr>
     <td width="33%" valign="top">
       <h3>Multi-Agent Collaboration</h3>
-      <p>Claude Code, Gemini CLI, and Codex CLI each own a distinct responsibility so research, orchestration, and implementation stay focused instead of collapsing into a single blurry prompt.</p>
+      <p>Claude Code, Gemini CLI, and Codex CLI each own a distinct responsibility so research, memory curation drafts, orchestration, and implementation stay focused instead of collapsing into a single blurry prompt.</p>
     </td>
     <td width="33%" valign="top">
       <h3>Artifact First</h3>
@@ -87,9 +87,10 @@ Consilium Fabri exists to compress those failure modes into an explicit operatin
 ## Product Highlights
 
 ### 1. Role Separation For Real Development Work
-- Claude Code acts as the orchestrator and workflow driver
-- Gemini CLI handles research and evidence gathering
-- Codex CLI handles implementation and delivery
+- Claude Code acts as the CLI-first orchestrator, decision owner, verifier, and final integrator
+- Gemini CLI handles research, evidence gathering, Tavily-assisted source discovery when explicitly allowed, and read-only memory-bank curation drafts
+- Codex CLI handles planned implementation, test reinforcement, workflow-doc changes, and delivery
+- Routing uses Task Type, Risk Score, and Context Cost; risk >= 3 or context cost >= M defaults to Codex, while research and curator drafts default to Gemini
 - Clear ownership reduces collisions, duplicated effort, and role drift
 
 ### 2. A Strict Gate-Guarded Workflow
@@ -140,7 +141,7 @@ Consilium Fabri exists to compress those failure modes into an explicit operatin
 - `python artifacts/scripts/run_red_team_suite.py --phase all` reruns the built-in red-team suite and live drill samples
 - red-team fixtures are created under `.codex-red-team/` and are deleted by default after each run; pass `--keep-temp` when you need to inspect a failing fixture
 - `python artifacts/scripts/prompt_regression_validator.py --root .` runs fixed prompt regression cases for `CLAUDE.md`, `GEMINI.md`, `CODEX.md`, and critical workflow contracts
-- the fixed prompt regression suite now also covers artifact-only truth/completion, workflow sync completeness, Gemini blocked preconditions, Codex summary discipline, conflict-to-decision routing, decision schema integrity, external failure STOP, decision-gated scope waivers, historical diff evidence contracts, pinned diff evidence integrity, GitHub provider-backed diff evidence, and archive retention fallback contracts
+- the fixed prompt regression suite now also covers artifact-only truth/completion, workflow sync completeness, Gemini blocked preconditions, Gemini memory-bank curator read-only boundaries, Claude CLI-first routing boundaries, Codex model/effort selection and subagent separation, Gemini Tavily draft/cache-only boundaries, memory-bank librarian quality filters, Codex summary discipline, conflict-to-decision routing, decision schema integrity, external failure STOP, decision-gated scope waivers, historical diff evidence contracts, pinned diff evidence integrity, GitHub provider-backed diff evidence, and archive retention fallback contracts
 - `python artifacts/scripts/run_red_team_suite.py --phase prompt` runs prompt regression through the same report pipeline
 
 ---
@@ -184,6 +185,19 @@ The model is simple on purpose: each stage produces the artifact that justifies 
 
 After a task reaches `verify` or `done`, add a short `artifacts/improvement/TASK-XXX.improvement.md` review and write the one-line summary into `artifacts/improvement/PROCESS_LEDGER.md`. For cold starts, read the ledger first, then the most recent three improvement artifacts, and jump back to `verify` / `decision` / `status` only when you need evidence.
 
+### Two-Layer Governance (PDCA × TAO/ReAct)
+
+The framework runs on two complementary cycles:
+
+- **Project Management Layer — PDCA (Plan-Do-Check-Act)**: macro-cycle across tasks. Plan = task + research + plan (with premortem); Do = code; Check = verify (with Build Guarantee); Act = improvement artifact + decision (Gate E feeds back into the next Plan).
+- **Agentic Execution Layer — TAO/ReAct (Thought-Action-Observation)**: micro-cycle inside a single subagent dispatch. Each step records Thought Log → Action Step → Observation → Next-Step Decision (`continue` / `halt` / `escalate`).
+
+The two layers operate at different granularities and are complementary, not competing. PDCA governs cross-task lifecycle; TAO governs single-step reasoning within Coding. When a TAO `Observation` contradicts the `Thought Log` assumption, the subagent halts and the orchestrator (Claude) decides whether to enter a mini-PDCA sub-loop (blocked → improvement → re-plan).
+
+**Layer Boundary Notes**: this framework deliberately keeps two layers, not four. Strategic content (the Why / portfolio vision) lives in `README.md`, `OBSIDIAN.md`, `BOOTSTRAP_PROMPT.md`, and `.github/memory-bank/project-facts.md`; the task artifact's `## Background` is the per-task strategic entry point. Operational content (the How / single-step reasoning) is the same as the TAO layer — no duplicate naming.
+
+Full schema and triggering thresholds: [`docs/orchestration.md` §2.8](docs/orchestration.md), [`docs/agentic_execution_layer.md`](docs/agentic_execution_layer.md).
+
 ---
 
 ## Architecture Snapshot
@@ -212,8 +226,8 @@ The repository is intentionally layered: entry documents route people in, workfl
 
 - **Python 3.11** (for validator scripts and local development)
 - **Git** (version control)
-- **Claude Code** (orchestrator agent — via VS Code extension or CLI)
-- **Gemini CLI** (research agent — optional, for full workflow)
+- **Claude Code** (CLI-first orchestrator agent; use the VS Code extension only in a VS Code / Copilot context)
+- **Gemini CLI** (research and read-only memory curator agent — optional, for full workflow)
 - **Codex CLI** (implementation agent — optional, for full workflow)
 
 ### Local Development Setup
@@ -270,7 +284,7 @@ Before local development or validation, run `git submodule update --init --recur
 ├── START_HERE.md              # 3-file onboarding guide for first-time readers
 ├── AGENTS.md                  # Document index and phase-loading matrix
 ├── CLAUDE.md                  # Orchestrator (Claude Code) entry file
-├── GEMINI.md                  # Research agent (Gemini CLI) entry file
+├── GEMINI.md                  # Research and memory curator agent (Gemini CLI) entry file
 ├── CODEX.md                   # Implementation agent (Codex CLI) entry file
 ├── OBSIDIAN.md                # Obsidian vault entry note
 ├── BOOTSTRAP_PROMPT.md        # New project bootstrapping guide
@@ -383,7 +397,7 @@ Before local development or validation, run `git submodule update --init --recur
 This project includes a layered context management system for VS Code Copilot:
 
 - **`.github/copilot-instructions.md`** — Global stable rules, auto-loaded by VS Code
-- **`.github/memory-bank/`** — Stable reference knowledge (artifact rules, workflow gates, prompt patterns, project facts)
+- **`.github/memory-bank/`** — Stable reference knowledge (artifact rules, workflow gates, prompt patterns, project facts); Gemini may draft curation entries, Tavily source caches stay in research artifact drafts, and Claude/Codex retain write authority
 - **`.github/prompts/`** — Optional task-scoped Copilot prompt files (pack-context, context-review, remember-capture), not completion hooks
 - **`.github/skills/`** — Optional GitHub Copilot agent skills for task-specific capabilities, not forced lifecycle hooks
 

@@ -13,6 +13,7 @@
 | Verifier | `docs/templates/verifier/TEMPLATE.md` | Codex CLI / Claude Code | verifying |
 | Reviewer | `docs/templates/reviewer/TEMPLATE.md` | Codex CLI | verifying |
 | Parallel Execution | `docs/templates/parallel/TEMPLATE.md` | Codex CLI | coding → verifying |
+| Memory Curator | `docs/templates/memory-curator/TEMPLATE.md` | Gemini CLI | closure |
 | Blocking | `docs/templates/blocking/TEMPLATE.md` | Any | any |
 
 ---

@@ -1,7 +1,7 @@
 # Project Facts — 技術棧、集成點、部署約定
 
 **Reference**: docs/orchestration.md, .github/workflows/  
-**Last Updated**: 2026-04-18 +08:00
+**Last Updated**: 2026-04-25 +08:00
 
 ## 技術棧
 
@@ -12,6 +12,13 @@ Linting: pylint + black
 Version Control: Git + GitHub
 CI/CD: GitHub Actions (see .github/workflows/)
 Context Tooling: code2prompt (optional, 用於 pack-context CLI mode, `cargo install code2prompt`)
+Research Tooling: Tavily CLI (optional, 用於 Gemini Tavily-assisted research)
+  - 套件: `tavily-cli` (PyPI)，安裝指令：`pip install tavily-cli`
+  - **CLI 命令名為 `tvly`**（非 `tavily`，常見混淆點，必須以 `tvly` 呼叫）
+  - 認證：`tvly login --api-key tvly-XXX` 或設 `TAVILY_API_KEY` 環境變數
+  - 認證設定檔：`~/.tavily/config.json`（含 API key，**不得提交、不得進 memory-bank**）
+  - 驗證可用：`tvly --status`、`tvly auth`
+  - 速測：`tvly --json search "query" --max-results 2`
 
 ## 主要組件
 
@@ -76,6 +83,7 @@ python artifacts/scripts/run_red_team_suite.py --phase static --keep-temp
 | Prompt regression 失敗 | CLAUDE.md 或 GEMINI.md 變更了 | 執行 guard_contract_validator 檢查 diff |
 | CI timeout on red-team | Phase all 太重 | 改用 --phase inference 或 --phase static |
 | 需要保留 red-team fixture | 預設執行後會自動清理 `.codex-red-team/` | 改用 `python artifacts/scripts/run_red_team_suite.py --phase static --keep-temp` |
+| `which tavily` 找不到 / 誤判 Tavily 不可用 | Tavily CLI 套件 (`tavily-cli`) 安裝後實際命令名為 `tvly`，非 `tavily`；以 `which tavily` 查必失敗 | 改用 `which tvly` 與 `tvly --status` 驗證；參見上述「Research Tooling」 |
 
 ## 版本歷史
 

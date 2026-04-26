@@ -32,6 +32,7 @@ EXACT_SYNC_FILES = [
     "artifacts/scripts/update_repository_profile.py",
     "artifacts/scripts/workflow_constants.py",
     "docs/artifact_schema.md",
+    "docs/agentic_execution_layer.md",
     "docs/lightweight_mode_rules.md",
     "docs/orchestration.md",
     "docs/premortem_rules.md",
@@ -677,14 +678,152 @@ def validate_root_artifact_strictness(root: Path) -> List[str]:
                 errors.append(f"{path.relative_to(root).as_posix()}: root strictness forbids warning: {warning}")
     return errors
 
+class RaciViolation:
+    def __init__(self, agent: str, file_path: Path, actual_type: str, required_type: str):
+        self.agent = agent
+        self.file_path = file_path
+        self.actual_type = actual_type
+        self.required_type = required_type
+
+
+def validate_raci_hybrid_sync(root: Path) -> None:
+    roles_md_path = root / "docs" / "subagent_roles.md"
+    if not roles_md_path.exists():
+        raise ValueError(f"RACI hybrid sync failed: {roles_md_path.as_posix()} not found")
+    
+    text = roles_md_path.read_text(encoding="utf-8")
+    
+    raci_table = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line.startswith("|") or "---" in line or "角色" in line:
+            continue
+        parts = [p.strip() for p in line.split("|")]
+        if len(parts) >= 9:
+            agent = parts[1]
+            r_col = parts[3]
+            if r_col != "--":
+                artifacts = {a.strip() for a in r_col.split("/") if a.strip()}
+                raci_table[agent] = artifacts
+
+    import workflow_constants as wc
+    
+    for agent, artifacts in wc.RACI_MATRIX.items():
+        if agent not in raci_table:
+            raise ValueError(f"RACI hybrid sync failed: Agent '{agent}' in RACI_MATRIX but not in subagent_roles.md")
+        if raci_table[agent] != artifacts:
+            raise ValueError(f"RACI hybrid sync failed: Agent '{agent}' mismatch. Code: {artifacts}, Docs: {raci_table[agent]}")
+    
+    for agent, artifacts in raci_table.items():
+        if agent not in wc.RACI_MATRIX:
+            raise ValueError(f"RACI hybrid sync failed: Agent '{agent}' in docs but not in RACI_MATRIX")
+
+
+def detect_raci_violations(file_path: Path, agent_identity: str, raci_matrix: Dict[str, set]) -> List[RaciViolation]:
+    allowed = raci_matrix.get(agent_identity, set())
+    
+    actual_type = "code (實檔修改)"
+    path_str = file_path.as_posix()
+    if "artifacts/tasks/TASK-" in path_str and path_str.endswith(".task.md"):
+        actual_type = "task"
+    elif "artifacts/plans/TASK-" in path_str and path_str.endswith(".plan.md"):
+        actual_type = "plan"
+    elif "artifacts/decisions/TASK-" in path_str and path_str.endswith(".decision.md"):
+        actual_type = "decision"
+    elif "artifacts/status/TASK-" in path_str and path_str.endswith(".status.json"):
+        actual_type = "status"
+    elif "artifacts/research/TASK-" in path_str and path_str.endswith(".research.md"):
+        actual_type = "research"
+    elif "artifacts/test/TASK-" in path_str and path_str.endswith(".test.md"):
+        actual_type = "test"
+    elif "artifacts/verify/TASK-" in path_str and path_str.endswith(".verify.md"):
+        actual_type = "verify"
+    elif path_str.startswith(".github/memory-bank/"):
+        actual_type = "Remember Capture draft"
+    
+    if actual_type not in allowed:
+        # Codex CLI uses "code" instead of "code (實檔修改)" in some places, so we unify it here.
+        if actual_type == "code (實檔修改)" and "code" in allowed:
+            return []
+            
+        return [RaciViolation(
+            agent=agent_identity,
+            file_path=file_path,
+            actual_type=actual_type,
+            required_type="code (實檔修改)" if actual_type == "code (實檔修改)" else " / ".join(allowed) if allowed else "None"
+        )]
+    return []
+
+
+def apply_raci_waivers(violations: List[RaciViolation], decisions: List[dict]) -> List[RaciViolation]:
+    waived = []
+    ex_ante_decisions = [d for d in decisions if d.get("Waiver Type") == "ex-ante"]
+    
+    for v in violations:
+        is_waived = False
+        for d in ex_ante_decisions:
+            if d.get("Waived Agent") == v.agent and d.get("Waived Artifact Type") == v.actual_type:
+                is_waived = True
+                break
+        if not is_waived:
+            waived.append(v)
+            
+    return waived
+
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Validate workflow sync contracts across README, Obsidian, root, and template docs.")
     parser.add_argument("--root", default=".", help="Repository root. Default: current directory")
     parser.add_argument("--check-readme", action="store_true", help="Validate README section contract plus bilingual H2 structure consistency")
+    parser.add_argument("--audit-raci", nargs=2, metavar=("FILE", "AGENT"), help="Run RACI auditor on a specific file against an agent")
+    parser.add_argument("--dry-run", action="store_true", help="Run without applying fixes (default)")
+    parser.add_argument("--fix", action="store_true", help="Automatically fix obvious state drifts (requires manual approval for RACI)")
     args = parser.parse_args(argv)
 
     root = Path(args.root).resolve()
+    
+    if args.audit_raci:
+        file_path_str, agent = args.audit_raci
+        file_path = Path(file_path_str).resolve()
+        
+        import workflow_constants as wc
+        decisions = []
+        decision_dir = root / "artifacts" / "decisions"
+        if decision_dir.exists():
+            for p in decision_dir.glob("TASK-*.decision.md"):
+                text = p.read_text(encoding="utf-8")
+                decision = {}
+                for line in text.splitlines():
+                    if line.startswith("- Waiver Type:"):
+                        decision["Waiver Type"] = line.split(":", 1)[1].strip()
+                    elif line.startswith("- Waived Agent:"):
+                        decision["Waived Agent"] = line.split(":", 1)[1].strip()
+                    elif line.startswith("- Waived Artifact Type:"):
+                        decision["Waived Artifact Type"] = line.split(":", 1)[1].strip()
+                if decision:
+                    decisions.append(decision)
+                    
+        violations = detect_raci_violations(file_path, agent, wc.RACI_MATRIX)
+        post_waiver = apply_raci_waivers(violations, decisions)
+        
+        if post_waiver:
+            print("[ERROR] RACI Violation detected!")
+            for v in post_waiver:
+                print(f"[FAIL] Agent '{v.agent}' is not allowed to modify '{v.actual_type}' (required: {v.required_type})")
+            
+            log_path = root / ".github" / "memory-bank" / "raci-violations-log.md"
+            if log_path.exists() and not args.dry_run:
+                import datetime
+                timestamp = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8))).strftime("%Y-%m-%dT%H:%M:%S+08:00")
+                append_line = f"- {timestamp} | Agent: {agent} | File: {file_path.relative_to(root).as_posix() if file_path.is_relative_to(root) else file_path.name} | Violation: {post_waiver[0].actual_type} vs {post_waiver[0].required_type}\n"
+                with log_path.open("a", encoding="utf-8") as f:
+                    f.write(append_line)
+                    
+            return 1
+            
+        print(f"[OK] RACI check passed for {agent} on {file_path.name}")
+        return 0
+
     errors = validate_exact_sync(root)
     errors.extend(validate_required_phrases(root))
     errors.extend(validate_markdown_contracts(root))
@@ -693,6 +832,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     errors.extend(validate_allowed_gemini_models(root))
     errors.extend(validate_workflow_policy_contract())
     errors.extend(validate_root_artifact_strictness(root))
+    
+    try:
+        validate_raci_hybrid_sync(root)
+    except ValueError as e:
+        errors.append(str(e))
     
     if args.check_readme:
         errors.extend(validate_readme_structure(root))
@@ -705,7 +849,6 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     print("[OK] Contract validation passed")
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

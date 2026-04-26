@@ -27,6 +27,8 @@ import validate_context_stack as vcs
 import migrate_artifact_schema as mas
 import legacy_verify_corpus as lvc
 import workflow_constants as wc
+import classify_existing_tasks as cet
+import backfill_pdca_labels as bpl
 
 
 # ─────────────────────────────────────────────
@@ -12213,3 +12215,587 @@ class TestBuildDecisionRegistryCoverageCatchup:
 
     def test_normalize_linked_artifacts_skips_empty(self):
         assert bdr.normalize_linked_artifacts(["", "  "]) == []
+
+
+class TestCheckTaoTrace:
+    def test_no_csv_file(self, tmp_path):
+        artifacts_root = tmp_path / "artifacts"
+        artifacts_root.mkdir()
+        warnings = gsv.check_tao_trace(artifacts_root, "TASK-900")
+        assert len(warnings) == 1
+        assert "risk_classification.csv not found" in warnings[0]
+
+    def test_task_not_in_csv(self, tmp_path):
+        artifacts_root = tmp_path / "artifacts"
+        (artifacts_root / "registry").mkdir(parents=True)
+        csv_path = artifacts_root / "registry" / "risk_classification.csv"
+        csv_path.write_text("task_id,risk_level\nTASK-800,high-risk\n", encoding="utf-8")
+        warnings = gsv.check_tao_trace(artifacts_root, "TASK-999")
+        assert len(warnings) == 1
+        assert "not found in risk_classification.csv" in warnings[0]
+
+    def test_low_risk_skip(self, tmp_path):
+        artifacts_root = tmp_path / "artifacts"
+        (artifacts_root / "registry").mkdir(parents=True)
+        csv_path = artifacts_root / "registry" / "risk_classification.csv"
+        csv_path.write_text("task_id,risk_level\nTASK-999,low-risk\n", encoding="utf-8")
+        warnings = gsv.check_tao_trace(artifacts_root, "TASK-999")
+        assert warnings == []
+
+    def test_high_risk_with_tao(self, tmp_path):
+        artifacts_root = tmp_path / "artifacts"
+        (artifacts_root / "registry").mkdir(parents=True)
+        (artifacts_root / "code").mkdir(parents=True)
+        (artifacts_root / "verify").mkdir(parents=True)
+        csv_path = artifacts_root / "registry" / "risk_classification.csv"
+        csv_path.write_text("task_id,risk_level\nTASK-900,high-risk\n", encoding="utf-8")
+        (artifacts_root / "code" / "TASK-900.code.md").write_text(
+            "# Code\n## TAO Trace\nstep\n", encoding="utf-8"
+        )
+        (artifacts_root / "verify" / "TASK-900.verify.md").write_text(
+            "# Verify\n## TAO Trace\nstep\n", encoding="utf-8"
+        )
+        warnings = gsv.check_tao_trace(artifacts_root, "TASK-900")
+        assert warnings == []
+
+    def test_high_risk_missing_tao(self, tmp_path):
+        artifacts_root = tmp_path / "artifacts"
+        (artifacts_root / "registry").mkdir(parents=True)
+        (artifacts_root / "code").mkdir(parents=True)
+        (artifacts_root / "verify").mkdir(parents=True)
+        csv_path = artifacts_root / "registry" / "risk_classification.csv"
+        csv_path.write_text("task_id,risk_level\nTASK-900,high-risk\n", encoding="utf-8")
+        (artifacts_root / "code" / "TASK-900.code.md").write_text(
+            "# Code\nno tao here\n", encoding="utf-8"
+        )
+        (artifacts_root / "verify" / "TASK-900.verify.md").write_text(
+            "# Verify\nno tao here\n", encoding="utf-8"
+        )
+        warnings = gsv.check_tao_trace(artifacts_root, "TASK-900")
+        assert len(warnings) == 2
+        assert any("code artifact" in w for w in warnings)
+        assert any("verify artifact" in w for w in warnings)
+
+
+# ─────────────────────────────────────────────
+# classify_existing_tasks
+# ─────────────────────────────────────────────
+
+
+class TestClassifyExistingTasks:
+    # --- extract_risks_section ---
+
+    def test_extract_risks_section_present(self):
+        text = "## Scope\nfoo\n## Risks\n- R1\n- Severity: blocking\n## Validation\nbar\n"
+        assert "Severity: blocking" in cet.extract_risks_section(text)
+
+    def test_extract_risks_section_absent(self):
+        assert cet.extract_risks_section("## Scope\nfoo\n## Validation\nbar\n") == ""
+
+    def test_extract_risks_section_at_end(self):
+        text = "## Risks\n- R1\n- Severity: non-blocking\n"
+        assert "non-blocking" in cet.extract_risks_section(text)
+
+    # --- parse_severities ---
+
+    def test_parse_severities_blocking(self):
+        text = "- Severity: blocking\n- Severity: non-blocking\n"
+        result = cet.parse_severities(text)
+        assert result == ["blocking", "non-blocking"]
+
+    def test_parse_severities_empty(self):
+        assert cet.parse_severities("no severity here\n") == []
+
+    def test_parse_severities_inline(self):
+        text = "R1 blah Severity: blocking（reason）\n"
+        result = cet.parse_severities(text)
+        assert result == ["blocking"]
+
+    def test_parse_severities_case_insensitive(self):
+        text = "- Severity: Blocking\n"
+        result = cet.parse_severities(text)
+        assert result == ["blocking"]
+
+    # --- classify_task ---
+
+    def test_classify_task_high_risk(self, tmp_path):
+        plan = tmp_path / "TASK-900.plan.md"
+        plan.write_text(
+            "# Plan\n## Risks\nR1\n- Severity: blocking\n## Validation\nv\n",
+            encoding="utf-8",
+        )
+        task_id, max_sev, risk_level, blocking, total, excerpt = cet.classify_task(plan)
+        assert task_id == "TASK-900"
+        assert risk_level == "high-risk"
+        assert max_sev == "blocking"
+        assert blocking == 1
+
+    def test_classify_task_multi_severity_excerpt_truncation(self, tmp_path):
+        plan = tmp_path / "TASK-895.plan.md"
+        plan.write_text(
+            "# Plan\n## Risks\n"
+            "R1\n- Severity: blocking\n"
+            "R2\n- Severity: non-blocking\n"
+            "R3\n- Severity: blocking\n"
+            "## Validation\nv\n",
+            encoding="utf-8",
+        )
+        task_id, max_sev, risk_level, blocking, total, excerpt = cet.classify_task(plan)
+        assert blocking == 2
+        assert total == 3
+        assert risk_level == "high-risk"
+        # Excerpt should contain exactly 2 severity lines (break fires after 2nd)
+        assert " | " in excerpt
+
+    def test_classify_task_low_risk(self, tmp_path):
+        plan = tmp_path / "TASK-999.plan.md"
+        plan.write_text(
+            "# Plan\n## Risks\nR1\n- Severity: non-blocking\n## Validation\nv\n",
+            encoding="utf-8",
+        )
+        _, _, risk_level, blocking, total, _ = cet.classify_task(plan)
+        assert risk_level == "low-risk"
+        assert blocking == 0
+        assert total == 1
+
+    def test_classify_task_no_risks_section(self, tmp_path):
+        plan = tmp_path / "TASK-998.plan.md"
+        plan.write_text("# Plan\n## Scope\nfoo\n## Validation\nv\n", encoding="utf-8")
+        _, max_sev, risk_level, _, _, excerpt = cet.classify_task(plan)
+        assert risk_level == "low-risk"
+        assert max_sev == "none"
+        assert "no risks section" in excerpt
+
+    def test_classify_task_risks_none_text(self, tmp_path):
+        plan = tmp_path / "TASK-997.plan.md"
+        plan.write_text("# Plan\n## Risks\nNone\n## Validation\nv\n", encoding="utf-8")
+        _, max_sev, risk_level, _, _, _ = cet.classify_task(plan)
+        assert risk_level == "low-risk"
+        assert max_sev == "none"
+
+    def test_classify_task_risks_no_severity_parsed(self, tmp_path):
+        plan = tmp_path / "TASK-996.plan.md"
+        plan.write_text(
+            "# Plan\n## Risks\nR1\n- something unrelated\n## Validation\nv\n",
+            encoding="utf-8",
+        )
+        _, max_sev, risk_level, _, _, excerpt = cet.classify_task(plan)
+        assert risk_level == "low-risk"
+        assert max_sev == "unknown"
+        assert "no Severity field" in excerpt
+
+    # --- main ---
+
+    def test_main_dry_run(self, tmp_path, capsys):
+        plans = tmp_path / "artifacts" / "plans"
+        plans.mkdir(parents=True)
+        (plans / "TASK-800.plan.md").write_text(
+            "# Plan\n## Risks\nR1\n- Severity: blocking\n## Validation\nv\n",
+            encoding="utf-8",
+        )
+        ret = cet.main(["--root", str(tmp_path), "--dry-run"])
+        assert ret == 0
+        out = capsys.readouterr().out
+        assert "DRY-RUN" in out
+        assert "high-risk" in out
+        assert not (tmp_path / "artifacts" / "registry" / "risk_classification.csv").exists()
+
+    def test_main_write_csv(self, tmp_path, capsys):
+        plans = tmp_path / "artifacts" / "plans"
+        plans.mkdir(parents=True)
+        (plans / "TASK-800.plan.md").write_text(
+            "# Plan\n## Risks\nR1\n- Severity: non-blocking\n## Validation\nv\n",
+            encoding="utf-8",
+        )
+        ret = cet.main(["--root", str(tmp_path)])
+        assert ret == 0
+        csv_path = tmp_path / "artifacts" / "registry" / "risk_classification.csv"
+        assert csv_path.exists()
+        content = csv_path.read_text(encoding="utf-8")
+        assert "TASK-800" in content
+        assert "low-risk" in content
+
+    def test_main_no_plans_dir(self, tmp_path, capsys):
+        ret = cet.main(["--root", str(tmp_path)])
+        assert ret == 1
+        assert "Plans directory not found" in capsys.readouterr().err
+
+    def test_main_no_plan_files(self, tmp_path, capsys):
+        (tmp_path / "artifacts" / "plans").mkdir(parents=True)
+        ret = cet.main(["--root", str(tmp_path)])
+        assert ret == 1
+        assert "No plan files found" in capsys.readouterr().err
+
+
+# ─────────────────────────────────────────────
+# backfill_pdca_labels
+# ─────────────────────────────────────────────
+
+
+class TestBackfillPdcaLabels:
+    # --- load_high_risk_tasks ---
+
+    def test_load_high_risk_tasks_no_file(self, tmp_path):
+        assert bpl.load_high_risk_tasks(tmp_path / "nope.csv") == set()
+
+    def test_load_high_risk_tasks_with_data(self, tmp_path):
+        csv_path = tmp_path / "risk.csv"
+        csv_path.write_text(
+            "task_id,risk_level\nTASK-900,high-risk\nTASK-999,low-risk\n",
+            encoding="utf-8",
+        )
+        result = bpl.load_high_risk_tasks(csv_path)
+        assert result == {"TASK-900"}
+
+    def test_load_high_risk_tasks_empty(self, tmp_path):
+        csv_path = tmp_path / "risk.csv"
+        csv_path.write_text("task_id,risk_level\n", encoding="utf-8")
+        assert bpl.load_high_risk_tasks(csv_path) == set()
+
+    # --- backfill_pdca_stage ---
+
+    def test_backfill_pdca_stage_inserts(self):
+        text = "## Metadata\n- Last Updated: 2026-01-01T00:00:00+08:00\n## Scope\n"
+        new_text, changed = bpl.backfill_pdca_stage(text, "P")
+        assert changed is True
+        assert "- PDCA Stage: P" in new_text
+        # Verify insertion is after Last Updated
+        lu_idx = new_text.index("Last Updated:")
+        pdca_idx = new_text.index("PDCA Stage:")
+        assert pdca_idx > lu_idx
+
+    def test_backfill_pdca_stage_already_present(self):
+        text = "## Metadata\n- Last Updated: 2026-01-01T00:00:00+08:00\n- PDCA Stage: D\n"
+        new_text, changed = bpl.backfill_pdca_stage(text, "D")
+        assert changed is False
+        assert new_text == text
+
+    def test_backfill_pdca_stage_no_last_updated(self):
+        text = "## Metadata\n- Task ID: TASK-X\n## Scope\n"
+        new_text, changed = bpl.backfill_pdca_stage(text, "C")
+        assert changed is False
+
+    # --- insert_tao_trace_code ---
+
+    def test_insert_tao_trace_code_before_blockers(self):
+        text = "# Code\n## Summary\nfoo\n## Blockers\nnone\n"
+        new_text, changed = bpl.insert_tao_trace_code(text)
+        assert changed is True
+        assert "## TAO Trace" in new_text
+        # TAO Trace should appear before ## Blockers
+        tao_idx = new_text.index("## TAO Trace")
+        blockers_idx = new_text.index("## Blockers")
+        assert tao_idx < blockers_idx
+
+    def test_insert_tao_trace_code_fallback_append(self):
+        text = "# Code\n## Summary\nfoo\n"
+        new_text, changed = bpl.insert_tao_trace_code(text)
+        assert changed is True
+        assert new_text.rstrip().endswith("continue")
+
+    def test_insert_tao_trace_code_already_present(self):
+        text = "# Code\n## TAO Trace\nstep\n"
+        new_text, changed = bpl.insert_tao_trace_code(text)
+        assert changed is False
+
+    # --- insert_tao_trace_verify ---
+
+    def test_insert_tao_trace_verify_before_pass_fail(self):
+        text = "# Verify\n## Evidence\nfoo\n## Pass Fail Result\npass\n"
+        new_text, changed = bpl.insert_tao_trace_verify(text)
+        assert changed is True
+        assert "## TAO Trace" in new_text
+        tao_idx = new_text.index("## TAO Trace")
+        pfr_idx = new_text.index("## Pass Fail Result")
+        assert tao_idx < pfr_idx
+
+    def test_insert_tao_trace_verify_fallback_append(self):
+        text = "# Verify\n## Evidence\nfoo\n"
+        new_text, changed = bpl.insert_tao_trace_verify(text)
+        assert changed is True
+        assert "## TAO Trace" in new_text
+
+    def test_insert_tao_trace_verify_already_present(self):
+        text = "# Verify\n## TAO Trace\nstep\n"
+        new_text, changed = bpl.insert_tao_trace_verify(text)
+        assert changed is False
+
+    # --- process_artifact ---
+
+    def test_process_artifact_pdca_only(self, tmp_path):
+        path = tmp_path / "TASK-900.plan.md"
+        path.write_text(
+            "## Metadata\n- Last Updated: 2026-01-01T00:00:00+08:00\n## Scope\n",
+            encoding="utf-8",
+        )
+        changes = bpl.process_artifact(path, "plan", set(), include_tao=False, dry_run=False)
+        assert len(changes) == 1
+        assert "PDCA Stage: P" in changes[0]
+        assert "- PDCA Stage: P" in path.read_text(encoding="utf-8")
+
+    def test_process_artifact_pdca_and_tao_high_risk(self, tmp_path):
+        path = tmp_path / "TASK-900.code.md"
+        path.write_text(
+            "## Metadata\n- Last Updated: 2026-01-01T00:00:00+08:00\n## Summary\nfoo\n",
+            encoding="utf-8",
+        )
+        changes = bpl.process_artifact(path, "code", {"TASK-900"}, include_tao=True, dry_run=False)
+        assert len(changes) == 2
+        text = path.read_text(encoding="utf-8")
+        assert "PDCA Stage: D" in text
+        assert "## TAO Trace" in text
+
+    def test_process_artifact_already_up_to_date(self, tmp_path):
+        path = tmp_path / "TASK-900.code.md"
+        path.write_text(
+            "## Metadata\n- Last Updated: 2026-01-01T00:00:00+08:00\n- PDCA Stage: D\n## TAO Trace\nstep\n",
+            encoding="utf-8",
+        )
+        changes = bpl.process_artifact(path, "code", {"TASK-900"}, include_tao=True, dry_run=False)
+        assert changes == []
+
+    def test_process_artifact_dry_run_no_write(self, tmp_path):
+        path = tmp_path / "TASK-900.plan.md"
+        original = "## Metadata\n- Last Updated: 2026-01-01T00:00:00+08:00\n## Scope\n"
+        path.write_text(original, encoding="utf-8")
+        changes = bpl.process_artifact(path, "plan", set(), include_tao=False, dry_run=True)
+        assert len(changes) == 1
+        assert path.read_text(encoding="utf-8") == original  # not modified
+
+    def test_process_artifact_low_risk_no_tao(self, tmp_path):
+        path = tmp_path / "TASK-999.code.md"
+        path.write_text(
+            "## Metadata\n- Last Updated: 2026-01-01T00:00:00+08:00\n## Summary\nfoo\n",
+            encoding="utf-8",
+        )
+        changes = bpl.process_artifact(path, "code", {"TASK-900"}, include_tao=True, dry_run=False)
+        assert len(changes) == 1  # PDCA only, no TAO (not in high_risk set)
+        assert "## TAO Trace" not in path.read_text(encoding="utf-8")
+
+    def test_process_artifact_verify_tao(self, tmp_path):
+        path = tmp_path / "TASK-900.verify.md"
+        path.write_text(
+            "## Metadata\n- Last Updated: 2026-01-01T00:00:00+08:00\n## Pass Fail Result\npass\n",
+            encoding="utf-8",
+        )
+        changes = bpl.process_artifact(path, "verify", {"TASK-900"}, include_tao=True, dry_run=False)
+        assert any("TAO Trace" in c for c in changes)
+
+    def test_process_artifact_plan_no_tao_even_if_high_risk(self, tmp_path):
+        """Plan artifacts never get TAO Trace regardless of risk level."""
+        path = tmp_path / "TASK-900.plan.md"
+        path.write_text(
+            "## Metadata\n- Last Updated: 2026-01-01T00:00:00+08:00\n## Scope\n",
+            encoding="utf-8",
+        )
+        changes = bpl.process_artifact(path, "plan", {"TASK-900"}, include_tao=True, dry_run=False)
+        assert len(changes) == 1  # Only PDCA
+        assert "## TAO Trace" not in path.read_text(encoding="utf-8")
+
+    # --- main ---
+
+    def test_main_dry_run(self, tmp_path, capsys):
+        plans = tmp_path / "artifacts" / "plans"
+        plans.mkdir(parents=True)
+        (plans / "TASK-800.plan.md").write_text(
+            "## Metadata\n- Last Updated: 2026-01-01T00:00:00+08:00\n## Scope\n",
+            encoding="utf-8",
+        )
+        ret = bpl.main(["--root", str(tmp_path), "--dry-run"])
+        assert ret == 0
+        out = capsys.readouterr().out
+        assert "DRY-RUN" in out
+        # File should not be modified
+        text = (plans / "TASK-800.plan.md").read_text(encoding="utf-8")
+        assert "PDCA Stage" not in text
+
+    def test_main_apply(self, tmp_path, capsys):
+        plans = tmp_path / "artifacts" / "plans"
+        code = tmp_path / "artifacts" / "code"
+        plans.mkdir(parents=True)
+        code.mkdir(parents=True)
+        (plans / "TASK-800.plan.md").write_text(
+            "## Metadata\n- Last Updated: 2026-01-01T00:00:00+08:00\n## Scope\n",
+            encoding="utf-8",
+        )
+        (code / "TASK-800.code.md").write_text(
+            "## Metadata\n- Last Updated: 2026-01-01T00:00:00+08:00\n## Summary\nfoo\n",
+            encoding="utf-8",
+        )
+        ret = bpl.main(["--root", str(tmp_path)])
+        assert ret == 0
+        assert "PDCA Stage: P" in (plans / "TASK-800.plan.md").read_text(encoding="utf-8")
+        assert "PDCA Stage: D" in (code / "TASK-800.code.md").read_text(encoding="utf-8")
+
+    def test_main_include_tao_no_csv_warns(self, tmp_path, capsys):
+        plans = tmp_path / "artifacts" / "plans"
+        plans.mkdir(parents=True)
+        (plans / "TASK-800.plan.md").write_text(
+            "## Metadata\n- Last Updated: 2026-01-01T00:00:00+08:00\n## Scope\n",
+            encoding="utf-8",
+        )
+        ret = bpl.main(["--root", str(tmp_path), "--include-tao", "--dry-run"])
+        assert ret == 0
+        out = capsys.readouterr().out
+        assert "WARN" in out
+
+    def test_main_include_tao_with_csv(self, tmp_path, capsys):
+        plans = tmp_path / "artifacts" / "plans"
+        code = tmp_path / "artifacts" / "code"
+        registry = tmp_path / "artifacts" / "registry"
+        plans.mkdir(parents=True)
+        code.mkdir(parents=True)
+        registry.mkdir(parents=True)
+        (registry / "risk_classification.csv").write_text(
+            "task_id,risk_level\nTASK-800,high-risk\n", encoding="utf-8"
+        )
+        (plans / "TASK-800.plan.md").write_text(
+            "## Metadata\n- Last Updated: 2026-01-01T00:00:00+08:00\n## Scope\n",
+            encoding="utf-8",
+        )
+        (code / "TASK-800.code.md").write_text(
+            "## Metadata\n- Last Updated: 2026-01-01T00:00:00+08:00\n## Summary\nfoo\n",
+            encoding="utf-8",
+        )
+        ret = bpl.main(["--root", str(tmp_path), "--include-tao"])
+        assert ret == 0
+        assert "## TAO Trace" in (code / "TASK-800.code.md").read_text(encoding="utf-8")
+
+    # --- current_taipei_timestamp ---
+
+    def test_current_taipei_timestamp_format(self):
+        ts = bpl.current_taipei_timestamp()
+        assert "+08:00" in ts
+
+
+class TestRaciAuditor:
+    def test_hybrid_sync_drift_raises_error(self, tmp_path):
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        roles_md = docs_dir / "subagent_roles.md"
+        roles_md.write_text(
+            "| 角色 | 類型 | R (主執行) | A (最終問責) | C (諮詢) | I (通知) | 主要輸入 | 主要輸出 |\n"
+            "|---|---|---|---|---|---|---|---|\n"
+            "| Claude Code | 主控代理 | missing_task / plan | -- | -- | -- | -- | -- |\n",
+            encoding="utf-8"
+        )
+        with pytest.raises(ValueError, match="RACI hybrid sync failed"):
+            gcv.validate_raci_hybrid_sync(tmp_path)
+
+    def test_detect_raci_violations(self, tmp_path):
+        file_path = tmp_path / "artifacts" / "tasks" / "TASK-1001.task.md"
+        # Implementer edits a task -> violation
+        violations = gcv.detect_raci_violations(file_path, "Implementer", wc.RACI_MATRIX)
+        assert len(violations) == 1
+        assert violations[0].agent == "Implementer"
+        assert violations[0].file_path == file_path
+        assert violations[0].required_type == "code (實檔修改)"
+        assert violations[0].actual_type == "task"
+
+        # Claude edits a task -> ok
+        assert len(gcv.detect_raci_violations(file_path, "Claude Code", wc.RACI_MATRIX)) == 0
+
+    def test_apply_raci_waivers_ex_ante(self):
+        v = gcv.RaciViolation(
+            agent="Implementer",
+            file_path=Path("artifacts/tasks/TASK-1001.task.md"),
+            actual_type="task",
+            required_type="code (實檔修改)"
+        )
+        decision = {
+            "Waiver Type": "ex-ante",
+            "Waived Agent": "Implementer",
+            "Waived Artifact Type": "task",
+            "Last Updated": "2026-04-26T10:00:00+08:00"
+        }
+        post_waiver = gcv.apply_raci_waivers([v], [decision])
+        assert len(post_waiver) == 0
+
+    def test_apply_raci_waivers_pre_existing_dirty_does_not_expand(self):
+        v = gcv.RaciViolation(
+            agent="Implementer",
+            file_path=Path("artifacts/tasks/TASK-1001.task.md"),
+            actual_type="task",
+            required_type="code (實檔修改)"
+        )
+        decision = {
+            "Waiver Type": "pre-existing-dirty",
+            "Waived Agent": "Implementer",
+            "Waived Artifact Type": "task",
+            "Last Updated": "2026-04-26T10:00:00+08:00"
+        }
+        # pre-existing-dirty cannot waive RACI violations
+        post_waiver = gcv.apply_raci_waivers([v], [decision])
+        assert len(post_waiver) == 1
+
+    def test_main_audit_raci(self, tmp_path):
+        import workflow_constants as wc
+        # Create minimal repo structure
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        roles_md = docs_dir / "subagent_roles.md"
+        
+        # mock roles matching workflow_constants
+        roles_content = "| 角色 | 類型 | R (主執行) | A | C | I | 主要輸入 | 主要輸出 |\n|---|---|---|---|---|---|---|---|\n"
+        for agent, artifacts in wc.RACI_MATRIX.items():
+            roles_content += f"| {agent} | Type | {' / '.join(artifacts) or '--'} | -- | -- | -- | -- | -- |\n"
+        roles_md.write_text(roles_content, encoding="utf-8")
+        
+        tasks_dir = tmp_path / "artifacts" / "tasks"
+        tasks_dir.mkdir(parents=True)
+        task_file = tasks_dir / "TASK-1001.task.md"
+        task_file.write_text("dummy", encoding="utf-8")
+        
+        # Implementer modifying task -> Violation
+        ret = gcv.main(["--root", str(tmp_path), "--audit-raci", str(task_file), "Implementer"])
+        assert ret == 1
+        
+        # Claude Code modifying task -> Pass
+        ret = gcv.main(["--root", str(tmp_path), "--audit-raci", str(task_file), "Claude Code"])
+        assert ret == 0
+
+    def test_validate_raci_hybrid_sync_missing_file(self, tmp_path):
+        with pytest.raises(ValueError, match="not found"):
+            gcv.validate_raci_hybrid_sync(tmp_path)
+
+    def test_validate_raci_hybrid_sync_mismatch(self, tmp_path):
+        import workflow_constants as wc
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        roles_md = docs_dir / "subagent_roles.md"
+        
+        # Missing agent in docs
+        roles_md.write_text("| 角色 | 類型 | R (主執行) | A | C | I | 主要輸入 | 主要輸出 |\n|---|---|---|---|---|---|---|---|\n", encoding="utf-8")
+        with pytest.raises(ValueError, match="but not in subagent_roles"):
+            gcv.validate_raci_hybrid_sync(tmp_path)
+
+        # Extra agent in docs
+        roles_content = "| 角色 | 類型 | R (主執行) | A | C | I | 主要輸入 | 主要輸出 |\n|---|---|---|---|---|---|---|---|\n"
+        for agent, artifacts in wc.RACI_MATRIX.items():
+            roles_content += f"| {agent} | Type | {' / '.join(artifacts) or '--'} | -- | -- | -- | -- | -- |\n"
+        roles_content += "| ExtraAgent | Type | code | -- | -- | -- | -- | -- |\n"
+        roles_md.write_text(roles_content, encoding="utf-8")
+        with pytest.raises(ValueError, match="but not in RACI_MATRIX"):
+            gcv.validate_raci_hybrid_sync(tmp_path)
+
+    def test_detect_raci_violations_all_types(self):
+        matrix = {"AgentA": {"plan"}, "AgentB": {"code"}}
+        paths = [
+            (Path("artifacts/tasks/TASK-1.task.md"), "task"),
+            (Path("artifacts/plans/TASK-1.plan.md"), "plan"),
+            (Path("artifacts/decisions/TASK-1.decision.md"), "decision"),
+            (Path("artifacts/status/TASK-1.status.json"), "status"),
+            (Path("artifacts/research/TASK-1.research.md"), "research"),
+            (Path("artifacts/test/TASK-1.test.md"), "test"),
+            (Path("artifacts/verify/TASK-1.verify.md"), "verify"),
+            (Path(".github/memory-bank/file.md"), "Remember Capture draft"),
+        ]
+        for p, expected_type in paths:
+            vs = gcv.detect_raci_violations(p, "AgentC", matrix)
+            assert len(vs) == 1
+            assert vs[0].actual_type == expected_type
+            
+        # Test code (實檔修改) mapped to 'code'
+        vs = gcv.detect_raci_violations(Path("src/main.py"), "AgentB", matrix)
+        assert len(vs) == 0
+

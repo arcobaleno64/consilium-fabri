@@ -43,7 +43,7 @@
           ["不得修改程式碼", "Do not modify code", "No code changes"],
           ["不得決定 implementation approach", "不得設計 solution"]
         ],
-        "note": "Gemini must remain research-only."
+        "note": "Gemini must remain read-only and non-implementation."
       },
       {
         "file": "CODEX.md",
@@ -439,6 +439,186 @@
           ["git objects", "retention"]
         ],
         "note": "Repository README should surface the retention / archive fallback policy."
+      }
+    ]
+  },
+  {
+    "id": "PR-021",
+    "title": "Gemini Memory Bank Curator Is Draft Only",
+    "description": "Workflow contract must preserve Gemini as a read-only memory-bank curator while Claude/Codex retain write authority.",
+    "assertions": [
+      {
+        "file": "GEMINI.md",
+        "must_contain_all": [
+          "Memory Bank Curator 模式",
+          "read-only",
+          "Remember Capture` draft",
+          "不得直接寫入 `.github/memory-bank/`"
+        ],
+        "note": "Gemini can curate draft memory entries but must not write repo-tracked memory-bank files."
+      },
+      {
+        "file": "CLAUDE.md",
+        "must_contain_all": [
+          "Memory Bank Curator",
+          "Gemini 不得改檔",
+          "Claude 或 Codex",
+          "Claude 最終驗收"
+        ],
+        "note": "Claude owns routing and approval for memory-bank writes."
+      },
+      {
+        "file": "docs/subagent_roles.md",
+        "must_contain_all": [
+          "Memory Bank Curator 模式",
+          "read-only curator",
+          "Write",
+          "Approve"
+        ],
+        "note": "Role docs must preserve draft/write/approval split."
+      },
+      {
+        "file": ".github/prompts/remember-capture.prompt.md",
+        "must_contain_all": [
+          "Gemini CLI",
+          "read-only curator",
+          "只產生 draft",
+          "不得修改 `.github/memory-bank/`"
+        ],
+        "note": "Remember capture prompt must keep Gemini draft-only."
+      }
+    ]
+  },
+  {
+    "id": "PR-022",
+    "title": "Claude CLI-First And Routing Boundaries",
+    "description": "Claude must default to CLI-first orchestration and route by task type, risk, and context cost instead of default implementation.",
+    "assertions": [
+      {
+        "file": "CLAUDE.md",
+        "must_contain_all": [
+          "CLI-first",
+          "Task Type",
+          "Risk Score",
+          "Context Cost",
+          "risk >= 3",
+          "context cost >= M",
+          "Claude 預設只做 orchestration、決策、驗收與最後整合"
+        ],
+        "note": "Claude must preserve CLI-first routing and avoid becoming the default implementation agent."
+      },
+      {
+        "file": "README.md",
+        "must_contain_all": [
+          "CLI-first orchestrator agent",
+          "use the VS Code extension only in a VS Code / Copilot context",
+          "Routing uses Task Type, Risk Score, and Context Cost"
+        ],
+        "note": "Public docs must keep VS Code extension wording scoped to VS Code / Copilot context."
+      }
+    ]
+  },
+  {
+    "id": "PR-023",
+    "title": "Codex Model Effort And Subagent Separation",
+    "description": "Codex policy must record model/effort selection and preserve separation between implementation and self-check work.",
+    "assertions": [
+      {
+        "file": "CODEX.md",
+        "must_contain_all": [
+          "Model / Effort Policy",
+          "gpt-5.4-mini",
+          "gpt-5.3-codex",
+          "gpt-5.4",
+          "Execution Profile",
+          "Subagent Plan",
+          "Scope check",
+          "regression verification"
+        ],
+        "note": "Codex must document task-scale model choice and subagent separation."
+      },
+      {
+        "file": "artifacts/scripts/Invoke-CodexAgent.ps1",
+        "must_contain_all": [
+          "TaskScale",
+          "ModelPolicy",
+          "model_reasoning_effort",
+          "gpt-5.4-mini",
+          "gpt-5.3-codex"
+        ],
+        "note": "Codex wrapper must expose task-scale model policy and reasoning effort."
+      }
+    ]
+  },
+  {
+    "id": "PR-024",
+    "title": "Gemini Tavily Draft Cache Boundary",
+    "description": "Gemini may use Tavily only under prompt contract and must keep Tavily output as draft/cache evidence, not memory-bank writes.",
+    "assertions": [
+      {
+        "file": "GEMINI.md",
+        "must_contain_all": [
+          "Tavily-assisted Research 模式",
+          "Tavily CLI unavailable",
+          "## Tavily Cache",
+          "## Source Cache",
+          "不得直接寫入 `.github/memory-bank/`"
+        ],
+        "note": "Gemini Tavily mode must be explicit, draft-only, and blocked when Tavily is unavailable."
+      },
+      {
+        "file": "docs/artifact_schema.md",
+        "must_contain_all": [
+          "Tavily Cache",
+          "Source Cache",
+          "UNVERIFIED: Tavily CLI unavailable",
+          "Claude/Codex 篩選後才可透過 Remember Capture 流程進入 `.github/memory-bank/`"
+        ],
+        "note": "Artifact schema must keep Tavily output in research/cache drafts."
+      }
+    ]
+  },
+  {
+    "id": "PR-025",
+    "title": "Memory Bank Librarian Quality Filter",
+    "description": "Memory-bank capture must reject obvious, stale, short-lived, or untraceable information.",
+    "assertions": [
+      {
+        "file": ".github/prompts/memory-bank.instructions.md",
+        "must_contain_all": [
+          "長期",
+          "可追蹤",
+          "非顯而易見",
+          "非短期排障",
+          "未過時",
+          "可由文件或常識輕易推敲出的內容不要寫入"
+        ],
+        "note": "Memory bank policy must behave like a curated library, not a raw cache."
+      },
+      {
+        "file": ".github/prompts/remember-capture.prompt.md",
+        "must_contain_all": [
+          "非顯而易見",
+          "非短期排障",
+          "未過時",
+          "source 可追蹤"
+        ],
+        "note": "Remember Capture must enforce quality filtering before writes."
+      }
+    ]
+  },
+  {
+    "id": "PR-026",
+    "title": "RACI Auditor Routing Matrix",
+    "description": "Workflow contract must define RACI Auditor and Architecture Synthesizer triggers.",
+    "assertions": [
+      {
+        "file": "CLAUDE.md",
+        "must_contain_all": [
+          "RACI Auditor / Architecture Synthesizer",
+          "Closure 階段每 10 個 PROCESS_LEDGER 或 Sprint Review 觸發"
+        ],
+        "note": "Claude must route to Gemini for RACI Auditor and Architecture Synthesizer under specific triggers."
       }
     ]
   }

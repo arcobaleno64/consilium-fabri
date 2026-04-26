@@ -40,3 +40,4 @@ coverage-report/
 
 # Claude Code worktrees (local only)
 .claude/worktrees/
+pytest-cache-files-*/

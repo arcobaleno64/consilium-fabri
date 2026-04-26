@@ -42,3 +42,8 @@ Tester
 - Commands Executed
 - Result Summary
 - Failures
+- TAO Trace (recommended; required when task risk ≥ 3)
+
+## TAO Trace Schema (per docs/agentic_execution_layer.md §2)
+
+When recorded, follow the same 4-field schema (Thought Log / Action Step / Observation / Next-Step Decision). For tester, `Observation` should include actual test output (pass/fail counts, failing test names) rather than synthesized summary.

@@ -2202,6 +2202,56 @@ def print_result(result: ValidationResult, override_active: bool = False) -> Non
         print(f"[FAIL] {error}")
 
 
+def check_tao_trace(artifacts_root: Path, task_id: str) -> List[str]:
+    """Check whether a high-risk task has ## TAO Trace in code/verify artifacts.
+
+    Reads risk_classification.csv to determine if the task is high-risk.
+    Returns a list of warning strings (empty if OK or task is low-risk).
+    """
+    import csv as csv_mod
+
+    warnings: List[str] = []
+    registry_dir = artifacts_root / "registry"
+    csv_path = registry_dir / "risk_classification.csv"
+
+    if not csv_path.exists():
+        warnings.append(f"{task_id}: risk_classification.csv not found; cannot determine risk level for TAO check")
+        return warnings
+
+    # Load classification
+    risk_level = None
+    with csv_path.open(encoding="utf-8", newline="") as f:
+        reader = csv_mod.DictReader(f)
+        for row in reader:
+            if row.get("task_id") == task_id:
+                risk_level = row.get("risk_level", "unknown")
+                break
+
+    if risk_level is None:
+        warnings.append(f"{task_id}: not found in risk_classification.csv; skipping TAO check")
+        return warnings
+
+    if risk_level != "high-risk":
+        # Low-risk tasks do not require TAO Trace
+        return warnings
+
+    # Check code artifact
+    code_path = artifact_path(artifacts_root, task_id, "code")
+    if code_path.exists():
+        code_text = load_text(code_path)
+        if "## TAO Trace" not in code_text:
+            warnings.append(f"{task_id}: TAO Trace expected for risk>=3 task but missing in code artifact")
+
+    # Check verify artifact
+    verify_path = artifact_path(artifacts_root, task_id, "verify")
+    if verify_path.exists():
+        verify_text = load_text(verify_path)
+        if "## TAO Trace" not in verify_text:
+            warnings.append(f"{task_id}: TAO Trace expected for risk>=3 task but missing in verify artifact")
+
+    return warnings
+
+
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Validate artifact workflow status and transitions.")
     parser.add_argument("--task-id", "--task", dest="task_id", required=True, help="Task id, for example TASK-001")
@@ -2227,6 +2277,11 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--override", help="Human-approved override reason. Must be used with --override-approver.")
     parser.add_argument("--override-approver", help="Human approver for --override. Must be used with --override.")
     parser.add_argument("--reconcile", action="store_true", help="Backfill missing status.json fields from task artifacts without overwriting existing values.")
+    parser.add_argument(
+        "--check-tao",
+        action="store_true",
+        help="Check whether high-risk tasks (per risk_classification.csv) contain ## TAO Trace in code/verify artifacts. Warning-only, does not affect exit code.",
+    )
     return parser.parse_args(argv)
 
 
@@ -2246,6 +2301,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print("[FAIL] --reconcile cannot be combined with override options", file=sys.stderr)
         return 2
     strict_scope = args.strict_scope or not args.allow_scope_drift
+    if args.check_tao:
+        tao_warnings = check_tao_trace(artifacts_root, args.task_id)
+        for w in tao_warnings:
+            print(f"[WARN] {w}")
+        if not tao_warnings:
+            print("[OK] TAO Trace check passed (no missing traces)")
+        return 0
     try:
         auto_classification = resolve_validation_mode(artifacts_root, args.task_id, args.auto_classify)
         validation_mode = auto_classification.validation_mode

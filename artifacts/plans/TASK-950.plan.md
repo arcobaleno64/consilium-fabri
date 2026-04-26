@@ -6,6 +6,7 @@
 - Owner: Claude
 - Status: approved
 - Last Updated: 2026-04-11T11:00:00+08:00
+- PDCA Stage: P
 
 ## Scope
 - 建立一組可重跑的 role boundary live drill artifacts。

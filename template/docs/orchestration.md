@@ -10,10 +10,12 @@
 
 1. 讀取現有 artifacts，判定目前任務狀態。
 2. 建立或更新任務所需的上游 artifacts。
-3. 將研究任務交給 Gemini CLI。
+3. 將研究任務或 read-only memory curation draft 交給 Gemini CLI。
 4. 將實作任務交給 Codex CLI 或其 subagents。
 5. 依據 artifacts 驗收結果、記錄風險、決定下一步。
 6. 維持流程可追蹤、可重跑、可審計、可替換代理。
+
+執行方式預設 CLI-first。只有環境明確是 VS Code / Copilot，或任務本身涉及 VS Code / Copilot 設定時，才使用或建議 VS Code extension。
 
 ## 2. 核心原則
 
@@ -94,6 +96,81 @@ resolved policy 的計算固定為：先讀 `Assurance Level`，再套 `Project 
 
 若 external legacy verify 沒有現成的 structured checklist，migration 只能降級成 manual-review / deferred，並必須把 confidence 與 unresolved fields 寫進 migration report；不得直接宣告 verify `pass`。
 
+### 2.7 Agent routing 依任務類型、風險與上下文成本
+
+Claude Code 預設只做 orchestration、決策、驗收與最後整合。除非任務太小、scope 不明、或需要 Claude 直接裁決，否則研究交給 Gemini CLI，實作交給 Codex CLI。
+
+Routing inputs：
+
+- Task Type: research / planning / implementation / verification / memory-curation / decision
+- Risk Score: 0-10，依 write scope、blast radius、外部依賴、security/secrets、data/schema、verification difficulty、scope ambiguity 加總後 capped at 10
+- Context Cost: S <= 3 files；M = 4-10 files 或多階段 docs；L > 10 files、跨模組或長 artifacts
+
+Routing matrix：
+
+| 條件 | 預設 agent |
+|---|---|
+| scope 不明、角色衝突、decision、驗收、最後整合 | Claude Code |
+| risk <= 2 且 context cost = S 的極小變更 | Claude Code 可直接處理 |
+| research、spec comparison、外部資料、Tavily-assisted research | Gemini CLI |
+| Memory Bank Curator draft | Gemini CLI |
+| 已規劃的實作、測試補強、跨檔 workflow docs | Codex CLI |
+| risk >= 3 或 context cost >= M | Codex CLI |
+
+若 routing 判斷與既有架構衝突，Claude 必須建立 decision artifact 或在 plan 中記錄覆寫理由。
+
+### 2.8 兩層架構（PDCA × TAO/ReAct）
+
+本框架顯式採兩層治理：以 **PDCA（Plan-Do-Check-Act）** 為「專案管理層」之巨觀循環骨幹，以 **TAO（Thought-Action-Observation）/ ReAct** 為「代理人執行層」之微觀循環骨幹。兩層粒度不同（PDCA 跨任務、TAO 單步），互補而非競合。
+
+**管理層 PDCA 對 §4 標準流程之映射**：
+
+| PDCA 階段 | Workflow 階段 | 主要 artifact | Gate |
+|---|---|---|---|
+| **P (Plan)** | Intake → Research → Planning | task → research → plan（含 premortem R1-R4+） | Gate A / B |
+| **D (Do)** | Coding | code（含 `Files Changed`、`Mapping To Plan`） | Gate C |
+| **C (Check)** | Verification | verify（含 Build Guarantee、Acceptance Criteria Checklist） | Gate D |
+| **A (Act)** | Closure（含 blocked 處置） | improvement（§5.9，含 `What Happened` / `Preventive Action`） + decision | Gate E |
+
+**Improvement → Plan 回灌**：Gate E（improvement applied）即 PDCA 之 Act → Plan 觸點。任何 blocked 任務恢復前須有 `Status: applied` 之 improvement artifact，其 `Preventive Action (System Level)` 條目即為下一輪 P 階段的輸入；下一個觸發相同 risk 之 task，其 plan artifact 之 `## Risks` 區段應引用 prior improvement 為 mitigation 來源。此回灌使「失敗一次、預防永久」。
+
+**執行層 TAO/ReAct**：管理層 D（Coding）階段內，subagent（implementer / tester / verifier）以 TAO 微循環運轉：Thought（讀 plan、判定下一步）→ Action（修檔、跑測試）→ Observation（讀回 stdout、讀 artifact、比對預期）。Observation 若與 Thought 預期不符，subagent 須產出 `Observation: mismatch` 並停手，回報管理層由 Claude 決定是否進入 mini-PDCA 子循環（即 blocked → improvement → re-plan 之微縮版）。TAO 之完整 schema 與必填門檻見 [docs/agentic_execution_layer.md](agentic_execution_layer.md)。
+
+**Layer Boundary Notes**：
+
+本框架顯式採兩層（PDCA × TAO/ReAct）。其上下層之內容並未消失，僅未別立分層；此為刻意精簡之選擇，避免架構膨脹至本 repo 規模難以承載之 Strategic / Operational 獨立分層 schema：
+
+- **策略層內容**（Why / 跨 task 願景）：散見於 [README.md](../README.md)、[OBSIDIAN.md](../OBSIDIAN.md)、[BOOTSTRAP_PROMPT.md](../BOOTSTRAP_PROMPT.md)、[.github/memory-bank/project-facts.md](../.github/memory-bank/project-facts.md)。task artifact 之 `## Background` 為單任務之策略層入口。
+- **作業層內容**（How / 單步如何想做觀）：即 TAO 執行層之同義語，不另設名。
+- **未來擴張路徑**：若擴至多 project portfolio，再以 standalone `roadmap.md` 延伸，不破壞兩層核心。
+
+明確不做：不引入 Strategic / Operational 獨立 artifact 或 schema；不為策略層、作業層另立階段或 gate。
+
+**治理視角清單（Governance Lenses，TASK-1001 顯式化）**
+
+兩層結構（PDCA × TAO）為唯一**結構分層**；下表所列之治理視角為觀察兩層之不同切面，**不另立分層、不另建 schema、不另設階段**。每視角各管一事：
+
+| 視角 | 所管問題 | 對應現有機制 | 文件落點 |
+|---|---|---|---|
+| **Boundary Objects**（Star & Griesemer 1989） | 跨 agent 語義一致 | artifact_schema 嚴格欄位 | [docs/artifact_schema.md §1.0](artifact_schema.md) |
+| **RACI**（責任邊界） | 誰可寫、誰可讀 | subagent_roles §1.3 + §2 + single-write rule | [docs/subagent_roles.md §1.3 / §2](subagent_roles.md) |
+| **PDCA**（階段對錯） | 跨任務生命週期 | TASK-1000 兩層架構 + improvement artifact | 本章 §2.8、[docs/artifact_schema.md §5.9](artifact_schema.md) |
+| **TAO/ReAct**（單步推理） | 任務內 subagent 之想 / 做 / 觀 | TASK-1000 執行層 + agentic_execution_layer.md | [docs/agentic_execution_layer.md](agentic_execution_layer.md) |
+| **Double-Loop Learning**（Argyris 1977） | 失敗後改規則（非僅改 code） | improvement artifact §5.9 之 Why Not Prevented + System-Level Preventive Action | [docs/artifact_schema.md §5.9](artifact_schema.md) |
+| **SECI**（Nonaka 1994） | 碎片經驗 → 系統指引 | Memory Bank Curator + Architecture Synthesizer（每 N=10 任務觸發） | [GEMINI.md](../GEMINI.md)、[`.github/prompts/remember-capture.prompt.md`](../.github/prompts/remember-capture.prompt.md) |
+
+**明確拒絕：OODA**
+
+OODA（Boyd, Observe-Orient-Decide-Act）與 TAO/ReAct（Yao 2022, Thought-Action-Observation）幾乎同構：
+
+| OODA | TAO/ReAct | 對應 |
+|---|---|---|
+| Observe | Observation | 同 |
+| Orient + Decide | Thought Log + Next-Step Decision | 合於 TAO 之 Thought |
+| Act | Action Step | 同 |
+
+二者並存將造成 schema 重複、辭彙負擔、與 ReAct 之 LLM agent 文獻主流脫鉤。本框架**已採 TAO/ReAct，明確不採 OODA**；任何後續 task 不得引此決策為 routing override 範本，亦不得試圖以 OODA 取代 TAO（兩者不可並存於本框架）。
+
 ## 3. 角色分工
 
 ### 3.1 Claude Code
@@ -107,6 +184,7 @@ Claude Code 是主控代理，負責：
 - 建立或更新 plan artifact
 - 建立或更新 status artifact
 - 委派 Gemini CLI 與 Codex CLI
+- 在 closure 階段委派 Gemini 產生 Memory Bank Curator draft，並驗收後續 memory-bank 寫入
 - 驗收 code artifact、test artifact、verify artifact
 - 記錄 decision log
 - 輸出風險、阻塞與下一步
@@ -120,13 +198,15 @@ Claude Code 不得：
 
 ### 3.2 Gemini CLI
 
-Gemini CLI 是研究代理，負責：
+Gemini CLI 是研究代理與 read-only memory curator，負責：
 
 - 查詢官方文件
 - 比對版本差異
 - 蒐集規格與限制
 - 分析錯誤背景
 - 產出 research artifact
+- 在被授權時使用本機 Tavily CLI 輔助 research，產出 `## Tavily Cache` / `## Source Cache` draft
+- 在 Memory Bank Curator 模式下，產出 `Remember Capture` draft
 
 Gemini CLI 不得：
 
@@ -134,6 +214,8 @@ Gemini CLI 不得：
 - 自行決定需求範圍
 - 取代 plan artifact
 - 在沒有 task artifact 的情況下自由研究
+- 直接修改 `.github/memory-bank/` 或宣告最終寫入決策
+- 在 Tavily CLI 不可用時捏造來源或把未驗證內容放入 Confirmed Facts
 
 ### 3.3 Codex CLI
 
@@ -143,6 +225,7 @@ Codex CLI 是實作代理，負責：
 - 補齊或調整測試
 - 產出 code artifact
 - 視需要由 subagents 進行測試、驗證、review
+- 依 task scale 選擇 model / reasoning effort，並在 code artifact 記錄 `Execution Profile` 與 `Subagent Plan`
 
 Codex CLI 不得：
 
@@ -185,9 +268,10 @@ Codex CLI 不得：
 
 1. 只有在 plan artifact 狀態為 ready 或 approved 時，才可分派 Codex CLI。
 2. 派發 subagent 前，可執行 `python artifacts/scripts/discover_templates.py --agent "Codex CLI" --stage coding` 查詢當前階段可用的 templates。
-3. Codex CLI 根據 plan artifact 實作。
-4. 產出 code artifact。
-5. 若需測試與驗證，可由 subagents 依序或平行產出 test / review / verify 相關 artifacts。
+3. Claude dispatch 必須包含 task type、risk score、context cost 與 model/effort policy。
+4. Codex CLI 根據 plan artifact 實作。
+5. 產出 code artifact，包含 `Execution Profile` 與 `Subagent Plan`。
+6. 若需測試與驗證，可由 subagents 依序或平行產出 test / review / verify 相關 artifacts。
 
 ### Stage 5. Verification
 
@@ -206,8 +290,10 @@ Codex CLI 不得：
    - 新增或更新 `artifacts/improvement/TASK-XXX.improvement.md`
    - 聚焦實際流程、冗餘步驟、易錯點、流程落差、template / prompt / guard 修正候選、以及下次預設
    - 若該任務曾經 `blocked`，仍須保留 Gate E / PDCA 所需欄位
-4. 更新 `artifacts/improvement/PROCESS_LEDGER.md`，每個 task 只寫一行摘要，作為冷啟動入口。
-5. 明確標記：
+4. 若有長期可重用 lesson，Claude 可派 Gemini 以 Memory Bank Curator 模式產生 `Remember Capture` draft；Gemini 只做 read-only 分類、查重與來源驗證。
+5. 若 draft 需要寫入 `.github/memory-bank/`，由 Claude/Codex 在明確 write scope 下修改，並由 Claude 最終驗收。
+6. 更新 `artifacts/improvement/PROCESS_LEDGER.md`，每個 task 只寫一行摘要，作為冷啟動入口。
+7. 明確標記：
    - 已完成
    - 未完成
    - 風險

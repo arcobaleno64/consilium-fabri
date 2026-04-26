@@ -14,3 +14,4 @@ exclude_lines =
     parser = argparse
     args = parser\.parse
     return parser\.parse
+    return run_prompt_case\(

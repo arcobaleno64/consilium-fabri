@@ -11104,3 +11104,1173 @@ class TestRrtsGaps:
         monkeypatch.setattr(P, "exists", fake_exists)
         result = rrts.blocked_sample_source()
         assert result == "TASK-901"
+
+
+# ==========================================================================
+# Coverage catchup tests (TASK-984 / TASK-985 closure follow-on)
+# Target residual missing statements across migrate_artifact_schema.py,
+# workflow_constants.py, guard_status_validator.py, legacy_verify_corpus.py,
+# guard_contract_validator.py, build_decision_registry.py.
+# ==========================================================================
+
+
+import subprocess as _subprocess
+
+
+class TestMigrateArtifactSchemaCoverageCatchup:
+    def test_first_non_empty_returns_empty_when_all_blank(self):
+        assert mas.first_non_empty("", "   ", "") == ""
+
+    def test_merge_named_lines_dedupes_repeats(self):
+        result = mas.merge_named_lines("foo", ["foo", "bar", "bar", ""])
+        assert result.count("foo") == 1
+        assert result.count("bar") == 1
+        assert "\n" in result
+
+    def test_merge_named_lines_empty_returns_none(self):
+        assert mas.merge_named_lines("", []) == "None"
+
+    def test_is_path_like_reference_rejects_whitespace(self):
+        assert mas.is_path_like_reference("has space") is False
+
+    def test_is_path_like_reference_rejects_empty(self):
+        assert mas.is_path_like_reference("") is False
+
+    def test_is_path_like_reference_accepts_prefix(self):
+        assert mas.is_path_like_reference("artifacts/tasks/X.task.md") is True
+
+    def test_load_git_head_text_returns_stdout_on_success(self, monkeypatch, tmp_path):
+        class _FakeResult:
+            stdout = "HEAD body"
+        monkeypatch.setattr(mas.subprocess, "run", lambda *a, **kw: _FakeResult())
+        assert mas.load_git_head_text(tmp_path, "any.md") == "HEAD body"
+
+    def test_load_git_head_text_returns_empty_on_error(self, monkeypatch, tmp_path):
+        def _raise(*args, **kwargs):
+            raise _subprocess.CalledProcessError(1, ["git"])
+        monkeypatch.setattr(mas.subprocess, "run", _raise)
+        assert mas.load_git_head_text(tmp_path, "missing.md") == ""
+
+    def test_detect_docs_spec_task_true_when_signals_accumulate(self):
+        text = "readme\nworkflow file\ndocs/x\nschema\nartifact"
+        assert mas.detect_docs_spec_task(text) is True
+
+    def test_detect_docs_spec_task_false_when_signals_thin(self):
+        assert mas.detect_docs_spec_task("unrelated topic") is False
+
+    def test_migrate_task_text_keeps_generic_when_docs_spec_signals(self):
+        text = (
+            "# Task: TASK-X\n"
+            "## Metadata\n"
+            "- Task ID: TASK-X\n"
+            "## Objective\n"
+            "Update README workflow file docs/ schema runbook documentation\n"
+        )
+        result = mas.migrate_task_text(text, assurance_level="poc", project_adapter=mas.DEFAULT_PROJECT_ADAPTER)
+        assert "## Project Adapter" in result
+        assert mas.DEFAULT_PROJECT_ADAPTER in result
+
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("Exception type: allow-scope-drift", ("scope-drift-waiver", False)),
+            ("we decided to defer", ("defer", False)),
+            ("propose to reject", ("reject", False)),
+            ("there is a conflict", ("conflict-resolution", False)),
+            ("plain risk", ("risk-acceptance", True)),
+        ],
+    )
+    def test_infer_decision_class_branches(self, text, expected):
+        assert mas.infer_decision_class(text) == expected
+
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("Gate E fired during PDCA", "Gate_E"),
+            ("scope drift noticed", "Gate_B"),
+            ("allow-scope-drift flagged", "Gate_B"),
+            ("missing research context", "Gate_A"),
+            ("build failure observed", "Gate_C"),
+            (".code.md missing", "Gate_C"),
+            ("just verification gap", "Gate_D"),
+        ],
+    )
+    def test_infer_affected_gate_branches(self, text, expected):
+        assert mas.infer_affected_gate(text) == expected
+
+    def test_extract_heading_checklist_items_skips_nonheading_blocks(self):
+        section = "just plain text\nwith no heading"
+        assert mas.extract_heading_checklist_items(section) == []
+
+    def test_extract_heading_checklist_items_skips_blank_block(self):
+        assert mas.extract_heading_checklist_items("\n\n   \n\n") == []
+
+    @pytest.mark.parametrize(
+        "raw_result,expected",
+        [
+            ("deferred", "deferred"),
+            ("unverifiable", "unverifiable"),
+            ("bogus-value", "unverified"),
+        ],
+    )
+    def test_extract_heading_checklist_result_mapping(self, raw_result, expected):
+        section = (
+            "### AC-1: foo\n"
+            f"- **result**: {raw_result}\n"
+            "- **evidence**: ev\n"
+        )
+        items = mas.extract_heading_checklist_items(section)
+        assert items, f"expected items, got none for {raw_result}"
+        assert items[0]["result"] == expected
+        if expected != "verified":
+            assert items[0]["reason_code"] == "MANUAL_CHECK_DEFERRED"
+
+    def test_assess_verify_root_tracked_heading_items_path(self):
+        heading_items = [
+            {
+                "criterion": "C1",
+                "method": "M",
+                "evidence": "E",
+                "result": "verified",
+            }
+        ]
+        body, assessment = mas.assess_verify_migration(
+            legacy_checklist="",
+            evidence_lines=[],
+            existing_items=[],
+            heading_items=heading_items,
+            checkbox_items=[],
+            input_mode=mas.ROOT_TRACKED_MODE,
+        )
+        assert assessment.strategy == "heading-block-heuristic"
+        assert assessment.manual_review_required is False
+        assert "C1" in body
+
+    def test_assess_verify_root_tracked_manual_rewrite_fallback(self):
+        body, assessment = mas.assess_verify_migration(
+            legacy_checklist="",
+            evidence_lines=[],
+            existing_items=[],
+            heading_items=[],
+            checkbox_items=[],
+            input_mode=mas.ROOT_TRACKED_MODE,
+        )
+        assert assessment.strategy == "manual-rewrite-fallback"
+        assert assessment.manual_review_required is True
+        assert "requires manual rewrite" in body
+
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("- Trigger Type: blocked", "gate-e"),
+            ("- Trigger Type: failure", "retrospective"),
+            ("no trigger here", "retrospective"),
+        ],
+    )
+    def test_improvement_profile_for_text(self, text, expected):
+        assert mas.improvement_profile_for_text(text) == expected
+
+    def test_migrate_improvement_text_adds_profile_when_missing(self):
+        text = (
+            "# Improvement: TASK-X\n"
+            "## Metadata\n"
+            "- Task ID: TASK-X\n"
+            "- Source Task: TASK-X\n"
+            "- Trigger Type: failure\n"
+            "## 1. What Happened\n"
+            "event\n"
+        )
+        result = mas.migrate_improvement_text(text)
+        assert "Improvement Profile:" in result
+
+    def test_migrate_verify_text_reloads_from_git_head(self, monkeypatch, tmp_path):
+        (tmp_path / "artifacts" / "verify").mkdir(parents=True)
+        head_text = (
+            "# Verification: TASK-100\n"
+            "## Metadata\n"
+            "- Task ID: TASK-100\n"
+            "- Artifact Type: verify\n"
+            "- Owner: Claude\n"
+            "- Status: pass\n"
+            "- Last Updated: 2026-01-15T10:00:00+08:00\n"
+            "## Acceptance Criteria Checklist\n"
+            "- **criterion**: c\n"
+            "- **method**: m\n"
+            "- **evidence**: e\n"
+            "- **result**: verified\n"
+            "## Evidence\n"
+            "- `artifacts/tasks/TASK-100.task.md`\n"
+            "## Build Guarantee\n"
+            "None (no .csproj modified)\n"
+            "## Pass Fail Result\n"
+            "pass\n"
+        )
+
+        class _FakeResult:
+            def __init__(self, stdout):
+                self.stdout = stdout
+
+        monkeypatch.setattr(mas.subprocess, "run", lambda *a, **kw: _FakeResult(head_text))
+        current = (
+            "# Verification: TASK-100\n"
+            "## Metadata\n"
+            "- Task ID: TASK-100\n"
+            "- Artifact Type: verify\n"
+            "- Owner: Claude\n"
+            "- Status: pass\n"
+            "- Last Updated: 2026-01-15T10:00:00+08:00\n"
+            "## Acceptance Criteria Checklist\n"
+            "Migrated from legacy verify artifact.\n"
+            "## Build Guarantee\n"
+            "None (no .csproj modified)\n"
+            "## Pass Fail Result\n"
+            "pass\n"
+        )
+        migrated, assessment = mas.migrate_verify_text(
+            tmp_path,
+            "TASK-100",
+            state="done",
+            assurance_level="poc",
+            project_adapter="generic",
+            text=current,
+            input_mode=mas.ROOT_TRACKED_MODE,
+        )
+        assert "- **criterion**: c" in migrated
+
+    def test_migrate_verify_fills_deferred_items_from_debts(self, tmp_path):
+        verify_text = (
+            "# Verification: TASK-200\n"
+            "## Metadata\n"
+            "- Task ID: TASK-200\n"
+            "- Artifact Type: verify\n"
+            "- Owner: Claude\n"
+            "- Status: pass\n"
+            "- Last Updated: 2026-01-15T10:00:00+08:00\n"
+            "## Verification Summary\n"
+            "Summary\n"
+            "## Acceptance Criteria Checklist\n"
+            "- **criterion**: C\n"
+            "- **method**: M\n"
+            "- **evidence**: E\n"
+            "- **result**: deferred\n"
+            "- **reason_code**: MANUAL_CHECK_DEFERRED\n"
+            "## Evidence\n"
+            "None\n"
+            "## Build Guarantee\n"
+            "None (no .csproj modified)\n"
+            "## Pass Fail Result\n"
+            "pass\n"
+        )
+        migrated, _ = mas.migrate_verify_text(
+            tmp_path,
+            "TASK-200",
+            state="done",
+            assurance_level="poc",
+            project_adapter="generic",
+            text=verify_text,
+            input_mode=mas.ROOT_TRACKED_MODE,
+        )
+        deferred_block = gsv.extract_section(migrated, "Deferred Items")
+        assert "deferred: C" in deferred_block
+
+    def test_migrate_status_payload_preserves_blocker_reason_and_waiver(self, tmp_path):
+        (tmp_path / "artifacts" / "tasks").mkdir(parents=True)
+        (tmp_path / "artifacts" / "status").mkdir(parents=True)
+        status = {
+            "state": "blocked",
+            "current_owner": "Claude",
+            "last_updated": "2026-01-15T10:00:00+08:00",
+            "blockers": ["external dependency"],
+            "decision_waivers": [
+                {
+                    "gate": "Gate_B",
+                    "reason": "waiting",
+                    "approver": "human",
+                    "expires": "2026-12-31T23:59:59+08:00",
+                }
+            ],
+        }
+        migrated = mas.migrate_status_payload(tmp_path, "TASK-300", status)
+        assert migrated["blocked_reason"] == "external dependency"
+        assert "decision_waivers" in migrated
+
+    def test_migrate_repository_covers_improvement_directory(self, tmp_path):
+        for sub in ("tasks", "decisions", "improvement", "verify", "status"):
+            (tmp_path / "artifacts" / sub).mkdir(parents=True)
+        (tmp_path / "artifacts" / "improvement" / "TASK-400.improvement.md").write_text(
+            (
+                "# Improvement: TASK-400\n"
+                "## Metadata\n"
+                "- Task ID: TASK-400\n"
+                "- Source Task: TASK-400\n"
+                "- Trigger Type: failure\n"
+                "- Last Updated: 2026-01-15T10:00:00+08:00\n"
+                "## 1. What Happened\n"
+                "none\n"
+            ),
+            encoding="utf-8",
+        )
+        report = mas.migrate_repository(tmp_path, apply=True)
+        imp_rows = [c for c in report.changes if c.relative_path.endswith("TASK-400.improvement.md")]
+        assert imp_rows, "expected improvement row in migration report"
+        imp_text = (tmp_path / "artifacts" / "improvement" / "TASK-400.improvement.md").read_text(encoding="utf-8")
+        assert "Improvement Profile:" in imp_text
+
+    def test_print_report_emits_notes(self, capsys):
+        report = mas.MigrationReport(apply=False)
+        change = mas.MigrationChange(
+            relative_path="artifacts/verify/TASK-X.verify.md",
+            changed=True,
+            detail="demo",
+            notes=["strategy=manual", "confidence=low"],
+        )
+        report.changes.append(change)
+        mas.print_report(report)
+        captured = capsys.readouterr().out
+        assert "[CHANGED] artifacts/verify/TASK-X.verify.md" in captured
+        assert "[NOTE] strategy=manual" in captured
+
+
+class TestWorkflowConstantsCoverageCatchup:
+    def test_resolve_adapter_chain_unknown_rule(self):
+        with pytest.raises(ValueError, match="Unknown project adapter rule"):
+            wc._resolve_adapter_chain("missing-rule")
+
+    def test_resolve_adapter_chain_detects_cycle(self, monkeypatch):
+        rules = {
+            "cycle-a": {**wc.PROJECT_ADAPTER_RULES["generic"], "inherits": "cycle-b"},
+            "cycle-b": {**wc.PROJECT_ADAPTER_RULES["generic"], "inherits": "cycle-a"},
+        }
+        monkeypatch.setattr(wc, "PROJECT_ADAPTER_RULES", rules)
+        with pytest.raises(ValueError, match="cycle"):
+            wc._resolve_adapter_chain("cycle-a")
+
+    def test_resolve_verification_policy_missing_profile_raises(self, monkeypatch):
+        profiles = {k: v for k, v in wc.ASSURANCE_PROFILES.items() if k != "poc"}
+        monkeypatch.setattr(wc, "ASSURANCE_PROFILES", profiles)
+        with pytest.raises(ValueError, match="Missing assurance profile: poc"):
+            wc.resolve_verification_policy("poc", "generic")
+
+    def test_resolve_verification_policy_missing_fields_raises(self, monkeypatch):
+        broken = {
+            **wc.ASSURANCE_PROFILES,
+            "poc": {
+                "required_artifacts_by_state": wc.ASSURANCE_PROFILES["poc"]["required_artifacts_by_state"],
+            },
+        }
+        monkeypatch.setattr(wc, "ASSURANCE_PROFILES", broken)
+        with pytest.raises(ValueError, match="missing fields"):
+            wc.resolve_verification_policy("poc", "generic")
+
+    def test_resolve_verification_policy_discards_artifact_via_override(self, monkeypatch):
+        rules = {
+            "generic": wc.PROJECT_ADAPTER_RULES["generic"],
+            "drop-plan": {
+                "inherits": "generic",
+                "artifact_overrides_by_state": {"planned": {"plan": False}},
+                "verify_section_overrides": set(),
+                "verify_field_overrides": set(),
+                "allowed_reason_codes": set(),
+                "forbidden_reason_codes": set(),
+                "requires_build_guarantee": False,
+            },
+        }
+        monkeypatch.setattr(wc, "PROJECT_ADAPTER_RULES", rules)
+        monkeypatch.setattr(wc, "PROJECT_ADAPTERS", tuple(rules.keys()))
+        policy = wc.resolve_verification_policy("poc", "drop-plan")
+        assert "plan" not in policy["required_artifacts_by_state"]["planned"]
+
+    def test_derive_verification_readiness_production_ready(self):
+        assert (
+            wc.derive_verification_readiness(
+                "production", "generic", state="done", open_verification_debts=[]
+            )
+            == "production-ready"
+        )
+
+    def test_validate_workflow_rule_tables_clean(self):
+        assert wc.validate_workflow_rule_tables() == []
+
+    def test_validate_workflow_rule_tables_missing_profile(self, monkeypatch):
+        profiles = {k: v for k, v in wc.ASSURANCE_PROFILES.items() if k != "mvp"}
+        monkeypatch.setattr(wc, "ASSURANCE_PROFILES", profiles)
+        errors = wc.validate_workflow_rule_tables()
+        assert any("Missing assurance profile" in e for e in errors)
+
+    def test_validate_workflow_rule_tables_missing_fields(self, monkeypatch):
+        broken = {
+            k: ({**v, "required_artifacts_by_state": v.get("required_artifacts_by_state", {})} if k != "poc" else {"required_artifacts_by_state": v["required_artifacts_by_state"]})
+            for k, v in wc.ASSURANCE_PROFILES.items()
+        }
+        monkeypatch.setattr(wc, "ASSURANCE_PROFILES", broken)
+        errors = wc.validate_workflow_rule_tables()
+        assert any("missing fields" in e for e in errors)
+
+    def test_validate_workflow_rule_tables_bad_states(self, monkeypatch):
+        bad_poc = {**wc.ASSURANCE_PROFILES["poc"]}
+        bad_poc["required_artifacts_by_state"] = {"drafted": {"task"}}
+        profiles = {**wc.ASSURANCE_PROFILES, "poc": bad_poc}
+        monkeypatch.setattr(wc, "ASSURANCE_PROFILES", profiles)
+        errors = wc.validate_workflow_rule_tables()
+        assert any("must define required_artifacts_by_state" in e for e in errors)
+
+    def test_validate_workflow_rule_tables_unknown_artifact(self, monkeypatch):
+        bad_poc = {**wc.ASSURANCE_PROFILES["poc"]}
+        states = {s: set(arts) for s, arts in bad_poc["required_artifacts_by_state"].items()}
+        states["drafted"] = states["drafted"] | {"bogus_artifact"}
+        bad_poc["required_artifacts_by_state"] = states
+        profiles = {**wc.ASSURANCE_PROFILES, "poc": bad_poc}
+        monkeypatch.setattr(wc, "ASSURANCE_PROFILES", profiles)
+        errors = wc.validate_workflow_rule_tables()
+        assert any("unknown artifacts" in e for e in errors)
+
+    def test_validate_workflow_rule_tables_unknown_verify_field(self, monkeypatch):
+        bad_poc = {**wc.ASSURANCE_PROFILES["poc"]}
+        bad_poc["verify_required_fields"] = set(bad_poc["verify_required_fields"]) | {"bogus_field"}
+        profiles = {**wc.ASSURANCE_PROFILES, "poc": bad_poc}
+        monkeypatch.setattr(wc, "ASSURANCE_PROFILES", profiles)
+        errors = wc.validate_workflow_rule_tables()
+        assert any("unknown fields" in e for e in errors)
+
+    def test_validate_workflow_rule_tables_unknown_status_debt(self, monkeypatch):
+        bad_poc = {**wc.ASSURANCE_PROFILES["poc"]}
+        bad_poc["status_debt_results"] = set(bad_poc["status_debt_results"]) | {"bogus"}
+        profiles = {**wc.ASSURANCE_PROFILES, "poc": bad_poc}
+        monkeypatch.setattr(wc, "ASSURANCE_PROFILES", profiles)
+        errors = wc.validate_workflow_rule_tables()
+        assert any("unknown results" in e for e in errors)
+
+    def test_validate_workflow_rule_tables_bad_readiness(self, monkeypatch):
+        bad_poc = {**wc.ASSURANCE_PROFILES["poc"]}
+        bad_poc["default_verification_readiness"] = "nope"
+        profiles = {**wc.ASSURANCE_PROFILES, "poc": bad_poc}
+        monkeypatch.setattr(wc, "ASSURANCE_PROFILES", profiles)
+        errors = wc.validate_workflow_rule_tables()
+        assert any("default_verification_readiness must be one of" in e for e in errors)
+
+    def test_validate_workflow_rule_tables_missing_adapter_rule(self, monkeypatch):
+        adapters = tuple(list(wc.PROJECT_ADAPTERS) + ["missing-rule"])
+        monkeypatch.setattr(wc, "PROJECT_ADAPTERS", adapters)
+        errors = wc.validate_workflow_rule_tables()
+        assert any("Missing project adapter rule" in e for e in errors)
+
+    def test_validate_workflow_rule_tables_unknown_inherits(self, monkeypatch):
+        rules = {**wc.PROJECT_ADAPTER_RULES}
+        rules["orphan"] = {
+            **wc.PROJECT_ADAPTER_RULES["generic"],
+            "inherits": "does-not-exist",
+        }
+        monkeypatch.setattr(wc, "PROJECT_ADAPTER_RULES", rules)
+        monkeypatch.setattr(wc, "PROJECT_ADAPTERS", tuple(rules.keys()))
+        errors = wc.validate_workflow_rule_tables()
+        assert any("inherits unknown adapter" in e for e in errors)
+
+    def test_validate_workflow_rule_tables_unknown_override_state(self, monkeypatch):
+        rules = {**wc.PROJECT_ADAPTER_RULES}
+        rules["stateful"] = {
+            **wc.PROJECT_ADAPTER_RULES["generic"],
+            "artifact_overrides_by_state": {"no-such-state": {"task": True}},
+        }
+        monkeypatch.setattr(wc, "PROJECT_ADAPTER_RULES", rules)
+        monkeypatch.setattr(wc, "PROJECT_ADAPTERS", tuple(rules.keys()))
+        errors = wc.validate_workflow_rule_tables()
+        assert any("unknown state" in e for e in errors)
+
+    def test_validate_workflow_rule_tables_unknown_override_artifacts(self, monkeypatch):
+        rules = {**wc.PROJECT_ADAPTER_RULES}
+        rules["art-bad"] = {
+            **wc.PROJECT_ADAPTER_RULES["generic"],
+            "artifact_overrides_by_state": {"drafted": {"bogus_artifact": True}},
+        }
+        monkeypatch.setattr(wc, "PROJECT_ADAPTER_RULES", rules)
+        monkeypatch.setattr(wc, "PROJECT_ADAPTERS", tuple(rules.keys()))
+        errors = wc.validate_workflow_rule_tables()
+        assert any("artifact_overrides_by_state uses unknown artifacts" in e for e in errors)
+
+    def test_validate_workflow_rule_tables_unknown_verify_field_override(self, monkeypatch):
+        rules = {**wc.PROJECT_ADAPTER_RULES}
+        rules["fld-bad"] = {
+            **wc.PROJECT_ADAPTER_RULES["generic"],
+            "verify_field_overrides": {"bogus_field"},
+        }
+        monkeypatch.setattr(wc, "PROJECT_ADAPTER_RULES", rules)
+        monkeypatch.setattr(wc, "PROJECT_ADAPTERS", tuple(rules.keys()))
+        errors = wc.validate_workflow_rule_tables()
+        assert any("verify_field_overrides uses unknown fields" in e for e in errors)
+
+    def test_validate_workflow_rule_tables_unknown_reason_codes(self, monkeypatch):
+        rules = {**wc.PROJECT_ADAPTER_RULES}
+        rules["rc-bad"] = {
+            **wc.PROJECT_ADAPTER_RULES["generic"],
+            "allowed_reason_codes": {"BOGUS_CODE"},
+        }
+        monkeypatch.setattr(wc, "PROJECT_ADAPTER_RULES", rules)
+        monkeypatch.setattr(wc, "PROJECT_ADAPTERS", tuple(rules.keys()))
+        errors = wc.validate_workflow_rule_tables()
+        assert any("unknown reason codes" in e for e in errors)
+
+    def test_validate_workflow_rule_tables_resolve_failure(self, monkeypatch):
+        rules = {**wc.PROJECT_ADAPTER_RULES}
+        rules["loop-a"] = {
+            **wc.PROJECT_ADAPTER_RULES["generic"],
+            "inherits": "loop-b",
+        }
+        rules["loop-b"] = {
+            **wc.PROJECT_ADAPTER_RULES["generic"],
+            "inherits": "loop-a",
+        }
+        monkeypatch.setattr(wc, "PROJECT_ADAPTER_RULES", rules)
+        monkeypatch.setattr(
+            wc, "PROJECT_ADAPTERS", tuple(list(wc.PROJECT_ADAPTERS) + ["loop-a", "loop-b"])
+        )
+        errors = wc.validate_workflow_rule_tables()
+        assert any("cycle" in e.lower() for e in errors)
+
+    def test_validate_workflow_rule_tables_resolved_policy_missing_key(self, monkeypatch):
+        original = wc.resolve_verification_policy
+
+        def strip_key(*args, **kwargs):
+            policy = original(*args, **kwargs)
+            policy.pop("status_debt_results", None)
+            return policy
+
+        monkeypatch.setattr(wc, "resolve_verification_policy", strip_key)
+        errors = wc.validate_workflow_rule_tables()
+        assert any("missing contract key" in e for e in errors)
+
+    def test_validate_workflow_rule_tables_resolved_policy_bad_reason_codes(self, monkeypatch):
+        original = wc.resolve_verification_policy
+
+        def pollute(*args, **kwargs):
+            policy = original(*args, **kwargs)
+            policy["allowed_reason_codes"] = set(policy["allowed_reason_codes"]) | {"ALIEN_CODE"}
+            return policy
+
+        monkeypatch.setattr(wc, "resolve_verification_policy", pollute)
+        errors = wc.validate_workflow_rule_tables()
+        assert any("exposes unknown reason codes" in e for e in errors)
+
+    def test_validate_workflow_rule_tables_resolved_policy_bad_results(self, monkeypatch):
+        original = wc.resolve_verification_policy
+
+        def pollute(*args, **kwargs):
+            policy = original(*args, **kwargs)
+            policy["allowed_results"] = set(policy["allowed_results"]) | {"alien_result"}
+            return policy
+
+        monkeypatch.setattr(wc, "resolve_verification_policy", pollute)
+        errors = wc.validate_workflow_rule_tables()
+        assert any("exposes unknown verification results" in e for e in errors)
+
+    def test_validate_workflow_rule_tables_resolved_policy_bad_readiness(self, monkeypatch):
+        original = wc.resolve_verification_policy
+
+        def pollute(*args, **kwargs):
+            policy = original(*args, **kwargs)
+            policy["default_verification_readiness"] = "invalid-readiness"
+            return policy
+
+        monkeypatch.setattr(wc, "resolve_verification_policy", pollute)
+        errors = wc.validate_workflow_rule_tables()
+        assert any("invalid readiness" in e for e in errors)
+
+    def test_validate_workflow_rule_tables_resolved_policy_bad_states(self, monkeypatch):
+        original = wc.resolve_verification_policy
+
+        def pollute(*args, **kwargs):
+            policy = original(*args, **kwargs)
+            policy["required_artifacts_by_state"] = {"drafted": set()}
+            return policy
+
+        monkeypatch.setattr(wc, "resolve_verification_policy", pollute)
+        errors = wc.validate_workflow_rule_tables()
+        assert any("must cover all workflow states" in e for e in errors)
+
+
+class TestGuardStatusValidatorCoverageCatchup:
+    def test_extract_single_line_section_empty_body(self):
+        # Section with only whitespace content must yield empty string via line 413.
+        text = "# T\n## Foo\n   \n \n"
+        assert gsv.extract_single_line_section(text, "Foo") == ""
+
+    def test_resolve_task_policy_uses_explicit_args(self):
+        policy = gsv.resolve_task_policy(
+            task_text="",
+            status={},
+            assurance_level="mvp",
+            project_adapter="web-app",
+        )
+        assert policy["assurance_level"] == "mvp"
+        assert policy["project_adapter"] == "web-app"
+
+    def test_validate_status_schema_invalid_assurance_level(self):
+        result = gsv.validate_status_schema(
+            {
+                "task_id": "TASK-X",
+                "state": "drafted",
+                "current_owner": "Claude",
+                "next_agent": "Claude",
+                "required_artifacts": [],
+                "available_artifacts": [],
+                "missing_artifacts": [],
+                "blocked_reason": "",
+                "last_updated": "2026-01-15T10:00:00+08:00",
+                "assurance_level": "invalid",
+                "project_adapter": "generic",
+                "open_verification_debts": [],
+                "verification_readiness": "poc",
+            },
+            "TASK-X",
+        )
+        assert any("assurance_level" in e for e in result.errors)
+
+    def test_validate_status_schema_invalid_project_adapter(self):
+        result = gsv.validate_status_schema(
+            {
+                "task_id": "TASK-X",
+                "state": "drafted",
+                "current_owner": "Claude",
+                "next_agent": "Claude",
+                "required_artifacts": [],
+                "available_artifacts": [],
+                "missing_artifacts": [],
+                "blocked_reason": "",
+                "last_updated": "2026-01-15T10:00:00+08:00",
+                "assurance_level": "poc",
+                "project_adapter": "invalid-adapter",
+                "open_verification_debts": [],
+                "verification_readiness": "poc",
+            },
+            "TASK-X",
+        )
+        assert any("project_adapter" in e for e in result.errors)
+
+    def test_validate_status_schema_open_debts_not_list(self):
+        result = gsv.validate_status_schema(
+            {
+                "task_id": "TASK-X",
+                "state": "drafted",
+                "current_owner": "Claude",
+                "next_agent": "Claude",
+                "required_artifacts": [],
+                "available_artifacts": [],
+                "missing_artifacts": [],
+                "blocked_reason": "",
+                "last_updated": "2026-01-15T10:00:00+08:00",
+                "assurance_level": "poc",
+                "project_adapter": "generic",
+                "open_verification_debts": "not-a-list",
+                "verification_readiness": "poc",
+            },
+            "TASK-X",
+        )
+        assert any("open_verification_debts" in e for e in result.errors)
+
+    def test_validate_improvement_artifact_invalid_profile(self, tmp_path):
+        path = tmp_path / "TASK-X.improvement.md"
+        text = (
+            "# Improvement: TASK-X\n"
+            "## Metadata\n"
+            "- Task ID: TASK-X\n"
+            "- Source Task: TASK-X\n"
+            "- Trigger Type: failure\n"
+            "- Improvement Profile: bogus\n"
+            "## 5. Preventive Action (System Level)\n"
+            "action\n"
+            "## 6. Validation\n"
+            "v\n"
+            "## 8. Final Rule\n"
+            "r\n"
+            "## 9. Status\n"
+            "done\n"
+        )
+        path.write_text(text, encoding="utf-8")
+        result = gsv.validate_improvement_artifact(text, path, "TASK-X")
+        assert any("Improvement Profile" in e for e in result.errors)
+
+    def test_validate_decision_artifact_invalid_class_and_gate(self, tmp_path):
+        path = tmp_path / "TASK-X.decision.md"
+        text = (
+            "# Decision Log: TASK-X\n"
+            "## Decision Class\n"
+            "bogus-class\n"
+            "## Affected Gate\n"
+            "Gate_X\n"
+            "## Expiry\n"
+            "2026-01-15T10:00:00\n"
+        )
+        path.write_text(text, encoding="utf-8")
+        result = gsv.validate_decision_artifact(text, path)
+        assert any("Decision Class" in e for e in result.errors)
+        assert any("Affected Gate" in e for e in result.errors)
+
+    def test_validate_decision_artifact_missing_linked_artifacts_warning(self, tmp_path):
+        path = tmp_path / "TASK-X.decision.md"
+        text = (
+            "# Decision Log: TASK-X\n"
+            "## Decision Class\n"
+            "risk-acceptance\n"
+            "## Affected Gate\n"
+            "Gate_D\n"
+        )
+        path.write_text(text, encoding="utf-8")
+        result = gsv.validate_decision_artifact(text, path)
+        assert any("Linked Artifacts" in w for w in result.warnings)
+
+    def test_validate_decision_artifact_missing_affected_gate_warning(self, tmp_path):
+        path = tmp_path / "TASK-X.decision.md"
+        text = (
+            "# Decision Log: TASK-X\n"
+            "## Decision Class\n"
+            "risk-acceptance\n"
+            "## Scope\n"
+            "Verification governance\n"
+            "## Linked Artifacts\n"
+            "- `artifacts/tasks/TASK-X.task.md`\n"
+        )
+        path.write_text(text, encoding="utf-8")
+        result = gsv.validate_decision_artifact(text, path)
+        assert any("missing ## Affected Gate" in w for w in result.warnings)
+
+    def test_parse_verify_checklist_items_empty_section(self):
+        assert gsv.parse_verify_checklist_items("") == []
+
+    def test_validate_verify_checklist_bad_result(self, tmp_path):
+        path = tmp_path / "TASK-X.verify.md"
+        text = (
+            "## Acceptance Criteria Checklist\n"
+            "- **criterion**: C\n"
+            "- **method**: M\n"
+            "- **evidence**: E\n"
+            "- **result**: bogus\n"
+        )
+        path.write_text(text, encoding="utf-8")
+        result = gsv.validate_verify_checklist_schema(text, path, "poc", "generic")
+        assert any("result must be one of" in e for e in result.errors)
+
+    def test_validate_verify_checklist_unverified_without_decision_ref(self, tmp_path):
+        path = tmp_path / "TASK-X.verify.md"
+        text = (
+            "## Acceptance Criteria Checklist\n"
+            "- **criterion**: C\n"
+            "- **method**: M\n"
+            "- **evidence**: E\n"
+            "- **result**: unverified\n"
+        )
+        path.write_text(text, encoding="utf-8")
+        result = gsv.validate_verify_checklist_schema(text, path, "mvp", "generic")
+        assert any("decision_ref or reason_code" in e for e in result.errors)
+
+    def test_validate_verify_checklist_bad_reason_code(self, tmp_path):
+        path = tmp_path / "TASK-X.verify.md"
+        text = (
+            "## Acceptance Criteria Checklist\n"
+            "- **criterion**: C\n"
+            "- **method**: M\n"
+            "- **evidence**: E\n"
+            "- **result**: verified\n"
+            "- **reason_code**: ALIEN_CODE\n"
+        )
+        path.write_text(text, encoding="utf-8")
+        result = gsv.validate_verify_checklist_schema(text, path, "poc", "generic")
+        assert any("reason_code must be one of" in e for e in result.errors)
+
+    def test_validate_verify_checklist_invalid_maturity(self, tmp_path):
+        path = tmp_path / "TASK-X.verify.md"
+        text = (
+            "## Verification Summary\n"
+            "sum\n"
+            "## Acceptance Criteria Checklist\n"
+            "- **criterion**: C\n"
+            "- **method**: M\n"
+            "- **evidence**: E\n"
+            "- **result**: verified\n"
+            "## Overall Maturity\n"
+            "bogus-maturity\n"
+            "## Deferred Items\n"
+            "None\n"
+            "## Pass Fail Result\n"
+            "pass\n"
+        )
+        path.write_text(text, encoding="utf-8")
+        result = gsv.validate_verify_checklist_schema(text, path, "poc", "generic")
+        assert any("Overall Maturity" in e for e in result.errors)
+
+    def test_validate_verify_checklist_maturity_mismatch(self, tmp_path):
+        path = tmp_path / "TASK-X.verify.md"
+        text = (
+            "## Verification Summary\n"
+            "sum\n"
+            "## Acceptance Criteria Checklist\n"
+            "- **criterion**: C\n"
+            "- **method**: M\n"
+            "- **evidence**: E\n"
+            "- **result**: verified\n"
+            "## Overall Maturity\n"
+            "mvp\n"
+            "## Deferred Items\n"
+            "None\n"
+            "## Pass Fail Result\n"
+            "pass\n"
+        )
+        path.write_text(text, encoding="utf-8")
+        result = gsv.validate_verify_checklist_schema(text, path, "poc", "generic")
+        assert any("Overall Maturity mismatch" in w for w in result.warnings)
+
+    def test_validate_markdown_artifact_task_with_invalid_profile(self, tmp_path, monkeypatch):
+        task_path = tmp_path / "TASK-X.task.md"
+        text = (
+            "# Task: TASK-X\n"
+            "## Metadata\n"
+            "- Task ID: TASK-X\n"
+            "- Artifact Type: task\n"
+            "- Owner: Claude\n"
+            "- Status: approved\n"
+            "- Last Updated: 2026-01-15T10:00:00+08:00\n"
+            "## Assurance Level\n"
+            "poc\n"
+            "## Project Adapter\n"
+            "generic\n"
+        )
+        task_path.write_text(text, encoding="utf-8")
+        monkeypatch.setattr(gsv, "resolve_assurance_level", lambda *a, **kw: "alien-level")
+        monkeypatch.setattr(gsv, "resolve_project_adapter", lambda *a, **kw: "alien-adapter")
+        result = gsv.validate_markdown_artifact(task_path, "task", "TASK-X")
+        assert any("invalid Assurance Level" in e for e in result.errors)
+        assert any("invalid Project Adapter" in e for e in result.errors)
+
+    def test_validate_markdown_artifact_plan_missing_verification_obligations(self, tmp_path):
+        (tmp_path / "artifacts" / "plans").mkdir(parents=True)
+        (tmp_path / "artifacts" / "tasks").mkdir(parents=True)
+        (tmp_path / "artifacts" / "status").mkdir(parents=True)
+        (tmp_path / "artifacts" / "tasks" / "TASK-X.task.md").write_text(
+            (
+                "# Task: TASK-X\n"
+                "## Metadata\n"
+                "- Task ID: TASK-X\n"
+                "- Artifact Type: task\n"
+                "- Owner: Claude\n"
+                "- Status: approved\n"
+                "- Last Updated: 2026-01-15T10:00:00+08:00\n"
+                "## Assurance Level\n"
+                "mvp\n"
+                "## Project Adapter\n"
+                "generic\n"
+            ),
+            encoding="utf-8",
+        )
+        (tmp_path / "artifacts" / "status" / "TASK-X.status.json").write_text(
+            json.dumps(
+                {
+                    "task_id": "TASK-X",
+                    "state": "planned",
+                    "current_owner": "Claude",
+                    "next_agent": "Claude",
+                    "required_artifacts": [],
+                    "available_artifacts": [],
+                    "missing_artifacts": [],
+                    "blocked_reason": "",
+                    "last_updated": "2026-01-15T10:00:00+08:00",
+                    "assurance_level": "mvp",
+                    "project_adapter": "generic",
+                    "open_verification_debts": [],
+                    "verification_readiness": "mvp",
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        plan_path = tmp_path / "artifacts" / "plans" / "TASK-X.plan.md"
+        plan_text = (
+            "# Plan: TASK-X\n"
+            "## Metadata\n"
+            "- Task ID: TASK-X\n"
+            "- Artifact Type: plan\n"
+            "- Owner: Claude\n"
+            "- Status: ready\n"
+            "- Last Updated: 2026-01-15T10:00:00+08:00\n"
+            "## Scope\nthing\n"
+            "## Files Likely Affected\n- foo\n"
+            "## Proposed Changes\nx\n"
+            "## Risks\nR1\n- Risk: r\n- Trigger: t\n- Detection: d\n- Mitigation: m\n- Severity: blocking\n"
+            "## Validation Strategy\n- cmd\n"
+            "## Ready For Coding\nyes\n"
+        )
+        plan_path.write_text(plan_text, encoding="utf-8")
+        result = gsv.validate_markdown_artifact(plan_path, "plan", "TASK-X")
+        assert any("Verification Obligations" in e for e in result.errors)
+
+    def test_reconcile_no_missing_fields_prints_ok(self, capsys, tmp_path):
+        artifacts_root = tmp_path / "artifacts"
+        (artifacts_root / "tasks").mkdir(parents=True)
+        (artifacts_root / "status").mkdir(parents=True)
+        (artifacts_root / "tasks" / "TASK-X.task.md").write_text(
+            (
+                "# Task: TASK-X\n"
+                "## Metadata\n"
+                "- Task ID: TASK-X\n"
+                "- Artifact Type: task\n"
+                "- Owner: Claude\n"
+                "- Status: approved\n"
+                "- Last Updated: 2026-01-15T10:00:00+08:00\n"
+                "## Assurance Level\n"
+                "poc\n"
+                "## Project Adapter\n"
+                "generic\n"
+            ),
+            encoding="utf-8",
+        )
+        status_payload = {
+            "task_id": "TASK-X",
+            "state": "drafted",
+            "current_owner": "Claude",
+            "next_agent": "Claude",
+            "required_artifacts": ["status", "task"],
+            "available_artifacts": ["status", "task"],
+            "missing_artifacts": [],
+            "blocked_reason": "",
+            "last_updated": "2026-01-15T10:00:00+08:00",
+            "assurance_level": "poc",
+            "project_adapter": "generic",
+            "open_verification_debts": [],
+            "verification_readiness": "poc",
+        }
+        status_path = artifacts_root / "status" / "TASK-X.status.json"
+        status_path.write_text(json.dumps(status_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        gsv.reconcile_status_file(artifacts_root, "TASK-X", apply=False)
+        out = capsys.readouterr().out
+        assert "[RECONCILE] No missing fields to add" in out
+
+    def test_reconcile_missing_fields_dry_run_prints_diff(self, capsys, tmp_path):
+        artifacts_root = tmp_path / "artifacts"
+        (artifacts_root / "tasks").mkdir(parents=True)
+        (artifacts_root / "status").mkdir(parents=True)
+        (artifacts_root / "tasks" / "TASK-X.task.md").write_text(
+            (
+                "# Task: TASK-X\n"
+                "## Metadata\n"
+                "- Task ID: TASK-X\n"
+                "- Artifact Type: task\n"
+                "- Owner: Claude\n"
+                "- Status: approved\n"
+                "- Last Updated: 2026-01-15T10:00:00+08:00\n"
+                "## Assurance Level\n"
+                "poc\n"
+                "## Project Adapter\n"
+                "generic\n"
+            ),
+            encoding="utf-8",
+        )
+        status_payload = {
+            "task_id": "TASK-X",
+            "state": "drafted",
+            "last_updated": "2026-01-15T10:00:00+08:00",
+            "assurance_level": "poc",
+            "project_adapter": "generic",
+        }
+        status_path = artifacts_root / "status" / "TASK-X.status.json"
+        original = json.dumps(status_payload, ensure_ascii=False, indent=2) + "\n"
+        status_path.write_text(original, encoding="utf-8")
+        gsv.reconcile_status_file(artifacts_root, "TASK-X", apply=False)
+        out = capsys.readouterr().out
+        assert "[RECONCILE] Missing status fields detected (dry-run)" in out
+        assert "[DIFF] current_owner:" in out
+        assert status_path.read_text(encoding="utf-8") == original
+
+    def test_validate_artifact_presence_debts_and_readiness_mismatch(self, tmp_path):
+        artifacts_root = tmp_path / "artifacts"
+        for sub in ("tasks", "plans", "code", "verify", "status"):
+            (artifacts_root / sub).mkdir(parents=True)
+        task_path = artifacts_root / "tasks" / "TASK-X.task.md"
+        task_path.write_text(
+            (
+                "# Task: TASK-X\n"
+                "## Metadata\n"
+                "- Task ID: TASK-X\n"
+                "- Artifact Type: task\n"
+                "- Owner: Claude\n"
+                "- Status: approved\n"
+                "- Last Updated: 2026-01-15T10:00:00+08:00\n"
+                "## Assurance Level\n"
+                "poc\n"
+                "## Project Adapter\n"
+                "generic\n"
+            ),
+            encoding="utf-8",
+        )
+        (artifacts_root / "verify" / "TASK-X.verify.md").write_text(
+            (
+                "# Verification: TASK-X\n"
+                "## Metadata\n"
+                "- Task ID: TASK-X\n"
+                "- Artifact Type: verify\n"
+                "- Owner: Claude\n"
+                "- Status: pass\n"
+                "- Last Updated: 2026-01-15T10:00:00+08:00\n"
+                "## Verification Summary\nsum\n"
+                "## Acceptance Criteria Checklist\n"
+                "- **criterion**: C\n"
+                "- **method**: M\n"
+                "- **evidence**: E\n"
+                "- **result**: deferred\n"
+                "- **reason_code**: MANUAL_CHECK_DEFERRED\n"
+                "## Overall Maturity\npoc\n"
+                "## Deferred Items\n- deferred: C\n"
+                "## Pass Fail Result\nfail\n"
+            ),
+            encoding="utf-8",
+        )
+        status_payload = {
+            "task_id": "TASK-X",
+            "state": "done",
+            "current_owner": "Claude",
+            "next_agent": "Claude",
+            "required_artifacts": ["task", "verify", "status"],
+            "available_artifacts": ["task", "verify", "status"],
+            "missing_artifacts": [],
+            "blocked_reason": "",
+            "last_updated": "2026-01-15T10:00:00+08:00",
+            "assurance_level": "poc",
+            "project_adapter": "generic",
+            "open_verification_debts": [],
+            "verification_readiness": "production-ready",
+        }
+        result = gsv.validate_artifact_presence(
+            artifacts_root, "TASK-X", "done", status_payload
+        )
+        joined = "\n".join(result.warnings)
+        assert "open_verification_debts mismatch" in joined
+        assert "verification_readiness mismatch" in joined
+
+    def test_improvement_profile_reads_declared_value(self):
+        assert gsv.improvement_profile("- Improvement Profile: gate-e") == "gate-e"
+        assert gsv.improvement_profile("- Improvement Profile: bogus\n- Trigger Type: failure") == "gate-e"
+
+
+class TestLegacyVerifyCorpusCoverageCatchup:
+    def test_load_corpus_case_missing_raises(self):
+        with pytest.raises(KeyError):
+            lvc.load_corpus_case("does-not-exist-fixture")
+
+
+class TestGuardContractValidatorCoverageCatchup:
+    def test_validate_root_artifact_strictness_surfaces_markdown_errors(self, tmp_path):
+        (tmp_path / "artifacts" / "tasks").mkdir(parents=True)
+        (tmp_path / "artifacts" / "tasks" / "TASK-Z.task.md").write_text(
+            "# Task: TASK-Z\nintentionally incomplete\n",
+            encoding="utf-8",
+        )
+        errors = gcv.validate_root_artifact_strictness(tmp_path)
+        assert any("TASK-Z.task.md" in e for e in errors)
+
+    def test_validate_root_artifact_strictness_surfaces_warnings(self, tmp_path, monkeypatch):
+        (tmp_path / "artifacts" / "decisions").mkdir(parents=True)
+        decision_path = tmp_path / "artifacts" / "decisions" / "TASK-Y.decision.md"
+        decision_path.write_text("placeholder\n", encoding="utf-8")
+        original = gsv.validate_markdown_artifact
+
+        def with_warning(path, artifact_type, task_id):
+            base = original(path, artifact_type, task_id)
+            base.warnings.append("synthetic-warning")
+            return base
+
+        monkeypatch.setattr(gsv, "validate_markdown_artifact", with_warning)
+        errors = gcv.validate_root_artifact_strictness(tmp_path)
+        assert any("synthetic-warning" in e for e in errors)
+
+    def test_validate_root_artifact_strictness_surfaces_status_errors(self, tmp_path):
+        (tmp_path / "artifacts" / "status").mkdir(parents=True)
+        status_payload = {
+            "task_id": "TASK-S",
+            "state": "drafted",
+            "current_owner": "Claude",
+            "next_agent": "Claude",
+            "required_artifacts": [],
+            "available_artifacts": [],
+            "missing_artifacts": [],
+            "blocked_reason": "",
+            "last_updated": "2026-01-15T10:00:00+08:00",
+            "assurance_level": "invalid",
+            "project_adapter": "generic",
+            "open_verification_debts": [],
+            "verification_readiness": "poc",
+        }
+        (tmp_path / "artifacts" / "status" / "TASK-S.status.json").write_text(
+            json.dumps(status_payload, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        errors = gcv.validate_root_artifact_strictness(tmp_path)
+        assert any("TASK-S.status.json" in e for e in errors)
+
+
+class TestBuildDecisionRegistryCoverageCatchup:
+    def test_normalize_linked_artifacts_strips_prefix_and_dedupes(self):
+        tokens = ["./foo/bar.md", "foo/bar.md", "C:\\path\\to\\file"]
+        result = bdr.normalize_linked_artifacts(tokens)
+        assert "foo/bar.md" in result
+        assert "C:/path/to/file" in result
+        assert len(result) == len(set(result))
+
+    def test_normalize_linked_artifacts_skips_empty(self):
+        assert bdr.normalize_linked_artifacts(["", "  "]) == []
+
+
+class TestCheckTaoTrace:
+    def test_no_csv_file(self, tmp_path):
+        artifacts_root = tmp_path / "artifacts"
+        artifacts_root.mkdir()
+        warnings = gsv.check_tao_trace(artifacts_root, "TASK-900")
+        assert len(warnings) == 1
+        assert "risk_classification.csv not found" in warnings[0]
+
+    def test_task_not_in_csv(self, tmp_path):
+        artifacts_root = tmp_path / "artifacts"
+        (artifacts_root / "registry").mkdir(parents=True)
+        csv_path = artifacts_root / "registry" / "risk_classification.csv"
+        csv_path.write_text("task_id,risk_level\nTASK-800,high-risk\n", encoding="utf-8")
+        warnings = gsv.check_tao_trace(artifacts_root, "TASK-999")
+        assert len(warnings) == 1
+        assert "not found in risk_classification.csv" in warnings[0]
+
+    def test_low_risk_skip(self, tmp_path):
+        artifacts_root = tmp_path / "artifacts"
+        (artifacts_root / "registry").mkdir(parents=True)
+        csv_path = artifacts_root / "registry" / "risk_classification.csv"
+        csv_path.write_text("task_id,risk_level\nTASK-999,low-risk\n", encoding="utf-8")
+        warnings = gsv.check_tao_trace(artifacts_root, "TASK-999")
+        assert warnings == []
+
+    def test_high_risk_with_tao(self, tmp_path):
+        artifacts_root = tmp_path / "artifacts"
+        (artifacts_root / "registry").mkdir(parents=True)
+        (artifacts_root / "code").mkdir(parents=True)
+        (artifacts_root / "verify").mkdir(parents=True)
+        csv_path = artifacts_root / "registry" / "risk_classification.csv"
+        csv_path.write_text("task_id,risk_level\nTASK-900,high-risk\n", encoding="utf-8")
+        (artifacts_root / "code" / "TASK-900.code.md").write_text(
+            "# Code\n## TAO Trace\nstep\n", encoding="utf-8"
+        )
+        (artifacts_root / "verify" / "TASK-900.verify.md").write_text(
+            "# Verify\n## TAO Trace\nstep\n", encoding="utf-8"
+        )
+        warnings = gsv.check_tao_trace(artifacts_root, "TASK-900")
+        assert warnings == []
+
+    def test_high_risk_missing_tao(self, tmp_path):
+        artifacts_root = tmp_path / "artifacts"
+        (artifacts_root / "registry").mkdir(parents=True)
+        (artifacts_root / "code").mkdir(parents=True)
+        (artifacts_root / "verify").mkdir(parents=True)
+        csv_path = artifacts_root / "registry" / "risk_classification.csv"
+        csv_path.write_text("task_id,risk_level\nTASK-900,high-risk\n", encoding="utf-8")
+        (artifacts_root / "code" / "TASK-900.code.md").write_text(
+            "# Code\nno tao here\n", encoding="utf-8"
+        )
+        (artifacts_root / "verify" / "TASK-900.verify.md").write_text(
+            "# Verify\nno tao here\n", encoding="utf-8"
+        )
+        warnings = gsv.check_tao_trace(artifacts_root, "TASK-900")
+        assert len(warnings) == 2
+        assert any("code artifact" in w for w in warnings)
+        assert any("verify artifact" in w for w in warnings)
+

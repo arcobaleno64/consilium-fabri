@@ -6,6 +6,7 @@
 - Owner: Claude
 - Status: approved
 - Last Updated: 2026-04-11T11:10:00+08:00
+- PDCA Stage: P
 
 ## Scope
 - 建立一組 blocked / PDCA / resume live drill artifacts。

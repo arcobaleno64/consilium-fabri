@@ -6,6 +6,7 @@
 - Owner: Codex CLI
 - Status: ready
 - Last Updated: 2026-04-19T14:22:30+08:00
+- PDCA Stage: D
 
 ## Files Changed
 
@@ -62,6 +63,17 @@
 
 - 這一輪沒有建立真實外部 legacy corpus；目前 coverage 仍以 synthetic fixture 為主。
 - external legacy import 的 heuristic 邊界雖已顯式化，但若未來要 ingest 更異質的歷史 verify，仍需要再補一輪 fixture taxonomy 與欄位推斷規則。
+
+
+## TAO Trace
+
+Reconstructed from artifact history. This task predates the TAO schema (introduced in TASK-1000 Phase 2).
+
+### Step 1
+- Thought Log: (Reconstructed) Reviewed plan Proposed Changes and executed accordingly.
+- Action Step: Implemented changes per plan scope.
+- Observation: Completed (inferred from verify artifact AC checklist).
+- Next-Step Decision: continue
 
 ## Blockers
 

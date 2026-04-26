@@ -1,0 +1,2 @@
+Write-Error: __FATAL:[Blocked] All fallback models exhausted for Gemini CLI.__
+Review terminal logs or quota statuses.
