@@ -72,7 +72,7 @@ if ($WhatIf) {
 $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "cf-wiki-push-$(Get-Random)"
 try {
     Write-Host "Cloning wiki repository..." -ForegroundColor Cyan
-    git clone $wikiUrl $tempDir 2>&1
+    git clone -q $wikiUrl $tempDir
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to clone wiki repo at $wikiUrl"
     }
