@@ -1,0 +1,24 @@
+{
+  "task_id": "TASK-964",
+  "state": "done",
+  "assurance_level": "poc",
+  "project_adapter": "generic",
+  "current_owner": "Codex",
+  "next_agent": "None",
+  "last_updated": "2026-04-26T19:48:00+08:00",
+  "verification_readiness": "poc",
+  "open_verification_debts": [],
+  "required_artifacts": ["task", "code", "verify", "status"],
+  "available_artifacts": ["task", "code", "verify", "status", "decision"],
+  "missing_artifacts": [],
+  "blocked_reason": "",
+  "decision_waivers": [
+    {
+      "task_id": "TASK-964",
+      "reason": "Red Team Simulation RACI violation",
+      "gate": "Gate_D",
+      "approver": "Antigravity",
+      "expires": "2026-05-26T19:48:00+08:00"
+    }
+  ]
+}

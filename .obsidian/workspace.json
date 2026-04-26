@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "CLAUDE.md",
+                "file": "wiki/Repo-Keyword-Glossary.md",
                 "mode": "preview",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "CLAUDE"
+              "title": "Repo-Keyword-Glossary"
             }
           }
         ]
@@ -94,7 +94,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "CLAUDE.md",
+                "file": "wiki/Repo-Keyword-Glossary.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -104,7 +104,7 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "CLAUDE 的反向連結"
+              "title": "Repo-Keyword-Glossary 的反向連結"
             }
           },
           {
@@ -184,6 +184,19 @@
   },
   "active": "ec5406eae31dc15d",
   "lastOpenFiles": [
+    "artifacts/scripts/__pycache__/guard_contract_validator.cpython-314.pyc.2037223502784",
+    "docs/templates/raci-auditor/TEMPLATE.md",
+    "docs/templates/raci-auditor",
+    "docs/templates/memory-curator/TEMPLATE.md",
+    "docs/templates/memory-curator",
+    "artifacts/status/TASK-964.status.json",
+    "artifacts/verify/TASK-964.verify.md",
+    "artifacts/code/TASK-964.code.md",
+    "artifacts/decisions/TASK-964.decision.md",
+    "artifacts/plans/TASK-964.plan.md",
+    "artifacts/tasks/TASK-964.task.md",
+    "wiki/_Sidebar.md",
+    "CLAUDE.md",
     "artifacts/status/TASK-1004.status.json",
     "artifacts/verify/TASK-1004.verify.md",
     "artifacts/code/TASK-1004.code.md",
@@ -206,21 +219,8 @@
     "artifacts/scripts/_dispatch_TASK-1000_research.log",
     "artifacts/research/TASK-1000.tavily_raw.md",
     "artifacts/research/TASK-1000.research.md",
-    "artifacts/registry/risk_classification.csv",
     "BOOTSTRAP_PROMPT.md",
-    "threat-model-20260417-124620/0-assessment.md",
-    "artifacts/tasks/TASK-900-subdir",
-    "artifacts/scripts/__pycache__/test_guard_units.cpython-314-pytest-9.0.3.pyc.91700",
-    "template/docs/templates/raci-auditor/TEMPLATE.md",
-    "template/docs/templates/raci-auditor",
-    "docs/templates/raci-auditor/TEMPLATE.md",
     "htmlcov/favicon_32_cb_c827f16f.png",
-    "htmlcov/keybd_closed_cb_900cfef5.png",
-    "docs/subagent_roles.md",
-    "artifacts/plans/TASK-999.plan.md",
-    "artifacts/research/TASK-999.research.md",
-    "artifacts/tasks/TASK-999.task.md",
-    "AGENTS.md",
-    "CODEX.md"
+    "htmlcov/keybd_closed_cb_900cfef5.png"
   ]
 }
