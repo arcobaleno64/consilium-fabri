@@ -1,0 +1,8 @@
+{
+  "task_id": "TASK-1002",
+  "state": "done",
+  "assurance_baseline": "POC",
+  "project_adapter": "generic",
+  "verification_readiness": "ready",
+  "open_verification_debts": []
+}
