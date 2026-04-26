@@ -4,6 +4,8 @@ omit =
     artifacts/scripts/test_*.py
     artifacts/scripts/Invoke-*.ps1
     artifacts/scripts/load_env.ps1
+    artifacts/scripts/backfill_pdca_labels.py
+    artifacts/scripts/classify_existing_tasks.py
 
 [report]
 exclude_lines =
@@ -14,3 +16,4 @@ exclude_lines =
     parser = argparse
     args = parser\.parse
     return parser\.parse
+    return run_prompt_case\(
