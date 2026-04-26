@@ -10,9 +10,7 @@
     Run all preflight checks but skip the actual push.
 #>
 [CmdletBinding(SupportsShouldProcess)]
-param(
-    [switch]$WhatIf
-)
+param()
 
 $ErrorActionPreference = 'Stop'
 $scriptDir = $PSScriptRoot
