@@ -7,7 +7,7 @@
 | Agent | 入口檔 | 角色 | 自動載入 |
 |---|---|---|---|
 | Claude Code | `CLAUDE.md` | 協調者 | Yes (project instruction) |
-| Gemini CLI | `GEMINI.md` | 研究專用 | Yes (passed via prompt) |
+| Gemini CLI | `GEMINI.md` | 研究與 read-only memory curator | Yes (passed via prompt) |
 | Codex CLI | `CODEX.md` | 實作主責 | Yes (passed via prompt) |
 
 ## 文件模組
@@ -39,16 +39,18 @@
 
 ## 階段載入矩陣
 
-| 階段 | Claude Code 載入 | Gemini 載入 | Codex 載入 |
-|---|---|---|---|
-| **Intake** | `docs/orchestration.md` | -- | -- |
-| **Research** | `docs/subagent_roles.md` §4, `docs/subagent_task_templates.md`, `docs/templates/` | (GEMINI.md has all needed rules) | -- |
-| **Planning** | `docs/artifact_schema.md` §5.3, `docs/workflow_state_machine.md`, `docs/premortem_rules.md` | -- | -- |
-| **Coding** | `docs/subagent_roles.md` §5, `docs/subagent_task_templates.md`, `docs/templates/` | -- | (CODEX.md has all needed rules) |
-| **Verification** | `docs/artifact_schema.md` §5.5-§5.6, `docs/workflow_state_machine.md` | -- | -- |
-| **Closure** | `docs/workflow_state_machine.md` | -- | -- |
-| **Red Team Exercise** | `docs/red_team_runbook.md`, `docs/red_team_scorecard.md`, `docs/red_team_backlog.md` | -- | -- |
-| **Sync Contract** | `docs/orchestration.md` §9 | -- | -- |
+| 階段 | PDCA 階段 | Claude Code 載入 | Gemini 載入 | Codex 載入 |
+|---|---|---|---|---|
+| **Intake** | P (pre-Plan) | `docs/orchestration.md` | -- | -- |
+| **Research** | P (Plan 前準備) | `docs/subagent_roles.md` §4, `docs/subagent_task_templates.md`, `docs/templates/` | (GEMINI.md has all needed rules) | -- |
+| **Planning** | P (Plan，含 premortem) | `docs/artifact_schema.md` §5.3, `docs/workflow_state_machine.md`, `docs/premortem_rules.md` | -- | -- |
+| **Coding** | D (Do；微觀內含 TAO) | `docs/subagent_roles.md` §5, `docs/subagent_task_templates.md`, `docs/templates/` | -- | (CODEX.md has all needed rules) |
+| **Verification** | C (Check) | `docs/artifact_schema.md` §5.5-§5.6, `docs/workflow_state_machine.md` | -- | -- |
+| **Closure** | A (Act；Gate E + 回灌) | `docs/workflow_state_machine.md`, `.github/prompts/remember-capture.prompt.md` | Memory Bank Curator 模式時讀 `docs/templates/memory-curator/TEMPLATE.md` | -- |
+| **Red Team Exercise** | C (Check 衍生) | `docs/red_team_runbook.md`, `docs/red_team_scorecard.md`, `docs/red_team_backlog.md` | -- | -- |
+| **Sync Contract** | meta | `docs/orchestration.md` §9 | -- | -- |
+
+兩層架構詳見 [docs/orchestration.md §2.8](docs/orchestration.md)：管理層 PDCA 對應上表「PDCA 階段」欄；執行層 TAO/ReAct 內含於 Coding 階段內 subagent dispatch（詳見 [docs/agentic_execution_layer.md](docs/agentic_execution_layer.md)，Phase 2 提供）。
 
 ## 交叉引用慣例
 
@@ -63,7 +65,7 @@
 - §5.1 Task / §5.2 Research / §5.3 Plan / §5.4 Code / §5.5 Test / §5.6 Verify / §5.7 Decision / §5.8 Status
 
 ### docs/subagent_roles.md
-- §3 Claude Code / §4 Gemini CLI / §5 Codex CLI / §6 Implementer / §7 Tester / §8 Verifier / §9 Reviewer
+- §3 Claude Code / §4 Gemini CLI（含 Memory Bank Curator 模式） / §5 Codex CLI / §6 Implementer / §7 Tester / §8 Verifier / §9 Reviewer
 
 ### docs/premortem_rules.md
 - §1-2 When & where / §3 Required fields / §4 Quality rules (P1-P8) / §5 Violation levels / §6 Minimum counts

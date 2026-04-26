@@ -32,6 +32,7 @@ EXACT_SYNC_FILES = [
     "artifacts/scripts/update_repository_profile.py",
     "artifacts/scripts/workflow_constants.py",
     "docs/artifact_schema.md",
+    "docs/agentic_execution_layer.md",
     "docs/lightweight_mode_rules.md",
     "docs/orchestration.md",
     "docs/premortem_rules.md",

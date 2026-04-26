@@ -6,6 +6,7 @@
 - Owner: Claude
 - Status: approved
 - Last Updated: 2026-04-11T10:00:00+08:00
+- PDCA Stage: P
 
 ## Scope
 - 補齊 `TASK-900` 所需的 research / plan / code / verify sample artifacts。

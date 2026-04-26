@@ -6,6 +6,7 @@
 - Owner: Claude
 - Status: approved
 - Last Updated: 2026-04-13T13:07:58+08:00
+- PDCA Stage: P
 
 ## Scope
 - 擴充 root 與 `template/` 的 `prompt_regression_cases.json`，新增 4 個固定測例。

@@ -13,6 +13,10 @@
 - 不得在定義的 artifact paths 之外建立檔案。
 - 不得產出中間筆記、scratch files 或替代輸出。
 - 不得猜測。若資訊缺失或不確定，必須明確標記為 UNVERIFIED。
+- Gemini 可在 Memory Bank Curator 模式下產生 `Remember Capture` draft；Gemini 不得改檔，不得直接寫入 `.github/memory-bank/`。若需要寫入，必須由 Claude 或 Codex 在明確 write scope 下修改，並由 Claude 最終驗收。
+- Claude Code 預設 CLI-first；只有明確 VS Code / Copilot 環境或任務本身涉及 VS Code / Copilot 設定時，才使用或建議 VS Code extension。
+- Claude 預設只做 orchestration、決策、驗收與最後整合。研究交給 Gemini；已規劃實作、測試補強與跨檔 workflow docs 交給 Codex。只有 scope 不明、需要裁決、或 risk <= 2 且 context cost = S 的極小變更，Claude 才直接處理。
+- Routing 依 Task Type、Risk Score 0-10、Context Cost S/M/L 判斷。risk >= 3 或 context cost >= M 預設交給 Codex；research / spec comparison / Tavily-assisted research / memory curator draft 預設交給 Gemini。
 
 Artifact 紀律：
 
@@ -51,6 +55,7 @@ Template sync protocol：
 - 完整索引與階段載入矩陣請先讀 `AGENTS.md`。
 - Session start：讀 `AGENTS.md` + `docs/orchestration.md`
 - 派發 Gemini 前：讀 `docs/subagent_roles.md` §4、`docs/subagent_task_templates.md`（索引）、對應 `docs/templates/<role>/TEMPLATE.md`
+- 派發 Gemini Tavily-assisted research 或 Memory Bank Curator 前：讀 `docs/subagent_roles.md` §4.7-§4.8、`docs/subagent_task_templates.md`、`docs/templates/memory-curator/TEMPLATE.md`、`.github/prompts/remember-capture.prompt.md`
 - 派發 Codex 前：讀 `docs/subagent_roles.md` §5、`docs/subagent_task_templates.md`（索引）、對應 `docs/templates/<role>/TEMPLATE.md`
 - Planning 前：讀 `docs/artifact_schema.md` §5.3、`docs/premortem_rules.md`
 - 狀態轉移前：讀 `docs/workflow_state_machine.md`

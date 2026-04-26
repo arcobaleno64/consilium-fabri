@@ -1,7 +1,7 @@
 # Workflow Gates — Guard Validator 觸發條件
 
 **Reference**: artifacts/scripts/guard_status_validator.py  
-**Last Verified**: 2026-04-16 +08:00
+**Last Verified**: 2026-04-25 +08:00
 
 ## Intake 自 Research 轉換
 
@@ -51,6 +51,19 @@ ELSE:
 
 - Verify artifact 必須包含 `## Environment` 和 `## Build Guarantee`
 - Build Guarantee 至少 1 條：commit hash、CI log URL、binary checkpoint
+
+## Blocked 自 Recovery 轉換（Gate E — PDCA Act → Plan 回灌）
+
+任何 blocked 任務恢復前必須通過 Gate E：
+
+- 必有 [improvement artifact](../../artifacts/improvement/) 且 `Status: applied`（見 [docs/artifact_schema.md §5.9](../../docs/artifact_schema.md)）
+- improvement artifact 必含 `## What Happened`、`## Why It Was Not Prevented`、`## Preventive Action (System Level)`
+- status.json 之 `Gate_E_evidence` 須引用 improvement / decision artifact 路徑
+- status.json 之 `Gate_E_timestamp` 必填
+
+**PDCA Act → Plan 回灌語意**：Gate E 即 PDCA 之 Act 階段觸點。`Preventive Action (System Level)` 條目即為下一輪 Plan 階段之輸入；下一個觸發相同 risk 之 task，其 plan 之 `## Risks` 應引用 prior improvement 為 mitigation 來源。詳見 [docs/orchestration.md §2.8](../../docs/orchestration.md) 兩層架構章節。
+
+未通過 Gate E 即試圖恢復 blocked 任務，[guard_status_validator.py](../../artifacts/scripts/guard_status_validator.py) 會 hard fail。
 
 ## Lightweight Mode
 

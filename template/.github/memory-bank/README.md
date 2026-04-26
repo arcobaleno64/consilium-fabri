@@ -16,6 +16,8 @@
 
 新增或更新 memory-bank 檔案時，使用 `remember-capture.prompt.md` 流程。
 該流程提供分類、查重、膨脹檢查與安全檢查，避免重複寫入或檔案膨脹。
+Gemini CLI 可用 Memory Bank Curator 模式產生 draft，但不得直接寫入本目錄；實際修改由 Claude/Codex 在明確 scope 下執行，並由 Claude 最終驗收。
+若 Gemini 研究 draft 含 Tavily-assisted research，`## Tavily Cache` / `## Source Cache` 只是 draft evidence；不得直接轉寫成本目錄內容。
 詳見 `.github/prompts/remember-capture.prompt.md`。
 
 ## 寫法規範
@@ -24,6 +26,7 @@
 - 版本化：若涉及特定腳本版本或 artifact 版本，註明
 - 引用：指向原始檔案或 commit
 - 私密性：絕不存儲憑證或敏感資訊
+- 品質：只保存長期、可追蹤、非顯而易見、非短期排障且未過時的知識
 
 ## 維護
 

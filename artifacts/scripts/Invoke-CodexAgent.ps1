@@ -1,11 +1,12 @@
 <#
 .SYNOPSIS
-Resilient wrapper for the Codex CLI providing multi-tier fallback for API errors.
+Resilient wrapper for the Codex CLI providing task-scale model selection and multi-tier fallback for API errors.
 
 .DESCRIPTION
 Wraps the codex CLI to catch 429 Too Many Requests, 400 Bad Request, and 5xx server errors.
+Selects the default model and reasoning effort from the task scale unless explicitly overridden.
 Executes standard Exponential Backoff.
-If failures persist, dynamically steps down through fallback models (gpt-5.4 -> gpt-5.3-codex -> gpt-5.4-mini).
+If failures persist, dynamically steps through the fallback models for the selected task scale.
 If models are exhausted, it switches to a Fallback API key and starts from the top model again.
 Returns standard output on success or throws a fatal block if all options are exhausted.
 #>
@@ -16,8 +17,16 @@ param (
     [string]$Prompt,
 
     [string]$ApprovalMode = "full-auto",
+
+    [ValidateSet("tiny", "docs-only", "standard", "high-risk", "cross-module", "critical", "security", "architecture")]
+    [string]$TaskScale = "standard",
+
+    [ValidateSet("auto", "fixed", "fallback")]
+    [string]$ModelPolicy = "auto",
+
+    [string]$Model = "",
     
-    [string]$ReasoningEffort = "high",
+    [string]$ReasoningEffort = "",
 
     [int]$MaxRetriesPerTier = 2,
     [int]$BaseBackoffSeconds = 2,
@@ -40,12 +49,50 @@ $RetryPatterns = @(
 )
 $RegexPattern = ($RetryPatterns | ForEach-Object { [regex]::Escape($_) }) -join '|'
 
-# Models Progression (Fallback strategy)
-$Models = @(
-    "gpt-5.4",
-    "gpt-5.3-codex",
-    "gpt-5.4-mini"
-)
+function Get-TaskScaleProfile {
+    param([string]$Scale)
+
+    switch ($Scale) {
+        { $_ -in @("tiny", "docs-only") } {
+            return @{
+                Effort = "low"
+                Models = @("gpt-5.4-mini", "gpt-5.3-codex", "gpt-5.4")
+            }
+        }
+        "standard" {
+            return @{
+                Effort = "medium"
+                Models = @("gpt-5.3-codex", "gpt-5.4", "gpt-5.4-mini")
+            }
+        }
+        { $_ -in @("high-risk", "cross-module") } {
+            return @{
+                Effort = "high"
+                Models = @("gpt-5.4", "gpt-5.3-codex", "gpt-5.4-mini")
+            }
+        }
+        { $_ -in @("critical", "security", "architecture") } {
+            return @{
+                Effort = "xhigh"
+                Models = @("gpt-5.4", "gpt-5.3-codex", "gpt-5.4-mini")
+            }
+        }
+    }
+}
+
+$Profile = Get-TaskScaleProfile -Scale $TaskScale
+$EffectiveReasoningEffort = if ([string]::IsNullOrWhiteSpace($ReasoningEffort)) { $Profile.Effort } else { $ReasoningEffort }
+$Models = @($Profile.Models)
+
+if (![string]::IsNullOrWhiteSpace($Model)) {
+    if ($ModelPolicy -eq "fixed") {
+        $Models = @($Model)
+    } else {
+        $Models = @($Model) + ($Models | Where-Object { $_ -ne $Model })
+    }
+}
+
+Write-Host "  -> Task Scale: $TaskScale; Model Policy: $ModelPolicy; Reasoning Effort: $EffectiveReasoningEffort" -ForegroundColor Cyan
 
 $IsSuccess = $false
 $FinalOutput = ""
@@ -62,8 +109,8 @@ foreach ($model in $Models) {
         } else {
             $processArgs += "-a", $ApprovalMode
         }
-        if (![string]::IsNullOrWhiteSpace($ReasoningEffort)) {
-            $processArgs += "-c", "model_reasoning_effort=`"$ReasoningEffort`""
+        if (![string]::IsNullOrWhiteSpace($EffectiveReasoningEffort)) {
+            $processArgs += "-c", "model_reasoning_effort=`"$EffectiveReasoningEffort`""
         }
         $processArgs += $Prompt
         Write-Host "    [*] Attempt $($attempt+1)/$($MaxRetriesPerTier+1)..." -ForegroundColor Gray

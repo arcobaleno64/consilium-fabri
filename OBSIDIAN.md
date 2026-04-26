@@ -39,7 +39,11 @@
 
 ## Workflow 摘要
 
+- Claude Code 預設 CLI-first，只有明確 VS Code / Copilot 情境或任務本身涉及 VS Code / Copilot 設定時，才使用或建議 VS Code extension。
+- Agent routing 依 Task Type、Risk Score 0-10、Context Cost S/M/L 判斷；Claude 預設負責 orchestration、決策、驗收與最後整合，research / Tavily-assisted research / Memory Bank Curator draft 交給 Gemini，已規劃實作、測試補強與跨檔 workflow docs 交給 Codex。
 - Research artifact 是 fact-only 契約，不得包含 `Recommendation` 或 solution 設計。
+- Gemini 可在 Memory Bank Curator 模式下產生 `Remember Capture` draft；不得直接寫入 `.github/memory-bank/`，實際寫入由 Claude/Codex 執行並由 Claude 驗收。若使用 Tavily CLI，結果只保存在 research artifact draft 的 `## Tavily Cache` / `## Source Cache`。
+- Codex CLI 是 implementation lead，可依 task scale 選 model / reasoning effort，且 code artifact 必須記錄 `Execution Profile` 與 `Subagent Plan`。
 - task artifact 應明確宣告 `Assurance Level` 與 `Project Adapter`；status guard 會依 profile 計算最低 required artifacts。
 - `blocked` 任務恢復前，必須先有 `Status: applied` 的 improvement artifact；status.json 新增 `Gate_E_passed`, `Gate_E_evidence`, `Gate_E_timestamp` 欄位追蹤 Gate E 驗證狀態。
 - verify checklist item 現在使用 `verified` / `unverified` / `unverifiable` / `deferred`；若不是 `verified`，必須有 `decision_ref` 或 `reason_code`。
@@ -52,7 +56,7 @@
 - 紅隊演練入口是 `docs/red_team_runbook.md`，重跑命令是 `python artifacts/scripts/run_red_team_suite.py`；靜態案例現新增邊界版本測試（如 RT-004B）確保防治邏輯合理。
 - `python artifacts/scripts/run_red_team_suite.py` 預設會在每次執行後清理 `.codex-red-team/` fixture；若需要保留現場供除錯，可加上 `--keep-temp`。
 - Prompt regression 固定入口是 `python artifacts/scripts/prompt_regression_validator.py --root .`，固定測例在 `artifacts/scripts/drills/prompt_regression_cases.json`。
-- 固定 Prompt regression 測例目前涵蓋 artifact-only truth/completion、workflow sync completeness、research blocked preconditions、implementation summary discipline、conflict-to-decision routing、decision schema integrity、external failure STOP、decision-gated scope waiver、historical diff evidence contract、pinned diff evidence integrity、GitHub provider-backed diff evidence 與 archive retention fallback。
+- 固定 Prompt regression 測例目前涵蓋 artifact-only truth/completion、workflow sync completeness、research blocked preconditions、Gemini memory-bank curator read-only boundaries、Claude CLI-first routing boundaries、Codex model/effort selection 與 subagent separation、Gemini Tavily draft/cache-only boundaries、memory-bank librarian quality filter、implementation summary discipline、conflict-to-decision routing、decision schema integrity、external failure STOP、decision-gated scope waiver、historical diff evidence contract、pinned diff evidence integrity、GitHub provider-backed diff evidence 與 archive retention fallback。
 
 ## Decision Registry
 

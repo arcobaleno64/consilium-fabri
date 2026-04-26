@@ -42,3 +42,20 @@ Implementer
 - Summary Of Changes
 - Mapping To Plan
 - Known Risks
+- TAO Trace (required when task risk ≥ 3, i.e. plan.## Risks contains any `Severity: blocking`; otherwise write `None`)
+
+## TAO Trace Schema (per docs/agentic_execution_layer.md §2)
+
+When required, append to code artifact:
+
+```md
+## TAO Trace
+
+### Step 1
+- Thought Log: <1-5 sentences; what you read, what you assumed>
+- Action Step: <one sentence; verb + target file/command>
+- Observation: <result; stdout snippet, exit code, file diff size>
+- Next-Step Decision: continue | halt | escalate
+```
+
+If `Observation` contradicts `Thought Log` assumption, set `Next-Step Decision: halt` with `mismatch_reason:` and stop. Do NOT self-escalate or retry — return control to orchestrator.

@@ -10,6 +10,17 @@
 
 ## 1. 通用規則
 
+### 1.0 Artifact 為邊界物件（Boundary Objects framing）
+
+本框架之 artifact 同時為跨代理（Claude / Gemini / Codex / subagents）之**邊界物件（Boundary Object, Star & Griesemer 1989）**：不同代理對同一 artifact 之解讀容許局部差異（如 implementer 視 code artifact 為 deliverable、verifier 視為 input），但 artifact 之嚴格欄位定義（schema）即跨代理之共同語言契約，使各代理對「任務已完成」「驗收已通過」等概念之認知對齊。
+
+實作上之意涵：
+
+- artifact schema 之嚴格定義不可隨意鬆動；欄位刪減須走 decision artifact 變更管制。
+- 每一新增之 artifact 類型須先設 schema，再建實例；不得倒序。
+- 跨代理之語義不對稱（如 implementer 假設「測試通過」與 verifier 之「驗收通過」之差異）由 schema 之欄位顯式區隔（如 `## Build Guarantee` 與 `## Acceptance Criteria Checklist` 分離）。
+- PROCESS_LEDGER 與 status.json 為跨 PDCA 階段之邊界物件，承載 closure 與 next-task 入口。
+
 ### 1.1 命名規範
 
 所有 artifacts 必須使用一致命名：
@@ -139,6 +150,8 @@
 
 ## 5.1 Task Artifact Schema
 
+> PDCA Stage: P (Intake，定義階段，先於 Plan)
+
 檔名：`artifacts/tasks/TASK-001.task.md`
 
 用途：任務的單一權威定義。
@@ -205,6 +218,8 @@
 
 ## 5.2 Research Artifact Schema
 
+> PDCA Stage: P (Plan，規劃前之事實準備)
+
 檔名：`artifacts/research/TASK-001.research.md`
 
 用途：將外部知識、規格、版本差異與實作約束落地。
@@ -234,6 +249,14 @@
 ## Constraints For Implementation
 ```
 
+可選區段（research/cache draft 專用）：
+
+```md
+## Source Cache
+
+## Tavily Cache
+```
+
 欄位規則：
 
 - `Research Questions`: 至少一條。
@@ -241,6 +264,8 @@
 - `Relevant References`: 需標明來源名稱或文件名稱。
 - `Sources`: 每行格式必須為 `[N] Author/Org. "Title." URL (YYYY-MM-DD retrieved)`。
 - `Sources`: 至少 2 筆。
+- `Source Cache`: 選填。保存 research 過程中可重用但尚未沉澱到 memory-bank 的來源摘錄；不得取代 `## Sources`。
+- `Tavily Cache`: 選填。僅在 Gemini 被明確允許使用本機 Tavily CLI 時使用；每筆必須記錄實際 command、query、retrieved date、URLs 與結果摘要。
 - `Sources` failure_grade:
   - `CRITICAL`: 缺少 `## Sources` 區段，或 0 筆來源。
   - `MAJOR`: 格式違規（例如缺少 URL、整體格式不符）。
@@ -255,11 +280,15 @@
 - 不可把推測寫進 `Confirmed Facts`。
 - `Confirmed Facts` 的每一條 claim 都必須在同一條目內附上 inline citation（URL、`gh api` 指令或 artifact / doc path）。
 - `Uncertain Items` 若非 `None`，每條都必須以 `UNVERIFIED:` 開頭並說明原因。
+- Tavily CLI 不可用、來源擷取失敗或日期不明時，不得用未驗證內容補洞；必須寫入 `Uncertain Items`，例如 `UNVERIFIED: Tavily CLI unavailable`。
+- `Source Cache` / `Tavily Cache` 只是 research artifact draft cache；Claude/Codex 篩選後才可透過 Remember Capture 流程進入 `.github/memory-bank/`。
 - 至少要有一個可供 implementation 使用的約束。
 
 ---
 
 ## 5.3 Plan Artifact Schema
+
+> PDCA Stage: P (Plan，含 premortem R1-R4+)
 
 檔名：`artifacts/plans/TASK-001.plan.md`
 
@@ -314,6 +343,8 @@
 
 ## 5.4 Code Artifact Schema
 
+> PDCA Stage: D (Do，實作執行)
+
 檔名：`artifacts/code/TASK-001.code.md`
 
 用途：記錄實作結果，避免主 thread 被 diff 與 log 淹沒。
@@ -332,6 +363,10 @@
 
 ## Files Changed
 
+## Execution Profile
+
+## Subagent Plan
+
 ## Summary Of Changes
 
 ## Mapping To Plan
@@ -339,6 +374,8 @@
 ## Tests Added Or Updated
 
 ## Known Risks
+
+## TAO Trace
 
 ## Blockers
 ```
@@ -370,10 +407,13 @@
 欄位規則：
 
 - `Files Changed`: 至少列出實際修改檔案，沒有修改時不可建立 code artifact。若 task 專屬 artifact 仍位於 dirty git worktree 中，`guard_status_validator.py` 會用實際 git changed files 自動驗證這個欄位；若為 clean task 且存在合法 diff evidence，也會在 historical replay 中驗證這個欄位。
+- `Execution Profile`: 記錄實際使用的 Codex task scale、model policy、model 與 reasoning effort；若由 Claude 直接實作，必須記錄 routing override reason。
+- `Subagent Plan`: 記錄 Codex 是否使用 subagent；未使用時寫 `None` 並說明理由，使用時列出各 subagent 的責任、write scope 與驗證分工。
 - `Mapping To Plan`: 每行格式必須為 `- plan_item: {N.N}, status: done|partial|skipped, evidence: "{short description}"`。
 - `Mapping To Plan`: 每個 plan item 都必須有對應一行；若無計畫對應則必須寫 `status: skipped, evidence: "not required by plan"`。
 - `Tests Added Or Updated`: 沒有時寫 `None`。
 - `Known Risks`: 沒有時寫 `None`。
+- `TAO Trace`: risk ≥ 3（plan `## Risks` 任一條 `Severity: blocking`）之 implementer / verifier dispatch **必填**；risk ≤ 2 或 lightweight / docs-only 任務可寫 `None`。schema 與必填欄位見 [docs/agentic_execution_layer.md §2](agentic_execution_layer.md)。回填既有 artifact 時須以 `Reconstructed from artifact history` 開頭，不偽造當時即時思考。
 - `Blockers`: 沒有時寫 `None`。
 - `Diff Evidence`: 沒有時可省略或寫 `None`。目前 `guard_status_validator.py` 支援 `Evidence Type: commit-range` 與 `Evidence Type: github-pr`。
 - `commit-range`: 要求 immutable commit pinning：`Base Commit` 與 `Head Commit` 必須是完整 40 字元 git commit SHA；`Base Ref` 與 `Head Ref` 是可選便利欄位，只用於偵測 ref drift。`Diff Command` 應對應實際 replay 命令。若擔心長期 git objects retention 不足，可額外提供 `Archive Path` 與 `Archive SHA256`；兩者必須一起出現，`Archive Path` 必須是 repo-relative、UTF-8、每行一個 normalized relative path、排序後、LF 換行的 text file，`Archive SHA256` 則是該 archive file 原始 bytes 的 SHA-256。guard 只會在 local git replay 失敗時改用 archive fallback，且 archive 內容仍必須與 `Changed Files Snapshot` 完全一致。
@@ -390,6 +430,8 @@
 ---
 
 ## 5.5 Test Artifact Schema
+
+> PDCA Stage: C (Check，測試輸出)
 
 檔名：`artifacts/test/TASK-001.test.md`
 
@@ -436,6 +478,8 @@
 
 ## 5.6 Verify Artifact Schema
 
+> PDCA Stage: C (Check，含 Build Guarantee)
+
 檔名：`artifacts/verify/TASK-001.verify.md`
 
 用途：對照 acceptance criteria 做最終驗收。
@@ -468,6 +512,8 @@
 
 ## Build Guarantee
 
+## TAO Trace
+
 ## Pass Fail Result
 
 ## Remaining Gaps
@@ -499,6 +545,7 @@
   - 若本 task 未修改任何 `.csproj` 或等價 build 單元，寫 `None (no .csproj modified)` 並簡述原因（例如純文件變更、python-only 任務）。
   - **禁止**以「測試專案 build 成功」替代「被測專案 build 成功」—— 兩者不等價。若發生此類事故，應建立 decision artifact 記錄根因與修正。
 - `Pass Fail Result`: 只能填 `pass` 或 `fail`。
+- `TAO Trace`: risk ≥ 3 之 verifier dispatch **必填**；其他可寫 `None`。schema 與必填欄位見 [docs/agentic_execution_layer.md §2](agentic_execution_layer.md)。回填既有 verify artifact 時須以 `Reconstructed from artifact history` 開頭。
 - `Remaining Gaps`: 沒有時寫 `None`。
 - `status.verification_readiness` 與 `status.open_verification_debts` 必須能由 verify artifact 的 structured checklist 推導，不可脫鉤。
 - root repo tracked artifacts 不得依賴 legacy verify/status compatibility fallback；fallback 只保留給外部或歷史輸入。
@@ -515,6 +562,8 @@
 ---
 
 ## 5.7 Decision Artifact Schema
+
+> PDCA Stage: 跨層橫切（cross-cutting；可承接任一階段之衝突、取捨或 routing override）
 
 檔名：`artifacts/decisions/TASK-001.decision.md`
 
@@ -593,6 +642,8 @@
 
 ## 5.8 Status Artifact Schema
 
+> PDCA Stage: meta（meta-state，承載各階段機器可讀狀態，不屬任一單一階段）
+
 檔名：`artifacts/status/TASK-001.status.json`
 
 用途：提供機器可讀狀態，作為流程主控依據。
@@ -662,7 +713,11 @@ JSON schema 範例：
 
 ---
 
-## 5.9 Improvement Artifact Schema (PDCA)
+## 5.9 Improvement Artifact Schema (PDCA Act + Double-Loop Learning)
+
+> PDCA Stage: A (Act，Gate E 之核心 artifact，回灌至下一輪 Plan)
+
+**Double-Loop Learning framing（Argyris 1977）**：本 artifact 為 Argyris 雙迴路學習之具體落地。單迴路（Single-Loop）為「失敗 → 修 code」，僅在行為層調整；雙迴路（Double-Loop）為「失敗 → 檢討產生此錯誤之系統規則 → 修運作層邏輯」。本 schema 之 `## Why It Was Not Prevented`（為何既有 guard / schema / prompt 未阻擋此錯誤）與 `## Preventive Action (System Level)`（修 prompt-patterns / guard / template / workflow）即雙迴路之強制欄位；single-loop 之即時修正則於 code artifact 與本 artifact 之 `## Corrective Action` 承接。此區隔使 improvement artifact 不退化為「只記症狀」。
 
 檔名：`artifacts/improvement/TASK-001.improvement.md`
 

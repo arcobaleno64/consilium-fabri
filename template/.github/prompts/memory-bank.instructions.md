@@ -18,10 +18,24 @@ applyTo: "**"
 - `prompt-patterns.md` — Agent dispatch 範式與 artifact 輸出範本
 - `project-facts.md` — 技術棧、集成點、環境變數、構建約定
 
+## 權限與責任
+
+| 階段 | 負責角色 | 權限 |
+|---|---|---|
+| Detect | Claude Code / Codex CLI / Tester | 指出可能值得沉澱的 lesson |
+| Curate | Gemini CLI | read-only curator；分類、查重、驗證來源、產生 `Remember Capture` draft |
+| Write | Claude Code 或 Codex CLI | 在明確 scope 下修改 `.github/memory-bank/` |
+| Approve | Claude Code | 最終驗收是否寫入、source、line count 與安全檢查 |
+
+Gemini 不擁有 `.github/memory-bank/` 寫入權；它只能輸出 draft。任何追加、更新或整併都必須由 Claude/Codex 以窄範圍修改執行，並由 Claude 最終驗收。
+
+若 Gemini 在研究或 curator draft 中被允許使用 Tavily CLI，Tavily 結果只能作為 research artifact draft 的 `## Tavily Cache` / `## Source Cache`。Gemini 不得把 Tavily cache 直接轉寫進 `.github/memory-bank/`；Tavily CLI 不可用時，必須標示 blocked 或 `UNVERIFIED`。
+
 ### 經驗沉澱流程
 
 新增或更新 memory-bank 檔案時，使用 `.github/prompts/remember-capture.prompt.md` 流程。
 該流程提供分類（artifact-rule / workflow-gate / prompt-pattern / project-fact）、查重、膨脹檢查與安全檢查。
+若由 Gemini 執行，輸出僅能是 `Remember Capture` draft，不得直接修改 repo-tracked memory-bank files。
 
 ## 寫法規範
 
@@ -29,6 +43,7 @@ applyTo: "**"
 - 引用：每條事實附註來源（檔案名:行號 或 commit hash）
 - 版本化：若涉及某個 artifact 或 script，註明版本
 - 隱私：絕不寫密碼、token、個人資訊
+- 品質：只保存長期、可追蹤、非顯而易見、非短期排障且未過時的知識；可由文件或常識輕易推敲出的內容不要寫入
 
 ## 何時更新
 

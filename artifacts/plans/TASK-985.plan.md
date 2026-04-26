@@ -6,6 +6,7 @@
 - Owner: Codex CLI
 - Status: ready
 - Last Updated: 2026-04-19T23:22:43+08:00
+- PDCA Stage: P
 
 ## Scope
 

@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "docs/subagent_roles.md",
+                "file": "threat-model-20260417-124620/0-assessment.md",
                 "mode": "preview",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "subagent_roles"
+              "title": "0-assessment"
             }
           }
         ]
@@ -94,7 +94,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "docs/subagent_roles.md",
+                "file": "threat-model-20260417-124620/0-assessment.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -104,7 +104,7 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "subagent_roles 的反向連結"
+              "title": "0-assessment 的反向連結"
             }
           },
           {
@@ -182,8 +182,13 @@
       "bases:建立新的 base": false
     }
   },
-  "active": "ec5406eae31dc15d",
+  "active": "8d07617b445a5caa",
   "lastOpenFiles": [
+    "artifacts/tasks/TASK-900-subdir",
+    "docs/subagent_roles.md",
+    "artifacts/scripts/backfill_pdca_labels.py",
+    "artifacts/registry/risk_classification.csv",
+    "artifacts/scripts/classify_existing_tasks.py",
     "template/artifacts/scripts/Invoke-CodexAgent.ps1",
     "artifacts/scripts/Invoke-CodexAgent.ps1",
     "artifacts/plans/TASK-999.plan.md",
@@ -199,11 +204,6 @@
     "artifacts/code/TASK-961.code.md.tmp.10600.1776147177629",
     "template/artifacts/scripts/discover_templates.py",
     "template/docs/orchestration.md.tmp.10600.1776147144155",
-    "docs/orchestration.md.tmp.10600.1776147141450",
-    "template/AGENTS.md.tmp.10600.1776147135063",
-    "AGENTS.md.tmp.10600.1776147133309",
-    "artifacts/scripts/discover_templates.py",
-    "artifacts/scripts/discover_templates.py.tmp.10600.1776147125253",
     "artifacts/plans/TASK-961.plan.md",
     "artifacts/research/TASK-961.research.md",
     "artifacts/research/TASK-962.research.md",
@@ -218,7 +218,6 @@
     "README.zh-TW.md",
     "README.md",
     "OBSIDIAN.md",
-    "GEMINI.md",
-    "docs/orchestration.md"
+    "GEMINI.md"
   ]
 }

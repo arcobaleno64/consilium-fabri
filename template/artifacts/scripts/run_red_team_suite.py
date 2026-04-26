@@ -1520,6 +1520,46 @@ def case_pr_020() -> CaseResult:
     )
 
 
+def case_pr_021() -> CaseResult:
+    return run_prompt_case(
+        "PR-021",
+        "Gemini memory-bank curator draft-only contract",
+        "Workflow contract should keep Gemini as a read-only memory-bank curator while Claude/Codex retain write authority",
+    )
+
+
+def case_pr_022() -> CaseResult:
+    return run_prompt_case(
+        "PR-022",
+        "Claude CLI-first routing boundary contract",
+        "Claude should stay CLI-first and route by task type, risk score, and context cost",
+    )
+
+
+def case_pr_023() -> CaseResult:
+    return run_prompt_case(
+        "PR-023",
+        "Codex model/effort and subagent separation contract",
+        "Codex should record task-scale execution profile and separate implementation from regression verification",
+    )
+
+
+def case_pr_024() -> CaseResult:
+    return run_prompt_case(
+        "PR-024",
+        "Gemini Tavily draft cache boundary contract",
+        "Gemini Tavily output should remain research/cache draft evidence and never become a direct memory-bank write",
+    )
+
+
+def case_pr_025() -> CaseResult:
+    return run_prompt_case(
+        "PR-025",
+        "Memory-bank librarian quality filter contract",
+        "Memory-bank capture should reject obvious, stale, short-lived, or untraceable information",
+    )
+
+
 STATIC_CASES: List[CaseDefinition] = [
     CaseDefinition("RT-001", "static", "Research artifact contains Recommendation", "fail", 1, "must not contain ## Recommendation", case_rt_001),
     CaseDefinition("RT-002", "static", "Confirmed Facts missing citation", "fail", 1, "must include an inline citation", case_rt_002),
@@ -1579,6 +1619,11 @@ PROMPT_CASES: List[CaseDefinition] = [
     CaseDefinition("PR-018", "prompt", "Pinned diff evidence integrity contract", "pass", 0, "Prompt Regression Report", case_pr_018),
     CaseDefinition("PR-019", "prompt", "GitHub provider-backed diff evidence contract", "pass", 0, "Prompt Regression Report", case_pr_019),
     CaseDefinition("PR-020", "prompt", "Archive retention fallback contract", "pass", 0, "Prompt Regression Report", case_pr_020),
+    CaseDefinition("PR-021", "prompt", "Gemini memory-bank curator draft-only contract", "pass", 0, "Prompt Regression Report", case_pr_021),
+    CaseDefinition("PR-022", "prompt", "Claude CLI-first routing boundary contract", "pass", 0, "Prompt Regression Report", case_pr_022),
+    CaseDefinition("PR-023", "prompt", "Codex model/effort and subagent separation contract", "pass", 0, "Prompt Regression Report", case_pr_023),
+    CaseDefinition("PR-024", "prompt", "Gemini Tavily draft cache boundary contract", "pass", 0, "Prompt Regression Report", case_pr_024),
+    CaseDefinition("PR-025", "prompt", "Memory-bank librarian quality filter contract", "pass", 0, "Prompt Regression Report", case_pr_025),
 ]
 
 

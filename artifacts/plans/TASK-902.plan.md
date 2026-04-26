@@ -6,6 +6,7 @@
 - Owner: Claude
 - Status: approved
 - Last Updated: 2026-04-11T10:15:00+08:00
+- PDCA Stage: P
 
 ## Scope
 - 建立 `TASK-902` 的 blocked / resume drill artifacts 與 probe 檔。
