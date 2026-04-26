@@ -14,7 +14,7 @@ param()
 
 $ErrorActionPreference = 'Stop'
 $scriptDir = $PSScriptRoot
-$repoRoot  = Split-Path -Parent $scriptDir
+$repoRoot  = Split-Path -Parent (Split-Path -Parent $scriptDir)
 
 # Load shared helpers
 . (Join-Path $scriptDir 'github_publish_common.ps1')
