@@ -185,6 +185,7 @@
   "active": "8d07617b445a5caa",
   "lastOpenFiles": [
     "artifacts/tasks/TASK-900-subdir",
+    "artifacts/scripts/__pycache__/test_guard_units.cpython-314-pytest-9.0.3.pyc.81896",
     "docs/subagent_roles.md",
     "artifacts/scripts/backfill_pdca_labels.py",
     "artifacts/registry/risk_classification.csv",

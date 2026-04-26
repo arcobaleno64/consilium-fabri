@@ -12213,3 +12213,64 @@ class TestBuildDecisionRegistryCoverageCatchup:
 
     def test_normalize_linked_artifacts_skips_empty(self):
         assert bdr.normalize_linked_artifacts(["", "  "]) == []
+
+
+class TestCheckTaoTrace:
+    def test_no_csv_file(self, tmp_path):
+        artifacts_root = tmp_path / "artifacts"
+        artifacts_root.mkdir()
+        warnings = gsv.check_tao_trace(artifacts_root, "TASK-900")
+        assert len(warnings) == 1
+        assert "risk_classification.csv not found" in warnings[0]
+
+    def test_task_not_in_csv(self, tmp_path):
+        artifacts_root = tmp_path / "artifacts"
+        (artifacts_root / "registry").mkdir(parents=True)
+        csv_path = artifacts_root / "registry" / "risk_classification.csv"
+        csv_path.write_text("task_id,risk_level\nTASK-800,high-risk\n", encoding="utf-8")
+        warnings = gsv.check_tao_trace(artifacts_root, "TASK-999")
+        assert len(warnings) == 1
+        assert "not found in risk_classification.csv" in warnings[0]
+
+    def test_low_risk_skip(self, tmp_path):
+        artifacts_root = tmp_path / "artifacts"
+        (artifacts_root / "registry").mkdir(parents=True)
+        csv_path = artifacts_root / "registry" / "risk_classification.csv"
+        csv_path.write_text("task_id,risk_level\nTASK-999,low-risk\n", encoding="utf-8")
+        warnings = gsv.check_tao_trace(artifacts_root, "TASK-999")
+        assert warnings == []
+
+    def test_high_risk_with_tao(self, tmp_path):
+        artifacts_root = tmp_path / "artifacts"
+        (artifacts_root / "registry").mkdir(parents=True)
+        (artifacts_root / "code").mkdir(parents=True)
+        (artifacts_root / "verify").mkdir(parents=True)
+        csv_path = artifacts_root / "registry" / "risk_classification.csv"
+        csv_path.write_text("task_id,risk_level\nTASK-900,high-risk\n", encoding="utf-8")
+        (artifacts_root / "code" / "TASK-900.code.md").write_text(
+            "# Code\n## TAO Trace\nstep\n", encoding="utf-8"
+        )
+        (artifacts_root / "verify" / "TASK-900.verify.md").write_text(
+            "# Verify\n## TAO Trace\nstep\n", encoding="utf-8"
+        )
+        warnings = gsv.check_tao_trace(artifacts_root, "TASK-900")
+        assert warnings == []
+
+    def test_high_risk_missing_tao(self, tmp_path):
+        artifacts_root = tmp_path / "artifacts"
+        (artifacts_root / "registry").mkdir(parents=True)
+        (artifacts_root / "code").mkdir(parents=True)
+        (artifacts_root / "verify").mkdir(parents=True)
+        csv_path = artifacts_root / "registry" / "risk_classification.csv"
+        csv_path.write_text("task_id,risk_level\nTASK-900,high-risk\n", encoding="utf-8")
+        (artifacts_root / "code" / "TASK-900.code.md").write_text(
+            "# Code\nno tao here\n", encoding="utf-8"
+        )
+        (artifacts_root / "verify" / "TASK-900.verify.md").write_text(
+            "# Verify\nno tao here\n", encoding="utf-8"
+        )
+        warnings = gsv.check_tao_trace(artifacts_root, "TASK-900")
+        assert len(warnings) == 2
+        assert any("code artifact" in w for w in warnings)
+        assert any("verify artifact" in w for w in warnings)
+
