@@ -4,8 +4,6 @@ omit =
     artifacts/scripts/test_*.py
     artifacts/scripts/Invoke-*.ps1
     artifacts/scripts/load_env.ps1
-    artifacts/scripts/backfill_pdca_labels.py
-    artifacts/scripts/classify_existing_tasks.py
 
 [report]
 exclude_lines =

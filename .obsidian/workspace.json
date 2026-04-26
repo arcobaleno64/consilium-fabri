@@ -185,6 +185,8 @@
   "active": "8d07617b445a5caa",
   "lastOpenFiles": [
     "artifacts/tasks/TASK-900-subdir",
+    "artifacts/scripts/__pycache__/backfill_pdca_labels.cpython-314.pyc",
+    "artifacts/scripts/__pycache__/classify_existing_tasks.cpython-314.pyc",
     "artifacts/scripts/__pycache__/test_guard_units.cpython-314-pytest-9.0.3.pyc.81896",
     "docs/subagent_roles.md",
     "artifacts/scripts/backfill_pdca_labels.py",
@@ -203,8 +205,6 @@
     "artifacts/verify/TASK-961.verify.md",
     "artifacts/code/TASK-961.code.md",
     "artifacts/code/TASK-961.code.md.tmp.10600.1776147177629",
-    "template/artifacts/scripts/discover_templates.py",
-    "template/docs/orchestration.md.tmp.10600.1776147144155",
     "artifacts/plans/TASK-961.plan.md",
     "artifacts/research/TASK-961.research.md",
     "artifacts/research/TASK-962.research.md",
