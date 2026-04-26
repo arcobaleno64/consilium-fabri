@@ -12666,3 +12666,136 @@ class TestBackfillPdcaLabels:
     def test_current_taipei_timestamp_format(self):
         ts = bpl.current_taipei_timestamp()
         assert "+08:00" in ts
+
+
+class TestRaciAuditor:
+    def test_hybrid_sync_drift_raises_error(self, tmp_path):
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        roles_md = docs_dir / "subagent_roles.md"
+        roles_md.write_text(
+            "| 角色 | 類型 | R (主執行) | A (最終問責) | C (諮詢) | I (通知) | 主要輸入 | 主要輸出 |\n"
+            "|---|---|---|---|---|---|---|---|\n"
+            "| Claude Code | 主控代理 | missing_task / plan | -- | -- | -- | -- | -- |\n",
+            encoding="utf-8"
+        )
+        with pytest.raises(ValueError, match="RACI hybrid sync failed"):
+            gcv.validate_raci_hybrid_sync(tmp_path)
+
+    def test_detect_raci_violations(self, tmp_path):
+        file_path = tmp_path / "artifacts" / "tasks" / "TASK-1001.task.md"
+        # Implementer edits a task -> violation
+        violations = gcv.detect_raci_violations(file_path, "Implementer", wc.RACI_MATRIX)
+        assert len(violations) == 1
+        assert violations[0].agent == "Implementer"
+        assert violations[0].file_path == file_path
+        assert violations[0].required_type == "code (實檔修改)"
+        assert violations[0].actual_type == "task"
+
+        # Claude edits a task -> ok
+        assert len(gcv.detect_raci_violations(file_path, "Claude Code", wc.RACI_MATRIX)) == 0
+
+    def test_apply_raci_waivers_ex_ante(self):
+        v = gcv.RaciViolation(
+            agent="Implementer",
+            file_path=Path("artifacts/tasks/TASK-1001.task.md"),
+            actual_type="task",
+            required_type="code (實檔修改)"
+        )
+        decision = {
+            "Waiver Type": "ex-ante",
+            "Waived Agent": "Implementer",
+            "Waived Artifact Type": "task",
+            "Last Updated": "2026-04-26T10:00:00+08:00"
+        }
+        post_waiver = gcv.apply_raci_waivers([v], [decision])
+        assert len(post_waiver) == 0
+
+    def test_apply_raci_waivers_pre_existing_dirty_does_not_expand(self):
+        v = gcv.RaciViolation(
+            agent="Implementer",
+            file_path=Path("artifacts/tasks/TASK-1001.task.md"),
+            actual_type="task",
+            required_type="code (實檔修改)"
+        )
+        decision = {
+            "Waiver Type": "pre-existing-dirty",
+            "Waived Agent": "Implementer",
+            "Waived Artifact Type": "task",
+            "Last Updated": "2026-04-26T10:00:00+08:00"
+        }
+        # pre-existing-dirty cannot waive RACI violations
+        post_waiver = gcv.apply_raci_waivers([v], [decision])
+        assert len(post_waiver) == 1
+
+    def test_main_audit_raci(self, tmp_path):
+        import workflow_constants as wc
+        # Create minimal repo structure
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        roles_md = docs_dir / "subagent_roles.md"
+        
+        # mock roles matching workflow_constants
+        roles_content = "| 角色 | 類型 | R (主執行) | A | C | I | 主要輸入 | 主要輸出 |\n|---|---|---|---|---|---|---|---|\n"
+        for agent, artifacts in wc.RACI_MATRIX.items():
+            roles_content += f"| {agent} | Type | {' / '.join(artifacts) or '--'} | -- | -- | -- | -- | -- |\n"
+        roles_md.write_text(roles_content, encoding="utf-8")
+        
+        tasks_dir = tmp_path / "artifacts" / "tasks"
+        tasks_dir.mkdir(parents=True)
+        task_file = tasks_dir / "TASK-1001.task.md"
+        task_file.write_text("dummy", encoding="utf-8")
+        
+        # Implementer modifying task -> Violation
+        ret = gcv.main(["--root", str(tmp_path), "--audit-raci", str(task_file), "Implementer"])
+        assert ret == 1
+        
+        # Claude Code modifying task -> Pass
+        ret = gcv.main(["--root", str(tmp_path), "--audit-raci", str(task_file), "Claude Code"])
+        assert ret == 0
+
+    def test_validate_raci_hybrid_sync_missing_file(self, tmp_path):
+        with pytest.raises(ValueError, match="not found"):
+            gcv.validate_raci_hybrid_sync(tmp_path)
+
+    def test_validate_raci_hybrid_sync_mismatch(self, tmp_path):
+        import workflow_constants as wc
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        roles_md = docs_dir / "subagent_roles.md"
+        
+        # Missing agent in docs
+        roles_md.write_text("| 角色 | 類型 | R (主執行) | A | C | I | 主要輸入 | 主要輸出 |\n|---|---|---|---|---|---|---|---|\n", encoding="utf-8")
+        with pytest.raises(ValueError, match="but not in subagent_roles"):
+            gcv.validate_raci_hybrid_sync(tmp_path)
+
+        # Extra agent in docs
+        roles_content = "| 角色 | 類型 | R (主執行) | A | C | I | 主要輸入 | 主要輸出 |\n|---|---|---|---|---|---|---|---|\n"
+        for agent, artifacts in wc.RACI_MATRIX.items():
+            roles_content += f"| {agent} | Type | {' / '.join(artifacts) or '--'} | -- | -- | -- | -- | -- |\n"
+        roles_content += "| ExtraAgent | Type | code | -- | -- | -- | -- | -- |\n"
+        roles_md.write_text(roles_content, encoding="utf-8")
+        with pytest.raises(ValueError, match="but not in RACI_MATRIX"):
+            gcv.validate_raci_hybrid_sync(tmp_path)
+
+    def test_detect_raci_violations_all_types(self):
+        matrix = {"AgentA": {"plan"}, "AgentB": {"code"}}
+        paths = [
+            (Path("artifacts/tasks/TASK-1.task.md"), "task"),
+            (Path("artifacts/plans/TASK-1.plan.md"), "plan"),
+            (Path("artifacts/decisions/TASK-1.decision.md"), "decision"),
+            (Path("artifacts/status/TASK-1.status.json"), "status"),
+            (Path("artifacts/research/TASK-1.research.md"), "research"),
+            (Path("artifacts/test/TASK-1.test.md"), "test"),
+            (Path("artifacts/verify/TASK-1.verify.md"), "verify"),
+            (Path(".github/memory-bank/file.md"), "Remember Capture draft"),
+        ]
+        for p, expected_type in paths:
+            vs = gcv.detect_raci_violations(p, "AgentC", matrix)
+            assert len(vs) == 1
+            assert vs[0].actual_type == expected_type
+            
+        # Test code (實檔修改) mapped to 'code'
+        vs = gcv.detect_raci_violations(Path("src/main.py"), "AgentB", matrix)
+        assert len(vs) == 0
+

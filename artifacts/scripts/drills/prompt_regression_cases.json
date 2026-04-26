@@ -606,5 +606,20 @@
         "note": "Remember Capture must enforce quality filtering before writes."
       }
     ]
+  },
+  {
+    "id": "PR-026",
+    "title": "RACI Auditor Routing Matrix",
+    "description": "Workflow contract must define RACI Auditor and Architecture Synthesizer triggers.",
+    "assertions": [
+      {
+        "file": "CLAUDE.md",
+        "must_contain_all": [
+          "RACI Auditor / Architecture Synthesizer",
+          "Closure 階段每 10 個 PROCESS_LEDGER 或 Sprint Review 觸發"
+        ],
+        "note": "Claude must route to Gemini for RACI Auditor and Architecture Synthesizer under specific triggers."
+      }
+    ]
   }
 ]

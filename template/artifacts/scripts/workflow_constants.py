@@ -66,6 +66,16 @@ STRUCTURED_CHECKLIST_FIELDS = (
     "timestamp",
 )
 
+RACI_MATRIX = {
+    "Claude Code": {"task", "plan", "decision", "status"},
+    "Gemini CLI": {"research", "Tavily Cache", "Remember Capture draft"},
+    "Codex CLI": {"code"},
+    "Implementer": {"code (實檔修改)"},
+    "Tester": {"test"},
+    "Verifier": {"verify"},
+    "Reviewer": {"review notes"},
+}
+
 VERIFICATION_ITEM_RESULTS = (
     "verified",
     "unverified",
