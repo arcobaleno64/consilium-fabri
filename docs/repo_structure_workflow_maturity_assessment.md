@@ -4,7 +4,7 @@
 
 ## 評估範圍
 
-本報告根據目前 repo 內可見結構、自動化驗證工具實際執行結果、以及 `repo_health_dashboard.py` 的即時數據進行評估。主要依據如下：
+本報告根據目前 repo 內可見結構、自動化驗證工具實際執行結果、以及 `repo_health_dashboard.py` 的即時資料進行評估。主要依據如下：
 
 **結構與規範文件**：
 - `README.md`、`README.zh-TW.md`、`AGENTS.md`、`BOOTSTRAP_PROMPT.md`、`OBSIDIAN.md`
@@ -135,7 +135,7 @@
 | 實際採用程度 | 4 | 4.5 | 18 tasks × 多 artifact type = 100+ artifacts，橫跨 58 commits |
 | CI 整合廣度 | 4.5 | 5 | 2 個 workflow：workflow-guards（10 步驟）+ security-scan（pip-audit）。Actions SHA-pinned + Dependabot 自動 bump |
 | 治理閉環能力 | 4 | 4.5 | blocked → improvement → resume 的 PDCA + decision registry + KPI sprint tracking |
-| 持續優化能力 | 4.5 | 5 | red-team/backlog/prompt regression + repo health dashboard + KPI sprint 追蹤（S2→S6 效能改善 -47.8ms） |
+| 持續最佳化能力 | 4.5 | 5 | red-team/backlog/prompt regression + repo health dashboard + KPI sprint 追蹤（S2→S6 效能改善 -47.8ms） |
 | 上下文管理 | — | 4 | NEW：分層式上下文（memory-bank / prompts / skills / agents），validator 自動檢查完整性與 cross-ref |
 | 外部協作支援 | — | 3.5 | NEW：wiki、custom agents、skills，但尚無 contributor guide 或 onboarding automation |
 

@@ -24,6 +24,31 @@ applyTo: "**"
    - 若需要程式碼，必須有驗證證據（測試、lint、build log）
    - 若需要文件修改，必須同步相關層（root + template + README）
 
+## Governance Protocol: The Iron Triangle (RACI-PDCA-SECI)
+
+所有進入此 repository 的模型，在執行任何任務時，必須預設遵循以下治理架構：
+
+1. **RACI Accountability (權責紀律)**
+   - 我只負責我的角色職責 (R)。若非我的職責，我無權修改檔案。
+   - 權限檢核以 `guard_contract_validator.py --audit-raci` 為準。
+   - 若發生 violation，不準私自 "Fix"；必須產出 Decision Artifact 並請求 Waiver 或修正 RACI 鏡像。
+
+2. **PDCA Execution Flow (PDCA 品質循環)**
+   - 嚴禁跳過驗證階段 (C)。任何程式變更必須對應到 `artifacts/verify/` 的驗證邏輯。
+   - 所有 failure 必須在 `PROCESS_LEDGER.md` (A) 中沉澱為系統級的改善對策，而非僅修正表面 bug。
+
+3. **SECI Knowledge Loop (知識演化螺旋)**
+   - 我產出的任何決策 (Decision) 與改善 (Improvement) 均為專案的資產。
+   - 對於重複出現的系統性問題，必須呼叫 `Architecture Synthesizer` 模式，將碎片經驗 (Tacit) 合併為架構鏡像 (Explicit)。
+
+4. **Validator-First Governance ( validator 優先紀律)**
+   - 所有變更前必先運行 `guard_contract_validator.py` 與 `guard_status_validator.py`。
+   - 若 validator 報錯，我無權忽略 (Ignore) 或強行 Bypass；除顯式授權 Waiver 外，必須立刻停止並檢查違規原因。
+
+5. **Commit/Audit Discipline (稽核紀律)**
+   - 所有與治理相關的 commit 必須包含完整的 Audit-log-delta 資訊與對應的 Decision Artifact 路徑。
+   - 拒絕執行任何「自動修復權限漂移」的指令。
+
 ## 禁止項
 
 禁止在 prompt 檔中寫密碼、token、連線字串。

@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "threat-model-20260417-124620/0-assessment.md",
+                "file": "CLAUDE.md",
                 "mode": "preview",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "0-assessment"
+              "title": "CLAUDE"
             }
           }
         ]
@@ -94,7 +94,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "threat-model-20260417-124620/0-assessment.md",
+                "file": "CLAUDE.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -104,7 +104,7 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "0-assessment 的反向連結"
+              "title": "CLAUDE 的反向連結"
             }
           },
           {
@@ -182,43 +182,45 @@
       "bases:建立新的 base": false
     }
   },
-  "active": "8d07617b445a5caa",
+  "active": "ec5406eae31dc15d",
   "lastOpenFiles": [
-    "artifacts/tasks/TASK-900-subdir",
-    "artifacts/scripts/__pycache__/backfill_pdca_labels.cpython-314.pyc",
-    "artifacts/scripts/__pycache__/classify_existing_tasks.cpython-314.pyc",
-    "artifacts/scripts/__pycache__/test_guard_units.cpython-314-pytest-9.0.3.pyc.81896",
-    "docs/subagent_roles.md",
-    "artifacts/scripts/backfill_pdca_labels.py",
-    "artifacts/registry/risk_classification.csv",
+    "artifacts/status/TASK-1004.status.json",
+    "artifacts/verify/TASK-1004.verify.md",
+    "artifacts/code/TASK-1004.code.md",
+    "artifacts/tasks/TASK-1004.task.md",
+    "artifacts/status/TASK-1003.status.json",
+    "artifacts/verify/TASK-1003.verify.md",
+    "artifacts/code/TASK-1003.code.md",
+    "artifacts/plans/TASK-1003.plan.md",
+    "artifacts/tasks/TASK-1003.task.md",
+    "artifacts/status/TASK-1002.status.json",
+    "artifacts/verify/TASK-1002.verify.md",
+    "artifacts/code/TASK-1002.code.md",
+    "artifacts/plans/TASK-1002.plan.md",
+    "artifacts/tasks/TASK-1002.task.md",
+    "wiki/Repo-Keyword-Glossary.md",
+    "docs/templates/architecture-synthesizer/TEMPLATE.md",
+    "docs/templates/architecture-synthesizer",
     "artifacts/scripts/classify_existing_tasks.py",
-    "template/artifacts/scripts/Invoke-CodexAgent.ps1",
-    "artifacts/scripts/Invoke-CodexAgent.ps1",
+    "artifacts/scripts/backfill_pdca_labels.py",
+    "artifacts/scripts/_dispatch_TASK-1000_research.log",
+    "artifacts/research/TASK-1000.tavily_raw.md",
+    "artifacts/research/TASK-1000.research.md",
+    "artifacts/registry/risk_classification.csv",
+    "BOOTSTRAP_PROMPT.md",
+    "threat-model-20260417-124620/0-assessment.md",
+    "artifacts/tasks/TASK-900-subdir",
+    "artifacts/scripts/__pycache__/test_guard_units.cpython-314-pytest-9.0.3.pyc.91700",
+    "template/docs/templates/raci-auditor/TEMPLATE.md",
+    "template/docs/templates/raci-auditor",
+    "docs/templates/raci-auditor/TEMPLATE.md",
+    "htmlcov/favicon_32_cb_c827f16f.png",
+    "htmlcov/keybd_closed_cb_900cfef5.png",
+    "docs/subagent_roles.md",
     "artifacts/plans/TASK-999.plan.md",
     "artifacts/research/TASK-999.research.md",
     "artifacts/tasks/TASK-999.task.md",
     "AGENTS.md",
-    "CODEX.md",
-    "BOOTSTRAP_PROMPT.md",
-    "CLAUDE.md",
-    "artifacts/status/TASK-961.status.json.tmp.10600.1776147223323",
-    "artifacts/verify/TASK-961.verify.md",
-    "artifacts/code/TASK-961.code.md",
-    "artifacts/code/TASK-961.code.md.tmp.10600.1776147177629",
-    "artifacts/plans/TASK-961.plan.md",
-    "artifacts/research/TASK-961.research.md",
-    "artifacts/research/TASK-962.research.md",
-    "artifacts/verify/TASK-960.verify.md",
-    "artifacts/code/TASK-960.code.md",
-    "template/docs/templates/blocking/TEMPLATE.md",
-    "template/docs/templates/parallel/TEMPLATE.md",
-    "template/docs/templates/reviewer/TEMPLATE.md",
-    "template/docs/templates/verifier/TEMPLATE.md",
-    "template/docs/templates/tester/TEMPLATE.md",
-    "template/docs/templates/implementer/TEMPLATE.md",
-    "README.zh-TW.md",
-    "README.md",
-    "OBSIDIAN.md",
-    "GEMINI.md"
+    "CODEX.md"
   ]
 }

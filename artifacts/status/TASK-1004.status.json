@@ -1,0 +1,16 @@
+{
+  "task_id": "TASK-1004",
+  "state": "done",
+  "assurance_level": "poc",
+  "project_adapter": "generic",
+  "current_owner": "Antigravity",
+  "next_agent": "None",
+  "last_updated": "2026-04-26T19:40:00+08:00",
+  "verification_readiness": "poc",
+  "open_verification_debts": [],
+  "required_artifacts": ["task", "code", "verify", "status"],
+  "available_artifacts": ["task", "code", "verify", "status"],
+  "missing_artifacts": [],
+  "blocked_reason": "",
+  "decision_waivers": []
+}

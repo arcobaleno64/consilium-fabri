@@ -9,7 +9,7 @@
 - `.github/prompts/remember-capture.prompt.md`（經驗沉澱流程）
 - `.github/skills/`（可選任務導向 skill，不作為強制 lifecycle hook）
 - `.github/memory-bank/`（5 個參考檔 + README，知識庫）
-- `CLAUDE.md` 優化（從 2600 行減至 168 行）
+- `CLAUDE.md` 最佳化（從 2600 行減至 168 行）
 
 ---
 
